@@ -1,0 +1,13 @@
+# Local-only compatibility override for clones under macOS /tmp.
+#
+# Colima does not bind-mount macOS /tmp into its VM by default. Reset the two
+# certificate bind mounts, create the containers, and copy the disposable
+# certificates in with deploy/fncp/start-colima-staging.sh.
+services:
+  oidc-simulator:
+    volumes: !reset []
+
+  server:
+    environment:
+      NODE_EXTRA_CA_CERTS: /tmp/fncp-rootCA.pem
+    volumes: !reset []

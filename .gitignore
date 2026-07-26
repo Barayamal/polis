@@ -13,3 +13,8 @@ preprod.env
 prod.env
 scratch/
 xids.csv
+
+# Barayamal First Nations Community Pulse disposable staging secrets/certificates.
+deploy/fncp/.env.staging
+deploy/fncp/certs/
+deploy/fncp/evidence/

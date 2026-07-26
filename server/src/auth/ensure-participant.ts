@@ -1,6 +1,10 @@
 /**
  * Middleware for ensuring a participant exists for the current request
  *
+ * Modified by Barayamal on 26 July 2026 to revalidate the conversation-scoped
+ * XID allowlist on every participant middleware request and prevent warm-session
+ * or non-XID authentication bypass.
+ *
  * This middleware handles the complete flow of participant identification and creation:
  * 1. Handles JWT conversation mismatches
  * 2. Checks legacy cookies
@@ -75,6 +79,50 @@ interface EnsureParticipantOptions {
    * Custom assigner function for setting values on the request
    */
   assigner?: (req: RequestWithP, key: string, value: unknown) => void;
+}
+
+/**
+ * Revalidate XID access for every participant-middleware request.
+ *
+ * XID JWTs are intentionally long-lived, so successful token validation does
+ * not prove that the XID is still allowed for this conversation. Always use
+ * the authenticated JWT claim when present, rather than a request parameter
+ * that could have been parsed later.
+ *
+ * A conversation-scoped XID allowlist is an exclusive access boundary:
+ * anonymous and OIDC/standard-user participant JWTs must not bypass it.
+ */
+async function _revalidateXidAccess(
+  req: RequestWithP,
+  zid: number
+): Promise<void> {
+  const conv = await getConversationInfo(zid);
+
+  if (!conv.use_xid_whitelist) {
+    return;
+  }
+
+  const isNonXidAuthenticatedParticipant =
+    !!req.p.anonymous_participant ||
+    !!req.p.oidc_sub ||
+    !!req.p.standard_user_participant;
+
+  if (isNonXidAuthenticatedParticipant) {
+    throw new Error("polis_err_xid_required");
+  }
+
+  const participantXid = req.p.xid_participant
+    ? req.p.jwt_xid
+    : req.p.xid;
+
+  if (!participantXid) {
+    throw new Error("polis_err_xid_required");
+  }
+
+  const isAllowed = await isXidAllowed(participantXid, zid, conv.owner);
+  if (!isAllowed) {
+    throw new Error("polis_err_xid_not_allowed");
+  }
 }
 
 /**
@@ -392,6 +440,10 @@ async function _ensureParticipantInternal(
   if (treatedAsNew) {
     needsNewJWT = true;
   }
+
+  // Revalidate the current XID on every request, including warm sessions
+  // authenticated by an existing XID JWT.
+  await _revalidateXidAccess(req, zid);
 
   // Check for legacy cookie before creating new user
   if (uid === undefined && !req.p.jwt_conversation_mismatch) {

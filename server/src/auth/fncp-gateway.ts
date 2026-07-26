@@ -1,0 +1,272 @@
+/**
+ * First Nations Community Pulse private-origin gateway enforcement.
+ *
+ * Modified by Barayamal on 26 July 2026.
+ *
+ * This optional middleware is deliberately scoped to the configured FNCP
+ * conversation and the participant API routes used by the Barayamal gateway.
+ * It is not a replacement for network-private origin controls or the XID
+ * allowlist revalidation in ensure-participant.ts.
+ */
+
+import crypto from "node:crypto";
+import type { NextFunction, Request, Response } from "express";
+
+const PARTICIPANT_ROUTES = new Set([
+  "GET /api/v3/bidToPid",
+  "GET /api/v3/comments",
+  "GET /api/v3/conversations",
+  "GET /api/v3/math/pca2",
+  "GET /api/v3/nextComment",
+  "GET /api/v3/participationInit",
+  "GET /api/v3/participants_extended",
+  "GET /api/v3/votes/famous",
+  "POST /api/v3/comments",
+  "POST /api/v3/participants",
+  "POST /api/v3/ptptCommentMod",
+  "POST /api/v3/stars",
+  "POST /api/v3/trashes",
+  "POST /api/v3/tutorial",
+  "POST /api/v3/votes",
+]);
+
+const IDENTITY_KEYS = new Set([
+  "access_token",
+  "authorization",
+  "email",
+  "id_token",
+  "jwt",
+  "name",
+  "password",
+  "pid",
+  "refresh_token",
+  "session",
+  "token",
+  "uid",
+  "x_name",
+  "x_profile_image_url",
+  "xid",
+]);
+
+const CONVERSATION_ID = /^[0-9][A-Za-z0-9_-]{5,99}$/;
+const XID = /^[A-Za-z0-9_-]{16,256}$/;
+
+export interface FncpGatewayConfig {
+  enabled: boolean;
+  conversationId: string;
+  sharedSecret: string;
+}
+
+interface GatewayRequestShape {
+  method: string;
+  path: string;
+  headers: Record<string, unknown>;
+  query?: Record<string, unknown>;
+  body?: Record<string, unknown>;
+}
+
+export interface FncpGatewayDecision {
+  enforce: boolean;
+  status?: number;
+  error?: string;
+  conversationId?: string;
+  participantXid?: string;
+}
+
+function headerValue(
+  headers: Record<string, unknown>,
+  name: string
+): string {
+  const value = headers[name.toLowerCase()];
+  if (Array.isArray(value)) {
+    return value.length === 1 && typeof value[0] === "string" ? value[0] : "";
+  }
+  return typeof value === "string" ? value : "";
+}
+
+function scalarString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function suppliedConversation(request: GatewayRequestShape): string {
+  return (
+    scalarString(request.query?.conversation_id) ||
+    scalarString(request.query?.conversationId) ||
+    scalarString(request.body?.conversation_id) ||
+    scalarString(request.body?.conversationId)
+  );
+}
+
+function hasIdentityInput(value: unknown, depth = 0): boolean {
+  if (depth > 6 || value === null || typeof value !== "object") {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.some((item) => hasIdentityInput(item, depth + 1));
+  }
+  return Object.entries(value as Record<string, unknown>).some(
+    ([key, item]) =>
+      IDENTITY_KEYS.has(key.toLowerCase()) ||
+      hasIdentityInput(item, depth + 1)
+  );
+}
+
+function sameSecret(supplied: string, expected: string): boolean {
+  if (!supplied || !expected) {
+    return false;
+  }
+  const left = crypto.createHash("sha256").update(supplied).digest();
+  const right = crypto.createHash("sha256").update(expected).digest();
+  return crypto.timingSafeEqual(left, right);
+}
+
+export function loadFncpGatewayConfig(
+  env: NodeJS.ProcessEnv = process.env
+): FncpGatewayConfig {
+  return {
+    enabled: env.FNCP_GATEWAY_ENFORCEMENT === "true",
+    conversationId: env.FNCP_GATEWAY_CONVERSATION_ID || "",
+    sharedSecret: env.FNCP_GATEWAY_SHARED_SECRET || "",
+  };
+}
+
+export function evaluateFncpGatewayRequest(
+  request: GatewayRequestShape,
+  config: FncpGatewayConfig
+): FncpGatewayDecision {
+  if (!config.enabled) {
+    return { enforce: false };
+  }
+  if (
+    !CONVERSATION_ID.test(config.conversationId) ||
+    config.sharedSecret.length < 32
+  ) {
+    return {
+      enforce: true,
+      status: 503,
+      error: "FNCP gateway is not configured.",
+    };
+  }
+
+  const routeKey = `${request.method.toUpperCase()} ${request.path}`;
+  const routeIsParticipant = PARTICIPANT_ROUTES.has(routeKey);
+  const requestedConversation = suppliedConversation(request);
+  const claimedConversation = headerValue(
+    request.headers,
+    "x-fncp-conversation-id"
+  );
+  const claimsGatewayAccess =
+    !!claimedConversation ||
+    !!headerValue(request.headers, "x-fncp-gateway-key") ||
+    !!headerValue(request.headers, "x-fncp-participant-xid");
+
+  const targetsConfiguredConversation =
+    requestedConversation === config.conversationId ||
+    claimedConversation === config.conversationId;
+
+  if (!routeIsParticipant) {
+    if (claimsGatewayAccess) {
+      return { enforce: true, status: 404, error: "Not found." };
+    }
+    return { enforce: false };
+  }
+  if (!targetsConfiguredConversation && !claimsGatewayAccess) {
+    return { enforce: false };
+  }
+
+  if (
+    claimedConversation &&
+    claimedConversation !== config.conversationId
+  ) {
+    return { enforce: true, status: 403, error: "Wrong conversation." };
+  }
+  if (
+    requestedConversation &&
+    requestedConversation !== config.conversationId
+  ) {
+    return { enforce: true, status: 403, error: "Wrong conversation." };
+  }
+  if (
+    !sameSecret(
+      headerValue(request.headers, "x-fncp-gateway-key"),
+      config.sharedSecret
+    )
+  ) {
+    return { enforce: true, status: 403, error: "Gateway access required." };
+  }
+  if (claimedConversation !== config.conversationId) {
+    return { enforce: true, status: 403, error: "Gateway access required." };
+  }
+
+  const participantXid = headerValue(
+    request.headers,
+    "x-fncp-participant-xid"
+  );
+  if (!XID.test(participantXid)) {
+    return { enforce: true, status: 403, error: "Gateway access required." };
+  }
+
+  if (
+    headerValue(request.headers, "authorization") ||
+    headerValue(request.headers, "cookie") ||
+    hasIdentityInput(request.query) ||
+    hasIdentityInput(request.body)
+  ) {
+    return {
+      enforce: true,
+      status: 400,
+      error: "Conflicting participant identity.",
+    };
+  }
+
+  return {
+    enforce: true,
+    conversationId: config.conversationId,
+    participantXid,
+  };
+}
+
+export function fncpGatewayMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const decision = evaluateFncpGatewayRequest(
+    {
+      method: req.method,
+      path: req.path,
+      headers: req.headers as Record<string, unknown>,
+      query: req.query as Record<string, unknown>,
+      body:
+        req.body && typeof req.body === "object"
+          ? (req.body as Record<string, unknown>)
+          : undefined,
+    },
+    loadFncpGatewayConfig()
+  );
+
+  if (!decision.enforce) {
+    next();
+    return;
+  }
+  if (decision.status) {
+    res
+      .status(decision.status)
+      .set("Cache-Control", "no-store")
+      .json({ error: decision.error });
+    return;
+  }
+
+  const query = req.query as Record<string, unknown>;
+  query.conversation_id = decision.conversationId;
+  query.xid = decision.participantXid;
+
+  if (req.body && typeof req.body === "object") {
+    const body = req.body as Record<string, unknown>;
+    delete body.conversationId;
+    body.conversation_id = decision.conversationId;
+    body.xid = decision.participantXid;
+  }
+
+  next();
+}

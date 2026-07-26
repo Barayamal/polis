@@ -3,6 +3,8 @@
 // TODO modern import syntax for helpers
 
 // Copyright (C) 2012-present, The Authors. This program is free software: you can redistribute it and/or  modify it under the terms of the GNU Affero General Public License, version 3, as published by the Free Software Foundation. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more details. You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+// Modified by Barayamal on 26 July 2026 to add optional, conversation-scoped
+// private-origin gateway enforcement for First Nations Community Pulse.
 "use strict";
 
 import * as dotenv from "dotenv";
@@ -19,6 +21,7 @@ import { makeFileFetcher } from "./src/utils/file-fetcher";
 import logger from "./src/utils/logger";
 import { fetchIndexForConversation } from "./src/conversation";
 import { getPidForParticipant } from "./src/user";
+import { fncpGatewayMiddleware } from "./src/auth/fncp-gateway";
 
 import {
   middleware_check_if_options,
@@ -305,6 +308,7 @@ helpersInitialized.then(
     app.use(redirectIfNotHttps);
     app.use(express.bodyParser({ limit: "50mb" }));
     app.use(express.cookieParser()); // Add cookie parser to access req.cookies
+    app.use(fncpGatewayMiddleware);
     app.use(writeDefaultHead);
 
     app.use(express.compress());
