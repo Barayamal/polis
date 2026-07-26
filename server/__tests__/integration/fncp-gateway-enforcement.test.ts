@@ -98,6 +98,37 @@ describe("FNCP gateway enforcement integration", () => {
     expect(response.body.conversation.conversation_id).toBe(conversationId);
   });
 
+  test("participants_extended enforces pinned GET/PUT method parity", async () => {
+    const participant = await newAgent();
+
+    const deniedGet = await participant
+      .get("/api/v3/participants_extended")
+      .set("X-FNCP-Gateway-Key", sharedSecret)
+      .set("X-FNCP-Conversation-ID", conversationId)
+      .set("X-FNCP-Participant-XID", allowedXid)
+      .query({ conversation_id: conversationId });
+    expect(deniedGet.status).toBe(404);
+    expect(deniedGet.body.error).toBe("Not found.");
+
+    const acceptedPut = await participant
+      .put("/api/v3/participants_extended")
+      .set("X-FNCP-Gateway-Key", sharedSecret)
+      .set("X-FNCP-Conversation-ID", conversationId)
+      .set("X-FNCP-Participant-XID", allowedXid)
+      .send({
+        conversation_id: conversationId,
+        show_translation_activated: true,
+      });
+
+    // The gateway accepts the pinned PUT method; required upstream hybridAuth
+    // remains a separate P0 integration contract and rejects this request
+    // until an explicit server-side authentication and XID-revalidation
+    // design is implemented.
+    expect(acceptedPut.status).toBe(401);
+    expect(acceptedPut.status).not.toBe(403);
+    expect(acceptedPut.status).not.toBe(404);
+  });
+
   test("removing the XID blocks the next trusted gateway request", async () => {
     const replacement = await admin.post("/api/v3/xidAllowList").send({
       conversation_id: conversationId,

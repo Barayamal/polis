@@ -7,7 +7,11 @@ import node from '@astrojs/node'
 
 // https://astro.build/config
 export default defineConfig({
+  base: '/',
   output: 'server',
+  build: {
+    assets: '_astro'
+  },
   adapter: node({
     mode: 'standalone'
   }),

@@ -19,7 +19,6 @@ const PARTICIPANT_ROUTES = new Set([
   "GET /api/v3/math/pca2",
   "GET /api/v3/nextComment",
   "GET /api/v3/participationInit",
-  "GET /api/v3/participants_extended",
   "GET /api/v3/votes/famous",
   "POST /api/v3/comments",
   "POST /api/v3/participants",
@@ -28,6 +27,11 @@ const PARTICIPANT_ROUTES = new Set([
   "POST /api/v3/trashes",
   "POST /api/v3/tutorial",
   "POST /api/v3/votes",
+  "PUT /api/v3/participants_extended",
+]);
+
+const METHOD_STRICT_PARTICIPANT_PATHS = new Set([
+  "/api/v3/participants_extended",
 ]);
 
 const IDENTITY_KEYS = new Set([
@@ -73,10 +77,7 @@ export interface FncpGatewayDecision {
   participantXid?: string;
 }
 
-function headerValue(
-  headers: Record<string, unknown>,
-  name: string
-): string {
+function headerValue(headers: Record<string, unknown>, name: string): string {
   const value = headers[name.toLowerCase()];
   if (Array.isArray(value)) {
     return value.length === 1 && typeof value[0] === "string" ? value[0] : "";
@@ -106,8 +107,7 @@ function hasIdentityInput(value: unknown, depth = 0): boolean {
   }
   return Object.entries(value as Record<string, unknown>).some(
     ([key, item]) =>
-      IDENTITY_KEYS.has(key.toLowerCase()) ||
-      hasIdentityInput(item, depth + 1)
+      IDENTITY_KEYS.has(key.toLowerCase()) || hasIdentityInput(item, depth + 1)
   );
 }
 
@@ -150,6 +150,9 @@ export function evaluateFncpGatewayRequest(
 
   const routeKey = `${request.method.toUpperCase()} ${request.path}`;
   const routeIsParticipant = PARTICIPANT_ROUTES.has(routeKey);
+  const pathRequiresParticipantMethod = METHOD_STRICT_PARTICIPANT_PATHS.has(
+    request.path
+  );
   const requestedConversation = suppliedConversation(request);
   const claimedConversation = headerValue(
     request.headers,
@@ -165,6 +168,11 @@ export function evaluateFncpGatewayRequest(
     claimedConversation === config.conversationId;
 
   if (!routeIsParticipant) {
+    // Fail closed when a protected participant path is called with a method
+    // that is not part of the pinned server contract.
+    if (pathRequiresParticipantMethod && targetsConfiguredConversation) {
+      return { enforce: true, status: 404, error: "Not found." };
+    }
     if (claimsGatewayAccess) {
       return { enforce: true, status: 404, error: "Not found." };
     }
@@ -174,10 +182,7 @@ export function evaluateFncpGatewayRequest(
     return { enforce: false };
   }
 
-  if (
-    claimedConversation &&
-    claimedConversation !== config.conversationId
-  ) {
+  if (claimedConversation && claimedConversation !== config.conversationId) {
     return { enforce: true, status: 403, error: "Wrong conversation." };
   }
   if (
@@ -198,10 +203,7 @@ export function evaluateFncpGatewayRequest(
     return { enforce: true, status: 403, error: "Gateway access required." };
   }
 
-  const participantXid = headerValue(
-    request.headers,
-    "x-fncp-participant-xid"
-  );
+  const participantXid = headerValue(request.headers, "x-fncp-participant-xid");
   if (!XID.test(participantXid)) {
     return { enforce: true, status: 403, error: "Gateway access required." };
   }

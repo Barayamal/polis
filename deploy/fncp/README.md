@@ -10,6 +10,33 @@ record, invitation, vote or statement.
 Latest recorded evidence:
 [26 July 2026 disposable staging results](./STAGING-EVIDENCE-2026-07-26.md).
 
+Refresh the production package evidence without applying automatic fixes:
+
+```sh
+node --test deploy/fncp/audit-production-dependencies.test.mjs
+node deploy/fncp/audit-production-dependencies.mjs
+node deploy/fncp/audit-production-dependencies.mjs --component=alpha
+```
+
+The audit command contacts the configured npm registry and runs
+`npm audit --omit=dev --json` against the selected lockfile. The default
+component is `server`; reviewed values are `server`, `alpha`, `file-server`,
+`admin`, `legacy-participant` and `report`. Run each component separately
+because the current file-server image builds multiple independently locked
+clients and their counts cannot be safely deduplicated by adding them.
+
+The command prints only the selected component, dependency package
+names/ranges, expected numeric dependency counts, direct/transitive severity
+counts and fix shapes; advisory text, registry responses and unknown metadata
+are not reflected. Do not run it with a registry configuration that should not
+receive the dependency manifest.
+
+Exit `0` means the production gate passed, exit `1` means critical/high or
+unreviewed no-fix production package findings remain, and exit `2` means the
+audit could not be completed or its npm v2 report was malformed or internally
+inconsistent. The command never changes the lockfile; remediation belongs in
+separately reviewed upgrade branches.
+
 ## Safety boundaries
 
 - The deployed source baseline is upstream commit
@@ -126,9 +153,13 @@ requires, at minimum:
    revocation on every protected request;
 5. direct/native participant, report, export and admin-route denial at the
    public participant gateway;
-6. backup/PITR, restore, deletion and incident tests;
-7. a reviewed participant notice matching the actual processors and retention;
-8. a visible no-charge link to the exact Corresponding Source.
+6. an explicit participant-auth bridge for the protected
+   `PUT /api/v3/participants_extended` path;
+7. a reviewed, component-aware dependency remediation and image/SBOM scan,
+   including the OS, nginx, PostgreSQL and JVM/Clojure surfaces;
+8. backup/PITR, restore, deletion, load, monitoring and incident tests;
+9. a reviewed participant notice matching the actual processors and retention;
+10. a visible no-charge link to the exact Corresponding Source.
 
 The local stack proves buildability and supports the negative access matrix. It
 does not by itself prove those production controls.

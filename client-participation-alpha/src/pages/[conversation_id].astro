@@ -16,6 +16,11 @@ import Layout from '../pages/layouts/Layout.astro'
 import { getTranslations } from '../strings/strings'
 import type { Translations } from '../strings/types'
 import { uiLanguageSSR } from '../lib/lang'
+import {
+  FncpGatewayContextError,
+  resolveFncpAlphaRequest,
+  type FncpAlphaRequestContext
+} from '../lib/fncp-gateway-context.server'
 
 const { conversation_id } = Astro.params;
 
@@ -28,6 +33,24 @@ if (!conversation_id ||
     conversation_id.length < 3) { // Reject very short IDs
   return Astro.redirect('/404');
 }
+
+let fncpContext: FncpAlphaRequestContext;
+try {
+  fncpContext = resolveFncpAlphaRequest(Astro.request, conversation_id);
+} catch (error: unknown) {
+  if (error instanceof FncpGatewayContextError) {
+    return new Response(error.message, {
+      status: error.status,
+      headers: { 'Cache-Control': 'private, no-store' }
+    });
+  }
+  return new Response('Participant service is unavailable.', {
+    status: 503,
+    headers: { 'Cache-Control': 'private, no-store' }
+  });
+}
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 
 // Load translations first so we can use them in error messages
 // Pass SSR context for proper language detection
@@ -46,9 +69,11 @@ let initialData: ParticipationInitData | undefined;
 let fetchError = null;
 
 try {
-  const xid = Astro.url.searchParams.get('xid');
-  const x_name = Astro.url.searchParams.get('x_name');
-  const x_profile_image_url = Astro.url.searchParams.get('x_profile_image_url');
+  const xid = fncpContext.gatewayEnforced ? null : Astro.url.searchParams.get('xid');
+  const x_name = fncpContext.gatewayEnforced ? null : Astro.url.searchParams.get('x_name');
+  const x_profile_image_url = fncpContext.gatewayEnforced
+    ? null
+    : Astro.url.searchParams.get('x_profile_image_url');
 
   initialData = await fetchParticipationInit(conversation_id, {
     includePCA: false,
@@ -56,39 +81,24 @@ try {
     xid: xid || undefined,
     x_name: x_name || undefined,
     x_profile_image_url: x_profile_image_url || undefined
-  });
+  }, fncpContext.polisRequest);
   // Note: JWT token handling will be done client-side since this is SSR
   // The handleJwtFromResponse function will be called when the page hydrates
 } catch (error: unknown) {
-  console.error("Failed to fetch conversation data:", error);
-  
-  // Type-safe error handling
-  const errorMessage = error instanceof Error ? error.message : String(error);
   const errorResponseText = error && typeof error === 'object' && 'responseText' in error 
     ? String(error.responseText) 
     : '';
-  const errorCause = error instanceof Error ? error.cause : undefined;
-  const errorCode = errorCause && typeof errorCause === 'object' && 'code' in errorCause 
-    ? String(errorCause.code) 
-    : undefined;
-  
-  console.error("[DEBUG] Error details:", {
-    message: errorMessage,
-    responseText: errorResponseText,
-    cause: errorCause,
-    code: errorCode,
-    stack: error instanceof Error ? error.stack : undefined
-  });
 
   // Handle specific error cases
   if (errorResponseText.includes('polis_err_xid_required')) {
     fetchError = s.xidRequired
   } else {
-    fetchError = s.couldNotLoadConversation.replace('{{error}}', errorMessage)
+    fetchError = s.couldNotLoadConversation.replace('{{error}}', s.error)
   }
 }
 
 let surveyDetails, firstStatement, isConversationActive;
+const initialAuth = fncpContext.gatewayEnforced ? null : initialData?.auth ?? null;
 if (initialData) {
   surveyDetails = {
     title: initialData.conversation.topic,
@@ -118,10 +128,10 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
   dir={s.direction}
 >
   {/* Handle JWT token from initial data on client side - MUST be synchronous to avoid race conditions */}
-  <script define:vars={{ initialData }} is:inline>
-    if (initialData && initialData.auth && initialData.auth.token) {
+  <script define:vars={{ initialAuth }} is:inline>
+    if (initialAuth && initialAuth.token) {
       // Store the token synchronously before any React components try to read it
-      const token = initialData.auth.token;
+      const token = initialAuth.token;
       
       try {
         // Decode JWT to get conversation_id

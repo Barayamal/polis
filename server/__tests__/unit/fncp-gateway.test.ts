@@ -75,6 +75,40 @@ describe("FNCP private-origin gateway enforcement", () => {
     });
   });
 
+  test("denies GET participants_extended for the protected conversation", () => {
+    expect(
+      evaluateFncpGatewayRequest(
+        request({
+          method: "GET",
+          path: "/api/v3/participants_extended",
+        }),
+        enabled
+      )
+    ).toEqual({
+      enforce: true,
+      status: 404,
+      error: "Not found.",
+    });
+  });
+
+  test("accepts trusted PUT participants_extended at the gateway boundary", () => {
+    expect(
+      evaluateFncpGatewayRequest(
+        request({
+          method: "PUT",
+          path: "/api/v3/participants_extended",
+          headers: gatewayHeaders(),
+          body: { show_translation_activated: true },
+        }),
+        enabled
+      )
+    ).toEqual({
+      enforce: true,
+      conversationId,
+      participantXid: xid,
+    });
+  });
+
   test("rejects a wrong or missing gateway secret", () => {
     const headers = gatewayHeaders({
       "x-fncp-gateway-key": "wrong-secret-0123456789abcdefghij",
@@ -143,6 +177,18 @@ describe("FNCP private-origin gateway enforcement", () => {
     expect(
       evaluateFncpGatewayRequest(
         request({ query: { conversation_id: "4otherconv" } }),
+        enabled
+      )
+    ).toEqual({ enforce: false });
+  });
+
+  test("does not affect admin routes targeting the configured conversation", () => {
+    expect(
+      evaluateFncpGatewayRequest(
+        request({
+          method: "PUT",
+          path: "/api/v3/conversations",
+        }),
         enabled
       )
     ).toEqual({ enforce: false });
