@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "@jest/globals";
-import type { Agent } from "supertest";
+import type { Agent, Test } from "supertest";
 import {
   createConversation,
   getJwtAuthenticatedAgent,
@@ -11,9 +11,10 @@ const sharedSecret = "integration-gateway-secret-0123456789abcdef";
 const allowedXid = "fncp_allowed_0123456789abcdef";
 const replacementXid = "fncp_replacement_0123456789abc";
 
-describe("FNCP gateway enforcement integration", () => {
+describe("FNCP minimum-route gateway enforcement integration", () => {
   let admin: Agent;
   let conversationId = "";
+  let seedTid = -1;
   const previous = {
     enabled: process.env.FNCP_GATEWAY_ENFORCEMENT,
     conversationId: process.env.FNCP_GATEWAY_CONVERSATION_ID,
@@ -34,6 +35,8 @@ describe("FNCP gateway enforcement integration", () => {
       is_active: true,
       is_draft: false,
       strict_moderation: true,
+      treevite_enabled: false,
+      topics_enabled: false,
     });
 
     const seed = await admin.post("/api/v3/comments").send({
@@ -42,6 +45,8 @@ describe("FNCP gateway enforcement integration", () => {
       is_seed: true,
     });
     expect(seed.status).toBe(200);
+    seedTid = seed.body.tid;
+    expect(Number.isInteger(seedTid)).toBe(true);
 
     const allowlist = await admin.post("/api/v3/xidAllowList").send({
       conversation_id: conversationId,
@@ -83,53 +88,101 @@ describe("FNCP gateway enforcement integration", () => {
     expect(response.body.error).toBe("Gateway access required.");
   });
 
-  test("trusted gateway headers inject the allowlisted XID", async () => {
+  test("HEAD cannot alias a protected GET participant route", async () => {
     const participant = await newAgent();
-    const response = await participant
-      .get("/api/v3/participationInit")
-      .set("X-FNCP-Gateway-Key", sharedSecret)
-      .set("X-FNCP-Conversation-ID", conversationId)
-      .set("X-FNCP-Participant-XID", allowedXid)
-      .query({
-        conversation_id: conversationId,
-        lang: "en",
-      });
+    const response = await participant.head("/api/v3/participationInit").query({
+      conversation_id: conversationId,
+      lang: "en",
+    });
+    expect(response.status).toBe(404);
+    expect(response.headers["cache-control"]).toBe("no-store");
+  });
+
+  test("trusted gateway headers load the allowlisted conversation", async () => {
+    const participant = await newAgent();
+    const response = await trusted(
+      participant.get("/api/v3/participationInit"),
+      allowedXid
+    ).query({ conversation_id: conversationId, lang: "en" });
     expect(response.status).toBe(200);
     expect(response.body.conversation.conversation_id).toBe(conversationId);
   });
 
-  test("participants_extended enforces pinned GET/PUT method parity", async () => {
+  test("all retained GET routes reach the exact stack", async () => {
+    const routes = [
+      ["/api/v3/nextComment", { conversation_id: conversationId, lang: "en" }],
+      ["/api/v3/comments", { conversation_id: conversationId }],
+      ["/api/v3/math/pca2", { conversation_id: conversationId }],
+    ] as const;
+
     const participant = await newAgent();
-
-    const deniedGet = await participant
-      .get("/api/v3/participants_extended")
-      .set("X-FNCP-Gateway-Key", sharedSecret)
-      .set("X-FNCP-Conversation-ID", conversationId)
-      .set("X-FNCP-Participant-XID", allowedXid)
-      .query({ conversation_id: conversationId });
-    expect(deniedGet.status).toBe(404);
-    expect(deniedGet.body.error).toBe("Not found.");
-
-    const acceptedPut = await participant
-      .put("/api/v3/participants_extended")
-      .set("X-FNCP-Gateway-Key", sharedSecret)
-      .set("X-FNCP-Conversation-ID", conversationId)
-      .set("X-FNCP-Participant-XID", allowedXid)
-      .send({
-        conversation_id: conversationId,
-        show_translation_activated: true,
-      });
-
-    // The gateway accepts the pinned PUT method; required upstream hybridAuth
-    // remains a separate P0 integration contract and rejects this request
-    // until an explicit server-side authentication and XID-revalidation
-    // design is implemented.
-    expect(acceptedPut.status).toBe(401);
-    expect(acceptedPut.status).not.toBe(403);
-    expect(acceptedPut.status).not.toBe(404);
+    for (const [path, query] of routes) {
+      const response = await trusted(participant.get(path), allowedXid).query(
+        query
+      );
+      expect([200, 304]).toContain(response.status);
+    }
   });
 
-  test("removing the XID blocks the next trusted gateway request", async () => {
+  test("trusted Agree/Disagree/Pass write creates the XID participant", async () => {
+    const participant = await newAgent();
+    const response = await trusted(
+      participant.post("/api/v3/votes"),
+      allowedXid
+    ).send({
+      conversation_id: conversationId,
+      tid: seedTid,
+      vote: -1,
+      lang: "en",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.currentPid).toEqual(expect.any(Number));
+    expect(response.body).not.toHaveProperty("auth");
+  });
+
+  test("trusted statement submission uses the same established XID", async () => {
+    const participant = await newAgent();
+    const response = await trusted(
+      participant.post("/api/v3/comments"),
+      allowedXid
+    ).send({
+      conversation_id: conversationId,
+      txt: "Synthetic participant statement for gateway QA",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).not.toHaveProperty("auth");
+  });
+
+  test("unused and optional routes reject gateway assertions", async () => {
+    const routes: Array<[string, string]> = [
+      ["get", "/api/v3/conversations"],
+      ["get", "/api/v3/votes/famous"],
+      ["get", "/api/v3/bidToPid"],
+      ["post", "/api/v3/participants"],
+      ["put", "/api/v3/participants_extended"],
+      ["post", "/api/v3/stars"],
+      ["post", "/api/v3/trashes"],
+      ["post", "/api/v3/tutorial"],
+      ["post", "/api/v3/ptptCommentMod"],
+      ["post", "/api/v3/notifications"],
+    ];
+
+    for (const [method, path] of routes) {
+      const participant = await newAgent();
+      const request = trusted(
+        participant[method as "get" | "post" | "put"](path),
+        allowedXid
+      );
+      const response =
+        method === "get"
+          ? await request.query({ conversation_id: conversationId })
+          : await request.send({ conversation_id: conversationId });
+      expect(response.status).toBe(404);
+      expect(response.headers["cache-control"]).toBe("no-store");
+    }
+  });
+
+  test("revocation blocks the next request while staff routes remain available", async () => {
     const replacement = await admin.post("/api/v3/xidAllowList").send({
       conversation_id: conversationId,
       xid_allow_list: [replacementXid],
@@ -138,31 +191,22 @@ describe("FNCP gateway enforcement integration", () => {
     expect(replacement.status).toBe(200);
 
     const participant = await newAgent();
-    const response = await participant
-      .get("/api/v3/participationInit")
-      .set("X-FNCP-Gateway-Key", sharedSecret)
-      .set("X-FNCP-Conversation-ID", conversationId)
-      .set("X-FNCP-Participant-XID", allowedXid)
-      .query({
-        conversation_id: conversationId,
-        lang: "en",
-      });
-    expect(response.status).toBe(403);
-  });
-
-  test("admin-only routes reject gateway assertions and remain available to staff", async () => {
-    const participant = await newAgent();
-    const blocked = await participant
-      .get("/api/v3/dataExport")
-      .set("X-FNCP-Gateway-Key", sharedSecret)
-      .set("X-FNCP-Conversation-ID", conversationId)
-      .set("X-FNCP-Participant-XID", replacementXid)
-      .query({ conversation_id: conversationId });
-    expect(blocked.status).toBe(404);
+    const blocked = await trusted(
+      participant.get("/api/v3/participationInit"),
+      allowedXid
+    ).query({ conversation_id: conversationId, lang: "en" });
+    expect(blocked.status).toBe(403);
 
     const staff = await admin.get("/api/v3/conversations");
     expect(staff.status).toBe(200);
   });
+
+  function trusted(request: Test, xid: string): Test {
+    return request
+      .set("X-FNCP-Gateway-Key", sharedSecret)
+      .set("X-FNCP-Conversation-ID", conversationId)
+      .set("X-FNCP-Participant-XID", xid);
+  }
 });
 
 function setOrDelete(name: string, value: string | undefined): void {

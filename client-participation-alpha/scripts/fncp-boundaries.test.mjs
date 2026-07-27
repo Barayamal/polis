@@ -33,3 +33,12 @@ test('gateway identity remains in the SSR request context and out of rendered st
   assert.match(pageSource, /fncpContext\.gatewayEnforced \? null : initialData\?\.auth/)
   assert.match(participationSource, /serverRequest\?: PolisServerRequest/)
 })
+
+test('FNCP completion state collects no email and calls no notification route', async () => {
+  const surveySource = await source('src/components/Survey.tsx')
+
+  assert.match(surveySource, /className="survey-complete"/)
+  assert.match(surveySource, /s\.completionTitle/)
+  assert.match(surveySource, /s\.completionBody/)
+  assert.doesNotMatch(surveySource, /EmailSubscribeForm|notifications/)
+})

@@ -153,8 +153,10 @@ requires, at minimum:
    revocation on every protected request;
 5. direct/native participant, report, export and admin-route denial at the
    public participant gateway;
-6. an explicit participant-auth bridge for the protected
-   `PUT /api/v3/participants_extended` path;
+6. the six-route FNCP participant manifest passing its exact DB-backed and
+   browser trace suites: core reads, vote and statement writes succeed;
+   missing/removed identity, HEAD aliases and every unused route fail closed;
+   staff routes retain normal authentication;
 7. a reviewed, component-aware dependency remediation and image/SBOM scan,
    including the OS, nginx, PostgreSQL and JVM/Clojure surfaces;
 8. backup/PITR, restore, deletion, load, monitoring and incident tests;

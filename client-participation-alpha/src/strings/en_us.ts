@@ -36,6 +36,9 @@ const s: Translations = {
   signInToVote: "You need to sign in to vote.",
   voteFailedGeneric:
     "Apologies, your vote failed to send. Please check your connection and try again.",
+  completionTitle: "You’ve responded to every available statement.",
+  completionBody:
+    "Thank you. Your responses are included in the conversation. You can still add a stand-alone statement below if an important perspective is missing.",
 
   // ─────────────────────────────────────────────────────────────
   // Statements

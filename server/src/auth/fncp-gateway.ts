@@ -1,7 +1,7 @@
 /**
  * First Nations Community Pulse private-origin gateway enforcement.
  *
- * Modified by Barayamal on 26 July 2026.
+ * Modified by Barayamal on 26–27 July 2026.
  *
  * This optional middleware is deliberately scoped to the configured FNCP
  * conversation and the participant API routes used by the Barayamal gateway.
@@ -12,27 +12,35 @@
 import crypto from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 
-const PARTICIPANT_ROUTES = new Set([
-  "GET /api/v3/bidToPid",
+const PARTICIPANT_ROUTE_DEFINITIONS = [
   "GET /api/v3/comments",
-  "GET /api/v3/conversations",
   "GET /api/v3/math/pca2",
   "GET /api/v3/nextComment",
   "GET /api/v3/participationInit",
-  "GET /api/v3/votes/famous",
   "POST /api/v3/comments",
-  "POST /api/v3/participants",
-  "POST /api/v3/ptptCommentMod",
-  "POST /api/v3/stars",
-  "POST /api/v3/trashes",
-  "POST /api/v3/tutorial",
   "POST /api/v3/votes",
-  "PUT /api/v3/participants_extended",
-]);
+] as const;
 
-const METHOD_STRICT_PARTICIPANT_PATHS = new Set([
-  "/api/v3/participants_extended",
-]);
+function normalizePath(path: string): string {
+  const withoutTrailingSlash =
+    path.length > 1 ? path.replace(/\/+$/u, "") : path;
+  return withoutTrailingSlash.toLowerCase();
+}
+
+const PARTICIPANT_ROUTES: ReadonlyMap<string, string> = new Map(
+  PARTICIPANT_ROUTE_DEFINITIONS.map((route) => {
+    const separator = route.indexOf(" ");
+    const method = route.slice(0, separator);
+    const path = route.slice(separator + 1);
+    return [`${method} ${normalizePath(path)}`, path] as const;
+  })
+);
+
+const HEAD_ALIAS_PARTICIPANT_PATHS = new Set(
+  PARTICIPANT_ROUTE_DEFINITIONS.filter((route) => route.startsWith("GET ")).map(
+    (route) => normalizePath(route.slice(route.indexOf(" ") + 1))
+  )
+);
 
 const IDENTITY_KEYS = new Set([
   "access_token",
@@ -89,13 +97,13 @@ function scalarString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-function suppliedConversation(request: GatewayRequestShape): string {
-  return (
-    scalarString(request.query?.conversation_id) ||
-    scalarString(request.query?.conversationId) ||
-    scalarString(request.body?.conversation_id) ||
-    scalarString(request.body?.conversationId)
-  );
+function suppliedConversations(request: GatewayRequestShape): string[] {
+  return [
+    scalarString(request.query?.conversation_id),
+    scalarString(request.query?.conversationId),
+    scalarString(request.body?.conversation_id),
+    scalarString(request.body?.conversationId),
+  ].filter(Boolean);
 }
 
 function hasIdentityInput(value: unknown, depth = 0): boolean {
@@ -121,6 +129,9 @@ function sameSecret(supplied: string, expected: string): boolean {
 }
 
 export function loadFncpGatewayConfig(
+  // Deliberately read at request time so emergency disable/revocation is
+  // immediate and integration tests can prove the fail-closed transition.
+  // eslint-disable-next-line no-restricted-properties
   env: NodeJS.ProcessEnv = process.env
 ): FncpGatewayConfig {
   return {
@@ -148,12 +159,15 @@ export function evaluateFncpGatewayRequest(
     };
   }
 
-  const routeKey = `${request.method.toUpperCase()} ${request.path}`;
-  const routeIsParticipant = PARTICIPANT_ROUTES.has(routeKey);
-  const pathRequiresParticipantMethod = METHOD_STRICT_PARTICIPANT_PATHS.has(
-    request.path
-  );
-  const requestedConversation = suppliedConversation(request);
+  const requestMethod = request.method.toUpperCase();
+  const requestPath = normalizePath(request.path);
+  const routeKey = `${requestMethod} ${requestPath}`;
+  const canonicalPath = PARTICIPANT_ROUTES.get(routeKey);
+  const routeIsParticipant = canonicalPath !== undefined;
+  const pathIsCanonical = request.path === canonicalPath;
+  const isHeadAlias =
+    requestMethod === "HEAD" && HEAD_ALIAS_PARTICIPANT_PATHS.has(requestPath);
+  const requestedConversations = suppliedConversations(request);
   const claimedConversation = headerValue(
     request.headers,
     "x-fncp-conversation-id"
@@ -164,13 +178,17 @@ export function evaluateFncpGatewayRequest(
     !!headerValue(request.headers, "x-fncp-participant-xid");
 
   const targetsConfiguredConversation =
-    requestedConversation === config.conversationId ||
+    requestedConversations.includes(config.conversationId) ||
     claimedConversation === config.conversationId;
+  const hasConflictingConversation = requestedConversations.some(
+    (conversation) => conversation !== config.conversationId
+  );
 
   if (!routeIsParticipant) {
-    // Fail closed when a protected participant path is called with a method
-    // that is not part of the pinned server contract.
-    if (pathRequiresParticipantMethod && targetsConfiguredConversation) {
+    // Express aliases HEAD to GET automatically. Deny that alias for protected
+    // GET routes, while preserving legitimate admin methods that share a path
+    // with participant reads (for example PUT /api/v3/conversations).
+    if (isHeadAlias && targetsConfiguredConversation) {
       return { enforce: true, status: 404, error: "Not found." };
     }
     if (claimsGatewayAccess) {
@@ -178,6 +196,14 @@ export function evaluateFncpGatewayRequest(
     }
     return { enforce: false };
   }
+
+  if (
+    !pathIsCanonical &&
+    (targetsConfiguredConversation || claimsGatewayAccess)
+  ) {
+    return { enforce: true, status: 404, error: "Not found." };
+  }
+
   if (!targetsConfiguredConversation && !claimsGatewayAccess) {
     return { enforce: false };
   }
@@ -185,10 +211,7 @@ export function evaluateFncpGatewayRequest(
   if (claimedConversation && claimedConversation !== config.conversationId) {
     return { enforce: true, status: 403, error: "Wrong conversation." };
   }
-  if (
-    requestedConversation &&
-    requestedConversation !== config.conversationId
-  ) {
+  if (hasConflictingConversation) {
     return { enforce: true, status: 403, error: "Wrong conversation." };
   }
   if (
