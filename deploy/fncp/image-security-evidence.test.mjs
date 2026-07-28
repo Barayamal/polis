@@ -273,6 +273,9 @@ test("math worker crosses only its runtime closure into a non-root stage", () =>
 });
 
 test("math runtime bypasses the removed Clojure CLI and preserves restart bounds", () => {
+  assert.match(mathRunScript, /trap stop_worker TERM INT/u);
+  assert.match(mathRunScript, /kill -TERM "\$worker_pid"/u);
+  assert.match(mathRunScript, /wait "\$worker_pid"/u);
   assert.match(mathRunScript, /timeout -s KILL 14400/u);
   assert.match(mathRunScript, /\/opt\/java\/openjdk\/bin\/java/u);
   assert.match(mathRunScript, /-Xmx4g/u);
@@ -284,7 +287,9 @@ test("math runtime bypasses the removed Clojure CLI and preserves restart bounds
   assert.doesNotMatch(mathRunScript, /\/app\/lib\/\*/u);
   assert.match(mathRunScript, /clojure\.main/u);
   assert.match(mathRunScript, /-m polismath\.runner/u);
-  assert.match(mathRunScript, /\n    full\n/u);
+  assert.match(mathRunScript, /\n    full &\n/u);
+  assert.match(mathRunScript, /worker_pid=\$!/u);
+  assert.match(mathRunScript, /worker_status=\$\?/u);
 });
 
 test("participant build context excludes local dependencies and output", () => {
