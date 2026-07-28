@@ -55,6 +55,15 @@ const proxyDockerfile = readFileSync(
 const imageSecurityLock = JSON.parse(
   readFileSync(join(deployDirectory, "image-security.lock.json"), "utf8"),
 );
+const nginxSlimEvidence = JSON.parse(
+  readFileSync(
+    join(
+      deployDirectory,
+      "D8-NGINX-SLIM-IMAGE-EVIDENCE-2026-07-28.json",
+    ),
+    "utf8",
+  ),
+);
 
 function runTool(...args) {
   return JSON.parse(
@@ -204,4 +213,56 @@ test("proxy uses an exact supported nginx stable release on current Alpine", () 
       "mu",
     ),
   );
+});
+
+test("nginx slim evidence is internally consistent and preserves the wider no-go", () => {
+  const proxyLock = imageSecurityLock.baseImages.find(
+    ({ component }) => component === "nginx-proxy",
+  );
+  const severityTotal = Object.values(nginxSlimEvidence.scan.severities).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
+  const criticalOrHigh =
+    nginxSlimEvidence.scan.severities.Critical +
+    nginxSlimEvidence.scan.severities.High;
+
+  assert.match(nginxSlimEvidence.source.imageCommit, /^[a-f0-9]{40}$/u);
+  assert.equal(nginxSlimEvidence.source.treeState, "clean");
+  assert.equal(nginxSlimEvidence.source.platform, imageSecurityLock.buildPlatform);
+  assert.equal(nginxSlimEvidence.candidate.baseTag, proxyLock.tag);
+  assert.equal(
+    nginxSlimEvidence.candidate.baseIndexDigest,
+    proxyLock.indexDigest,
+  );
+  assert.equal(
+    nginxSlimEvidence.candidate.baseArm64Digest,
+    proxyLock.arm64Digest,
+  );
+  assert.equal(
+    nginxSlimEvidence.tooling.syft.version,
+    imageSecurityLock.scannerImages.find(({ name }) => name === "syft").version,
+  );
+  assert.equal(
+    nginxSlimEvidence.tooling.grype.version,
+    imageSecurityLock.scannerImages.find(({ name }) => name === "grype").version,
+  );
+  assert.equal(severityTotal, nginxSlimEvidence.scan.total);
+  assert.equal(
+    nginxSlimEvidence.scan.findings.length,
+    nginxSlimEvidence.scan.total,
+  );
+  assert.equal(criticalOrHigh, 0);
+  assert.equal(nginxSlimEvidence.scan.imageCandidateGate, "pass");
+  assert.equal(nginxSlimEvidence.runtimeChecks.configuration, "pass");
+  assert.equal(
+    nginxSlimEvidence.runtimeChecks.unknownRouteStatus,
+    nginxSlimEvidence.runtimeChecks.expectedUnknownRouteStatus,
+  );
+  assert.equal(
+    nginxSlimEvidence.runtimeChecks.disallowedMethodStatus,
+    nginxSlimEvidence.runtimeChecks.expectedDisallowedMethodStatus,
+  );
+  assert.equal(nginxSlimEvidence.boundaries.productionDeployed, false);
+  assert.equal(nginxSlimEvidence.overallOptionCGate, "fail");
 });
