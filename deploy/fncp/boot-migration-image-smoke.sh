@@ -481,6 +481,8 @@ if [ "$runtime_role_state" != "1" ]; then
 fi
 
 docker run --rm \
+  --init \
+  --stop-timeout 5 \
   --name "$runtime_client_container" \
   --network "$network" \
   --read-only \
@@ -496,6 +498,8 @@ docker run --rm \
   grep -qx "t"
 
 if docker run --rm \
+  --init \
+  --stop-timeout 5 \
   --name "$runtime_denied_container" \
   --network "$network" \
   --read-only \

@@ -222,8 +222,16 @@ test("disposable TLS migration smoke covers failure, lock, receipt and runtime A
     /fncp-option-c-polis-migration:synthetic-\$\{revision\}/u,
   );
   assert.match(migrationSmoke, /PGSSLMODE=verify-full/u);
-  assert.match(migrationSmoke, /--init/u);
-  assert.match(migrationSmoke, /--stop-timeout 5/u);
+  assert.equal(
+    (migrationSmoke.match(/--init/gu) ?? []).length,
+    3,
+    "every short-lived migration and runtime probe must have an init process",
+  );
+  assert.equal(
+    (migrationSmoke.match(/--stop-timeout 5/gu) ?? []).length,
+    3,
+    "every short-lived migration and runtime probe must have a bounded stop timeout",
+  );
   assert.match(migrationSmoke, /FNCP_DATABASE_HOST=\$postgres_container/u);
   assert.match(migrationSmoke, /FNCP_DATABASE_PASSWORD=/u);
   assert.match(
