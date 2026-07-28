@@ -34,9 +34,11 @@ semantics or the production no-go decision.
 | Direct critical | 2 | 1 | -1 |
 | Direct high | 3 | 3 | 0 |
 
-Remaining direct critical/high packages are `express`, `body-parser`,
-`compression` and `connect-timeout`. The production dependency gate still
-fails.
+At this checkpoint the remaining direct critical/high packages were
+`express`, `body-parser`, `compression` and `connect-timeout`. The subsequent
+[D4 middleware cleanup](./D4-MIDDLEWARE-CLEANUP-EVIDENCE-2026-07-28.md)
+removed the three unused direct middleware declarations; the production gate
+still fails on Express and its transitive tree.
 
 ## Verification
 

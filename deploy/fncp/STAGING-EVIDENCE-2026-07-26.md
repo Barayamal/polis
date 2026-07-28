@@ -8,7 +8,7 @@ Status: **local synthetic-data staging only — not production approved**
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Upstream Pol.is baseline                | Pinned to `424dcae02f0147723a19103dd2d971f6ec1b6db5`                                                                                                                            |
 | Original focused automated tests        | **PASS** — 22 unit tests and 4 integration tests                                                                                                                                |
-| Current server source                   | **PASS** — 94 server unit tests, TypeScript build and lint; the D3 request migration adds/updates 8 focused tests                                                               |
+| Current server source                   | **PASS — bounded checks** — TypeScript build, lint and 11 D4 timeout/dependency tests; the earlier D3 checkpoint passed 94 server unit tests                                    |
 | Exact current minimum-route integration | **PASS** — all 9 disposable PostgreSQL/OIDC cases, including standard staff OIDC/JWT compatibility                                                                              |
 | Participant alpha checks                | **PASS** — 124 Jest tests, lint, production build, 3 source-boundary tests and 2 built-output boundary tests                                                                    |
 | Dependency-audit parser                 | **PASS** — 6 tests                                                                                                                                                              |
@@ -18,8 +18,8 @@ Status: **local synthetic-data staging only — not production approved**
 | Minimal component path                  | **PASS — local source/build contract** — administration, legacy-participant, report and full file-server bundles are excluded from the FNCP Compose path                         |
 | Math image build                        | **PASS** after prefetching its required dependency in `math/Dockerfile`                                                                                                         |
 | No-load local runtime snapshot          | Approximately **1.21% CPU** and **1.09 GiB memory**; this is not a load test or capacity result                                                                                 |
-| Six Node production-tree audits         | **BLOCKED** — the 26 July six-tree snapshot has 154 component package-findings before cross-lockfile deduplication: 14 low, 59 moderate, 63 high and 18 critical                 |
-| Minimal API-server audit after D3        | **IMPROVED, STILL BLOCKED** — 89 findings: 8 critical, 27 high, 44 moderate and 10 low; direct critical/high packages remain                                                     |
+| Six Node production-tree audits         | **BLOCKED** — the current six-tree snapshot has 140 component package-findings before cross-lockfile deduplication: 14 low, 53 moderate, 58 high and 15 critical                 |
+| Minimal API-server audit after D4        | **IMPROVED, STILL BLOCKED** — 89 findings: 8 critical, 27 high, 44 moderate and 10 low; direct high findings fell from 3 to 0, but legacy Express remains directly critical       |
 | Remaining dependency surfaces           | **NOT YET AUDITED** — base/OS images, nginx, PostgreSQL, JVM/Clojure, generated-bundle reachability and an image/SBOM scan                                                      |
 | Disposable data and secrets             | **PURGED** — containers, database volume, generated certificates, staging environment and JWT keys removed after the test                                                       |
 

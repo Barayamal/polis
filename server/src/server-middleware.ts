@@ -8,6 +8,86 @@ import type { ExpressRequest, ExpressResponse } from "./d";
 
 const devMode = Config.isDevMode;
 
+type TimeoutRequest = ExpressRequest & {
+  timedout?: boolean;
+  clearTimeout?: () => void;
+  emit: (eventName: string, ...args: unknown[]) => boolean;
+};
+
+type TimeoutResponse = ExpressResponse & {
+  headersSent?: boolean;
+  writableEnded?: boolean;
+  once: (eventName: string, listener: () => void) => unknown;
+  removeListener: (eventName: string, listener: () => void) => unknown;
+};
+
+type TimeoutError = Error & {
+  code: "ETIMEDOUT";
+  timeout: number;
+  status: 503;
+  statusCode: 503;
+};
+
+/**
+ * Bound a request without retaining the vulnerable direct connect-timeout
+ * dependency. This intentionally preserves the subset of connect-timeout's
+ * contract used by Pol.is:
+ * - req.timedout starts false and becomes true after the configured delay;
+ * - a request "timeout" event is emitted with that delay;
+ * - next receives an ETIMEDOUT error, which globalErrorHandler maps to 408;
+ * - req.clearTimeout remains available; and
+ * - the timer is cancelled when response headers are sent or the response
+ *   finishes/closes.
+ */
+function requestTimeout(delayMs: number) {
+  if (!Number.isFinite(delayMs) || delayMs <= 0) {
+    throw new TypeError("requestTimeout delay must be a positive number");
+  }
+
+  return function (
+    req: TimeoutRequest,
+    res: TimeoutResponse,
+    next: (error?: TimeoutError) => void
+  ) {
+    let active = true;
+
+    const clear = () => {
+      if (!active) return;
+      active = false;
+      clearTimeout(timer);
+      res.removeListener("finish", clear);
+      res.removeListener("close", clear);
+    };
+
+    const timer = setTimeout(() => {
+      // connect-timeout clears its timer as soon as headers are written.
+      // Checking here as well avoids a late timeout if a non-standard response
+      // implementation does not emit finish/close promptly.
+      if (res.headersSent || res.writableEnded) {
+        clear();
+        return;
+      }
+
+      clear();
+      req.timedout = true;
+      req.emit("timeout", delayMs);
+
+      const error = new Error("Response timeout") as TimeoutError;
+      error.code = "ETIMEDOUT";
+      error.timeout = delayMs;
+      error.status = 503;
+      error.statusCode = 503;
+      next(error);
+    }, delayMs);
+
+    req.clearTimeout = clear;
+    req.timedout = false;
+    res.once("finish", clear);
+    res.once("close", clear);
+    next();
+  };
+}
+
 function middleware_log_request_body(
   req: ExpressRequest,
   res: ExpressResponse,
@@ -280,6 +360,7 @@ export {
   middleware_check_if_options,
   middleware_responseTime_start,
   middleware_http_json_logger,
+  requestTimeout,
   globalErrorHandler,
   setupGlobalProcessHandlers,
 };

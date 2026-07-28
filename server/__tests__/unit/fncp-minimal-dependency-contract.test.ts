@@ -18,6 +18,10 @@ const moderationSource = readFileSync(
   resolve(__dirname, "../../src/utils/moderation.ts"),
   "utf8"
 );
+const serverMiddlewareSource = readFileSync(
+  resolve(__dirname, "../../src/server-middleware.ts"),
+  "utf8"
+);
 
 describe("minimal FNCP production dependency contract", () => {
   test("test and development HTTP clients stay outside production dependencies", () => {
@@ -66,5 +70,37 @@ describe("minimal FNCP production dependency contract", () => {
     expect(moderationSource).toContain(
       "AbortSignal.timeout(IP_LOOKUP_TIMEOUT_MS)"
     );
+  });
+
+  test("unused direct middleware packages are absent without changing legacy Express semantics", () => {
+    for (const dependency of [
+      "body-parser",
+      "compression",
+      "connect-timeout",
+    ]) {
+      expect(packageJson.dependencies).not.toHaveProperty(dependency);
+    }
+    expect(packageJson.devDependencies).not.toHaveProperty(
+      "@types/connect-timeout"
+    );
+
+    // Express 3 remains deliberately pinned: a major migration is outside the
+    // bounded dependency-hardening work and needs its own compatibility plan.
+    expect(packageJson.dependencies.express).toBe("~3.21.2");
+
+    // Preserve the existing body limit, cookies, compression, proxy handling
+    // and FNCP fail-closed middleware order while only replacing the one
+    // direct connect-timeout call.
+    expect(appSource).toContain('app.set("trust proxy", 1)');
+    expect(appSource).toContain('express.bodyParser({ limit: "50mb" })');
+    expect(appSource).toContain("express.cookieParser()");
+    expect(appSource).toContain("express.compress()");
+    expect(appSource).toMatch(
+      /app\.use\(express\.cookieParser\(\)\);[\s\S]*app\.use\(fncpGatewayMiddleware\);[\s\S]*app\.use\(writeDefaultHead\);[\s\S]*app\.use\(express\.compress\(\)\);/
+    );
+    expect(appSource).toContain("requestTimeout(15_000)");
+    expect(appSource).not.toMatch(/from\s+["']connect-timeout["']/u);
+    expect(serverMiddlewareSource).toContain('error.code = "ETIMEDOUT"');
+    expect(serverMiddlewareSource).toContain("error.timeout = delayMs");
   });
 });

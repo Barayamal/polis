@@ -11,7 +11,9 @@ Latest recorded evidence:
 [disposable staging results observed through 28 July 2026](./STAGING-EVIDENCE-2026-07-26.md)
 and the
 [28 July D1 dependency reduction](./D1-DEPENDENCY-EVIDENCE-2026-07-28.md) and
-[D3 request-client migration](./D3-REQUEST-MIGRATION-EVIDENCE-2026-07-28.md).
+[D3 request-client migration](./D3-REQUEST-MIGRATION-EVIDENCE-2026-07-28.md)
+and
+[D4 middleware cleanup](./D4-MIDDLEWARE-CLEANUP-EVIDENCE-2026-07-28.md).
 
 Refresh the production package evidence without applying automatic fixes:
 

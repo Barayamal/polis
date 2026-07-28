@@ -12,7 +12,6 @@ dotenv.config();
 
 import Promise from "bluebird";
 import express from "express";
-import timeout from "connect-timeout";
 
 import server from "./src/server";
 import Config from "./src/config";
@@ -28,6 +27,7 @@ import {
   middleware_log_request_body,
   middleware_responseTime_start,
   middleware_http_json_logger,
+  requestTimeout,
   globalErrorHandler,
   setupGlobalProcessHandlers,
 } from "./src/server-middleware";
@@ -867,7 +867,7 @@ helpersInitialized.then(
 
     app.get(
       "/api/v3/nextComment",
-      timeout(15000),
+      requestTimeout(15_000),
       moveToBody,
       hybridAuthOptional(assignToP),
       need(
