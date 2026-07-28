@@ -9,7 +9,10 @@ genuine participants.
 
 This was a local `linux/arm64`, synthetic-only exercise. No cloud resource,
 registry login, image push, deployment, participant record, vote or statement
-was used or changed. The source tree remains an uncommitted WIP candidate.
+was used or changed. The reviewed source remediation was subsequently
+committed and published at
+`db6dd2abf10454c2131621bb46b985580ac5e386`, but the scans in this document
+were collected before that clean commit and remain WIP/non-attested evidence.
 
 ## Scope and comparable scanner boundary
 
