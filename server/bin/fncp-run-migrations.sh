@@ -10,7 +10,9 @@ if [ "$#" -ne 0 ]; then
 fi
 
 required_environment="
-DATABASE_URL
+FNCP_DATABASE_HOST
+FNCP_DATABASE_PASSWORD
+FNCP_DATABASE_PORT
 FNCP_EXPECTED_DATABASE
 FNCP_EXPECTED_MIGRATION_ROLE
 FNCP_RUNTIME_DB_ROLE
@@ -18,7 +20,9 @@ PGSSLROOTCERT
 "
 for variable_name in $required_environment; do
   case "$variable_name" in
-    DATABASE_URL) variable_value=${DATABASE_URL-} ;;
+    FNCP_DATABASE_HOST) variable_value=${FNCP_DATABASE_HOST-} ;;
+    FNCP_DATABASE_PASSWORD) variable_value=${FNCP_DATABASE_PASSWORD-} ;;
+    FNCP_DATABASE_PORT) variable_value=${FNCP_DATABASE_PORT-} ;;
     FNCP_EXPECTED_DATABASE) variable_value=${FNCP_EXPECTED_DATABASE-} ;;
     FNCP_EXPECTED_MIGRATION_ROLE)
       variable_value=${FNCP_EXPECTED_MIGRATION_ROLE-}
@@ -37,19 +41,34 @@ for variable_name in $required_environment; do
 done
 unset variable_value
 
-case "$DATABASE_URL" in
-  postgresql://*) ;;
-  *)
-    echo "DATABASE_URL must use a postgresql:// connection URI." >&2
+case "$FNCP_DATABASE_HOST" in
+  "" | .* | -* | *. | *..* | *[!A-Za-z0-9.-]*)
+    echo "FNCP_DATABASE_HOST must be one exact DNS hostname." >&2
     exit 2
     ;;
 esac
-case "$DATABASE_URL" in
-  *\?*)
-    echo "DATABASE_URL query parameters are prohibited; TLS is task-controlled." >&2
+case "$FNCP_DATABASE_PORT" in
+  "" | *[!0-9]*)
+    echo "FNCP_DATABASE_PORT must be an integer from 1 through 65535." >&2
     exit 2
     ;;
 esac
+if [ "$FNCP_DATABASE_PORT" -lt 1 ] ||
+  [ "$FNCP_DATABASE_PORT" -gt 65535 ]; then
+  echo "FNCP_DATABASE_PORT must be an integer from 1 through 65535." >&2
+  exit 2
+fi
+case "$FNCP_DATABASE_PASSWORD" in
+  "" | *[!A-Za-z0-9_-]*)
+    echo "FNCP_DATABASE_PASSWORD must be a base64url secret." >&2
+    exit 2
+    ;;
+esac
+if [ "${#FNCP_DATABASE_PASSWORD}" -lt 32 ] ||
+  [ "${#FNCP_DATABASE_PASSWORD}" -gt 128 ]; then
+  echo "FNCP_DATABASE_PASSWORD must contain 32 through 128 characters." >&2
+  exit 2
+fi
 
 for identifier_name in \
   FNCP_EXPECTED_DATABASE \
@@ -130,9 +149,14 @@ umask 077
 migration_unsorted=$(mktemp /tmp/fncp-migrations-unsorted.XXXXXX)
 migration_list=$(mktemp /tmp/fncp-migrations.XXXXXX)
 psql_script=$(mktemp /tmp/fncp-migration-run.XXXXXX)
+password_file=$(mktemp /tmp/fncp-pgpass.XXXXXX)
 psql_pid=
 cleanup() {
-  rm -f "$migration_unsorted" "$migration_list" "$psql_script"
+  rm -f \
+    "$migration_unsorted" \
+    "$migration_list" \
+    "$psql_script" \
+    "$password_file"
 }
 terminate() {
   if [ -n "$psql_pid" ]; then
@@ -199,22 +223,22 @@ SELECT current_database() = :'expected_database' AS expected_database_matches,
 \if :expected_database_matches
 \else
   \echo 'Connected database does not match FNCP_EXPECTED_DATABASE.'
-  \quit 2
+  SELECT 1 / 0 AS fncp_fail_closed;
 \endif
 \if :expected_migration_role_matches
 \else
   \echo 'Connected role does not match FNCP_EXPECTED_MIGRATION_ROLE.'
-  \quit 2
+  SELECT 1 / 0 AS fncp_fail_closed;
 \endif
 \if :tls_session_active
 \else
   \echo 'The database session is not protected by TLS.'
-  \quit 2
+  SELECT 1 / 0 AS fncp_fail_closed;
 \endif
 \if :primary_session_is_writable
 \else
   \echo 'The database target is not the writable primary.'
-  \quit 2
+  SELECT 1 / 0 AS fncp_fail_closed;
 \endif
 
 SELECT (
@@ -273,7 +297,7 @@ SELECT (
 \if :migration_role_is_dedicated_and_least_privilege
 \else
   \echo 'Migration role is missing, elevated, inheriting, a member, the database owner, incorrectly privileged, or not dedicated.'
-  \quit 2
+  SELECT 1 / 0 AS fncp_fail_closed;
 \endif
 
 SELECT EXISTS (
@@ -342,7 +366,98 @@ SELECT EXISTS (
 \if :runtime_role_is_preexisting_and_least_privilege
 \else
   \echo 'Runtime role is missing, elevated, a member, an owner, or DDL-capable.'
-  \quit 2
+  SELECT 1 / 0 AS fncp_fail_closed;
+\endif
+
+-- The database owner must establish database-wide and public-schema ACLs
+-- before this deliberately non-owner migration role runs. Refuse to mutate
+-- application objects unless PUBLIC has no ambient privileges and both
+-- dedicated roles have only their reviewed direct access.
+SELECT NOT EXISTS (
+         SELECT 1
+           FROM pg_catalog.pg_database AS database
+           CROSS JOIN LATERAL pg_catalog.aclexplode(
+             COALESCE(
+               database.datacl,
+               pg_catalog.acldefault('d', database.datdba)
+             )
+           ) AS acl
+          WHERE database.datname = current_database()
+            AND acl.grantee = 0
+            AND acl.privilege_type IN (
+              'CONNECT',
+              'CREATE',
+              'TEMPORARY'
+            )
+       )
+       AND NOT EXISTS (
+         SELECT 1
+           FROM pg_catalog.pg_namespace AS namespace
+           CROSS JOIN LATERAL pg_catalog.aclexplode(
+             COALESCE(
+               namespace.nspacl,
+               pg_catalog.acldefault('n', namespace.nspowner)
+             )
+           ) AS acl
+          WHERE namespace.nspname = 'public'
+            AND acl.grantee = 0
+            AND acl.privilege_type IN ('USAGE', 'CREATE')
+       )
+       AND pg_catalog.has_database_privilege(
+         current_user,
+         current_database(),
+         'CONNECT'
+       )
+       AND pg_catalog.has_database_privilege(
+         current_user,
+         current_database(),
+         'CREATE'
+       )
+       AND NOT pg_catalog.has_database_privilege(
+         current_user,
+         current_database(),
+         'TEMPORARY'
+       )
+       AND pg_catalog.has_schema_privilege(
+         current_user,
+         'public',
+         'USAGE'
+       )
+       AND pg_catalog.has_schema_privilege(
+         current_user,
+         'public',
+         'CREATE'
+       )
+       AND pg_catalog.has_database_privilege(
+         :'runtime_role',
+         current_database(),
+         'CONNECT'
+       )
+       AND NOT pg_catalog.has_database_privilege(
+         :'runtime_role',
+         current_database(),
+         'CREATE'
+       )
+       AND NOT pg_catalog.has_database_privilege(
+         :'runtime_role',
+         current_database(),
+         'TEMPORARY'
+       )
+       AND pg_catalog.has_schema_privilege(
+         :'runtime_role',
+         'public',
+         'USAGE'
+       )
+       AND NOT pg_catalog.has_schema_privilege(
+         :'runtime_role',
+         'public',
+         'CREATE'
+       ) AS database_owner_bootstrap_is_least_privilege
+\gset
+\if :database_owner_bootstrap_is_least_privilege
+\else
+  \echo 'Database-owner bootstrap ACLs are incomplete or too broad.'
+  SELECT 1 / 0 AS fncp_fail_closed;
 \endif
 
 CREATE SCHEMA IF NOT EXISTS fncp_deploy AUTHORIZATION CURRENT_USER;
@@ -355,7 +470,7 @@ SELECT namespace.nspowner = (
 \if :tracking_schema_owned_by_migration_role
 \else
   \echo 'fncp_deploy is not owned by the migration role.'
-  \quit 2
+  SELECT 1 / 0 AS fncp_fail_closed;
 \endif
 
 REVOKE ALL ON SCHEMA fncp_deploy FROM PUBLIC;
@@ -385,15 +500,15 @@ SELECT relation.relowner = (
        ) = 4
        AND EXISTS (
          SELECT 1
-           FROM pg_catalog.pg_constraint AS constraint
-          WHERE constraint.conrelid = relation.oid
-            AND constraint.contype = 'p'
+           FROM pg_catalog.pg_constraint AS constraint_record
+          WHERE constraint_record.conrelid = relation.oid
+            AND constraint_record.contype = 'p'
        )
        AND (
          SELECT count(*)
-           FROM pg_catalog.pg_constraint AS constraint
-          WHERE constraint.conrelid = relation.oid
-            AND constraint.contype = 'c'
+           FROM pg_catalog.pg_constraint AS constraint_record
+          WHERE constraint_record.conrelid = relation.oid
+            AND constraint_record.contype = 'c'
        ) = 2 AS tracking_table_is_owned_and_shaped
   FROM pg_catalog.pg_class AS relation
   JOIN pg_catalog.pg_namespace AS namespace
@@ -405,7 +520,7 @@ SELECT relation.relowner = (
 \if :tracking_table_is_owned_and_shaped
 \else
   \echo 'Migration tracking table is not owned or shaped as expected.'
-  \quit 2
+  SELECT 1 / 0 AS fncp_fail_closed;
 \endif
 REVOKE ALL ON fncp_deploy.schema_migrations FROM PUBLIC;
 SELECT format(
@@ -453,7 +568,7 @@ SELECT EXISTS (
     \echo 'Already applied:' :migration_name
   \else
     \echo 'Migration checksum mismatch:' :migration_name
-    \quit 3
+    SELECT 1 / 0 AS fncp_fail_closed;
   \endif
 \else
   \echo 'Applying:' :migration_name
@@ -471,19 +586,6 @@ done <"$migration_list"
 
 cat >>"$psql_script" <<'PSQL'
 BEGIN;
-REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-REVOKE TEMPORARY, CREATE ON DATABASE :"expected_database" FROM PUBLIC;
-SELECT format(
-         'REVOKE CREATE ON SCHEMA public FROM %I',
-         :'runtime_role'
-       )
-\gexec
-SELECT format(
-         'REVOKE TEMPORARY, CREATE ON DATABASE %I FROM %I',
-         current_database(),
-         :'runtime_role'
-       )
-\gexec
 
 SELECT NOT EXISTS (
          SELECT 1
@@ -497,17 +599,12 @@ SELECT NOT EXISTS (
 \if :public_functions_are_invoker_security
 \else
   \echo 'A public SECURITY DEFINER function prevents least-privilege grants.'
-  \quit 2
+  SELECT 1 / 0 AS fncp_fail_closed;
 \endif
 
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
-SELECT format(
-         'GRANT USAGE ON SCHEMA public TO %I',
-         :'runtime_role'
-       )
-\gexec
 SELECT format(
          'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO %I',
          :'runtime_role'
@@ -599,7 +696,7 @@ SELECT NOT pg_catalog.has_database_privilege(
 \if :runtime_role_has_no_ddl_or_tracking_access
 \else
   \echo 'Runtime role retained DDL or migration-tracking access.'
-  \quit 2
+  SELECT 1 / 0 AS fncp_fail_closed;
 \endif
 COMMIT;
 
@@ -608,20 +705,31 @@ SELECT pg_advisory_unlock(1179537232, 1) AS migration_lock_released
 \if :migration_lock_released
 \else
   \echo 'Migration advisory lock was not released.'
-  \quit 2
+  SELECT 1 / 0 AS fncp_fail_closed;
 \endif
 \echo 'FNCP Pol.is migrations completed.'
 PSQL
 
-# libpq accepts a connection URI through PGDATABASE. Unset the original name
-# so the secret is not duplicated, and prevent ambient service/password
-# variables from changing the reviewed connection source.
-PGDATABASE=$DATABASE_URL
-export PGDATABASE
+# Keep the synthetic or task-injected password out of psql's argv and child
+# environment. The reviewed base64url alphabet is directly safe in pgpass.
+printf '%s:%s:%s:%s:%s\n' \
+  "$FNCP_DATABASE_HOST" \
+  "$FNCP_DATABASE_PORT" \
+  "$FNCP_EXPECTED_DATABASE" \
+  "$FNCP_EXPECTED_MIGRATION_ROLE" \
+  "$FNCP_DATABASE_PASSWORD" >"$password_file"
+PGHOST=$FNCP_DATABASE_HOST
+PGPORT=$FNCP_DATABASE_PORT
+PGDATABASE=$FNCP_EXPECTED_DATABASE
+PGUSER=$FNCP_EXPECTED_MIGRATION_ROLE
+PGPASSFILE=$password_file
+export PGHOST PGPORT PGDATABASE PGUSER PGPASSFILE
 unset \
+  FNCP_DATABASE_HOST \
+  FNCP_DATABASE_PASSWORD \
+  FNCP_DATABASE_PORT \
   DATABASE_URL \
   PGPASSWORD \
-  PGPASSFILE \
   PGOPTIONS \
   PGSERVICE \
   PGSERVICEFILE

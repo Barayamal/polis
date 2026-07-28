@@ -61,12 +61,19 @@ records OCI source, revision, base-name and base-digest labels.
 The entrypoint accepts no arguments. At action time its task environment must
 provide:
 
-- `DATABASE_URL` as a `postgresql://` URI without query parameters;
+- `FNCP_DATABASE_HOST` as one exact DNS hostname;
+- `FNCP_DATABASE_PORT` as an integer from 1 through 65535;
+- `FNCP_DATABASE_PASSWORD` as a 32–128 character base64url secret;
 - `PGSSLMODE=verify-full`;
 - `PGSSLROOTCERT` as an absolute, readable CA-bundle path;
 - `FNCP_EXPECTED_DATABASE`;
 - `FNCP_EXPECTED_MIGRATION_ROLE`; and
 - `FNCP_RUNTIME_DB_ROLE`.
+
+The runner writes the validated secret to a mode-0600 `PGPASSFILE` on its
+read-only task's `/tmp` tmpfs, removes the secret from the `psql` child
+environment, never places it in process arguments, and deletes the file on
+exit.
 
 The runner keeps the connection secret out of argv and logs, disables psql
 startup files, sets `ON_ERROR_STOP`, acquires one session advisory lock and
@@ -81,9 +88,9 @@ migration role. Before any migration is applied, the runner rejects a runtime
 role that is elevated, a member of another role, an object/schema/database
 owner or already able to create persistent objects. After migration it grants
 only public-schema table DML, sequence use and function execution (including
-matching default privileges), while revoking database/schema creation,
-temporary-object creation, table DDL-like privileges and all access to
-`fncp_deploy`.
+matching default privileges), while verifying the database-owner bootstrap
+left no database/schema creation, temporary-object creation, table DDL-like
+privileges or access to `fncp_deploy`.
 
 The migration role is also a pre-provisioned, dedicated role—not the RDS
 master or database owner. It must be `LOGIN NOINHERIT NOSUPERUSER NOCREATEDB
@@ -91,11 +98,16 @@ NOCREATEROLE NOREPLICATION NOBYPASSRLS`, have no role memberships, and remain
 distinct from the runtime role. Its effective database privileges must be
 exactly those required for migration: `CONNECT` and `CREATE`, but not
 `TEMPORARY`; it must also have `USAGE` and `CREATE` on the existing `public`
-schema. A separate database owner/bootstrap process must establish those
-grants and revoke public temporary access before this task is run. The
-migration role then owns the schema objects it creates, while never owning the
-database itself. These conditions are checked before the tracking schema or
-any application migration is changed.
+schema. A separate database-owner/bootstrap process must first revoke
+`CONNECT`, `CREATE` and `TEMPORARY` from database `PUBLIC`, revoke `USAGE` and
+`CREATE` on schema `public` from `PUBLIC`, grant `CONNECT` and database
+`CREATE` plus schema `USAGE` and `CREATE` directly to the migration role, and
+grant only database `CONNECT` plus public-schema `USAGE` directly to the
+runtime role. The runner verifies those effective and catalog ACLs; it does
+not need database- or public-schema-owner authority. The migration role then
+owns the application objects it creates, while never owning the database
+itself. These conditions are checked before the tracking schema or any
+application migration is changed.
 
 The `polis-migration` Compose entry is deliberately build-only: it has no
 network, credentials or ports and is behind the
@@ -104,6 +116,18 @@ the separate `postgres` service; neither that database image nor the OIDC
 simulator is a release artifact. The real migration task belongs on the
 private no-ingress production migration path and must complete successfully
 before any long-running runtime task starts.
+
+The exact migration image has a disposable TLS lifecycle harness:
+
+```sh
+sh deploy/fncp/boot-migration-image-smoke.sh <40-character-source-revision>
+```
+
+It requires the matching local-only `polis-migration` image tag. It creates
+only synthetic roles and data on an internal Docker network, proves missing
+bootstrap denial, concurrent first-run locking, all 19 checksum receipts,
+checksum-drift denial, idempotent replay and runtime tracking denial, then
+removes its containers, network, certificate volume and temporary files.
 
 ## Exact-image evidence
 

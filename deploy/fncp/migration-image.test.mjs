@@ -18,6 +18,10 @@ const runnerPath = join(
   "fncp-run-migrations.sh",
 );
 const runner = readFileSync(runnerPath, "utf8");
+const migrationSmoke = readFileSync(
+  join(deployDirectory, "boot-migration-image-smoke.sh"),
+  "utf8",
+);
 const compose = readFileSync(
   join(deployDirectory, "docker-compose.staging.yml"),
   "utf8",
@@ -154,19 +158,35 @@ test("runner is fail-closed and never accepts or prints connection secrets", () 
   assert.doesNotMatch(runner, /\bset -x\b/u);
   assert.doesNotMatch(runner, /\beval\b/u);
   assert.match(runner, /The migration task accepts no arguments/u);
-  assert.match(runner, /DATABASE_URL must use a postgresql:\/\/ connection URI/u);
-  assert.match(runner, /DATABASE_URL query parameters are prohibited/u);
+  assert.match(runner, /FNCP_DATABASE_HOST must be one exact DNS hostname/u);
+  assert.match(runner, /FNCP_DATABASE_PORT must be an integer from 1 through 65535/u);
+  assert.match(runner, /FNCP_DATABASE_PASSWORD must be a base64url secret/u);
+  assert.match(runner, /32 through 128 characters/u);
   assert.match(runner, /PGSSLMODE must be verify-full/u);
   assert.match(runner, /PGSSLROOTCERT must name a readable, non-empty CA bundle/u);
   assert.match(runner, /pg_catalog\.pg_stat_ssl/u);
   assert.match(runner, /tls_session_active/u);
   assert.match(runner, /pg_catalog\.pg_is_in_recovery/u);
   assert.match(runner, /PGTARGETSESSIONATTRS=read-write/u);
-  assert.match(runner, /PGDATABASE=\$DATABASE_URL/u);
-  assert.match(runner, /DATABASE_URL[\s\S]*PGPASSWORD[\s\S]*PGOPTIONS[\s\S]*PGSERVICE/u);
-  assert.doesNotMatch(runner, /echo\s+["']?\$DATABASE_URL/u);
+  assert.match(runner, /PGHOST=\$FNCP_DATABASE_HOST/u);
+  assert.match(runner, /PGPORT=\$FNCP_DATABASE_PORT/u);
+  assert.match(runner, /PGDATABASE=\$FNCP_EXPECTED_DATABASE/u);
+  assert.match(runner, /PGUSER=\$FNCP_EXPECTED_MIGRATION_ROLE/u);
+  assert.match(runner, /PGPASSFILE=\$password_file/u);
+  assert.match(
+    runner,
+    /FNCP_DATABASE_PASSWORD[\s\S]*DATABASE_URL[\s\S]*PGPASSWORD[\s\S]*PGOPTIONS[\s\S]*PGSERVICE/u,
+  );
+  assert.match(runner, /rm -f[\s\S]*"\$password_file"/u);
+  assert.doesNotMatch(
+    runner,
+    /echo\s+["']?\$FNCP_DATABASE_PASSWORD/u,
+  );
   assert.doesNotMatch(runner, /\b(?:env|printenv)\b/u);
-  assert.doesNotMatch(runner, /psql[\s\S]{0,200}\$DATABASE_URL/u);
+  assert.doesNotMatch(
+    runner,
+    /psql[\s\S]{0,200}\$FNCP_DATABASE_PASSWORD/u,
+  );
 
   const argumentFailure = spawnSync(
     "sh",
@@ -184,7 +204,45 @@ test("runner is fail-closed and never accepts or prints connection secrets", () 
     env: { PATH: process.env.PATH },
   });
   assert.equal(missingConfiguration.status, 2);
-  assert.match(missingConfiguration.stderr, /DATABASE_URL/u);
+  assert.match(missingConfiguration.stderr, /FNCP_DATABASE_HOST/u);
+});
+
+test("disposable TLS migration smoke covers failure, lock, receipt and runtime ACL paths", () => {
+  assert.match(migrationSmoke, /^set -eu$/mu);
+  assert.match(
+    migrationSmoke,
+    /usage: sh deploy\/fncp\/boot-migration-image-smoke\.sh <40-char-source-revision>/u,
+  );
+  assert.match(
+    migrationSmoke,
+    /postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193/u,
+  );
+  assert.match(
+    migrationSmoke,
+    /fncp-option-c-polis-migration:synthetic-\$\{revision\}/u,
+  );
+  assert.match(migrationSmoke, /PGSSLMODE=verify-full/u);
+  assert.match(migrationSmoke, /--init/u);
+  assert.match(migrationSmoke, /--stop-timeout 5/u);
+  assert.match(migrationSmoke, /FNCP_DATABASE_HOST=\$postgres_container/u);
+  assert.match(migrationSmoke, /FNCP_DATABASE_PASSWORD=/u);
+  assert.match(
+    migrationSmoke,
+    /Migration unexpectedly accepted missing owner bootstrap ACLs/u,
+  );
+  assert.match(migrationSmoke, /migration_pid_one=\$!/u);
+  assert.match(migrationSmoke, /migration_pid_two=\$!/u);
+  assert.match(migrationSmoke, /receipt_state[\s\S]*19:19/u);
+  assert.match(migrationSmoke, /Migration unexpectedly accepted checksum drift/u);
+  assert.match(migrationSmoke, /Already applied:[\s\S]*-ne 19/u);
+  assert.match(migrationSmoke, /runtime_acl_state/u);
+  assert.match(migrationSmoke, /runtime-tracking-access\.log/u);
+  assert.match(migrationSmoke, /docker network rm/u);
+  assert.match(migrationSmoke, /docker volume rm/u);
+  assert.doesNotMatch(
+    migrationSmoke,
+    /\b(?:push|login|aws|terraform|kubectl)\b/u,
+  );
 });
 
 test("one psql session locks, tracks checksums and stops on every SQL error", () => {
@@ -200,7 +258,16 @@ test("one psql session locks, tracks checksums and stops on every SQL error", ()
   assert.match(runner, /sha256 character\(64\) NOT NULL/u);
   assert.match(runner, /migration_sha=\$\(sha256sum "\$migration_path"\)/u);
   assert.match(runner, /Migration checksum mismatch/u);
-  assert.match(runner, /\\quit 3/u);
+  assert.doesNotMatch(runner, /\\(?:q|quit)\s+\d/u);
+  assert.equal(
+    (runner.match(/SELECT 1 \/ 0 AS fncp_fail_closed;/gu) ?? []).length,
+    13,
+  );
+  assert.doesNotMatch(runner, /\bAS constraint\b/iu);
+  assert.equal(
+    (runner.match(/pg_constraint AS constraint_record/gu) ?? []).length,
+    2,
+  );
   assert.match(runner, /BEGIN;[\s\S]*\\ir '%s'[\s\S]*COMMIT;/u);
 });
 
@@ -242,7 +309,7 @@ test("migration role is dedicated and least privilege before any mutation", () =
   assert.ok(firstMigrationInclude > migrationRoleGate);
   assert.match(
     runner.slice(migrationRoleGate, firstTrackingMutation),
-    /\\quit 2/u,
+    /SELECT 1 \/ 0 AS fncp_fail_closed;/u,
   );
 });
 
@@ -274,8 +341,25 @@ test("runtime role must pre-exist without elevation, ownership or DDL", () => {
   assert.match(runner, /GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public/u);
   assert.match(runner, /public_functions_are_invoker_security/u);
   assert.match(runner, /function\.prosecdef/u);
-  assert.match(runner, /REVOKE CREATE ON SCHEMA public FROM PUBLIC/u);
-  assert.match(runner, /REVOKE TEMPORARY, CREATE ON DATABASE/u);
+  assert.match(runner, /database_owner_bootstrap_is_least_privilege/u);
+  assert.match(runner, /pg_catalog\.aclexplode/u);
+  assert.match(runner, /acl\.grantee = 0/u);
+  assert.match(
+    runner,
+    /Database-owner bootstrap ACLs are incomplete or too broad/u,
+  );
+  assert.doesNotMatch(
+    runner,
+    /^REVOKE CREATE ON SCHEMA public FROM PUBLIC;$/mu,
+  );
+  assert.doesNotMatch(
+    runner,
+    /^REVOKE TEMPORARY, CREATE ON DATABASE/mu,
+  );
+  assert.doesNotMatch(
+    runner,
+    /GRANT USAGE ON SCHEMA public TO %I/u,
+  );
   assert.match(
     runner,
     /REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public/u,
