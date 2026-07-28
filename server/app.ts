@@ -872,6 +872,10 @@ helpersInitialized.then(
         getConversationIdFetchZid,
         assignToPCustom("zid")
       ),
+      // The FNCP private gateway supplies a conversation-scoped XID. Parse it
+      // before PID resolution so the optional participant resolver can recover
+      // the established participant without a browser JWT or cookie.
+      want("xid", getStringLimitLength(1, 999), assignToP),
       resolve_pidThing("not_voted_by_pid", assignToP, "get:nextComment"),
       want("without", getArrayOfInt, assignToP),
       // preferred language of nextComment

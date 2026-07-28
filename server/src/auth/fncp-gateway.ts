@@ -282,6 +282,26 @@ export function fncpGatewayMiddleware(
     return;
   }
 
+  // Gateway requests are authenticated by the private origin on every call.
+  // Pol.is may still issue its normal participant JWT internally, but that
+  // bearer token must never cross the FNCP gateway boundary. Install this
+  // response filter only after the exact gateway assertion has passed so
+  // ordinary Pol.is/OIDC responses remain byte-for-byte unchanged.
+  const originalJson = res.json.bind(res);
+  res.json = function fncpGatewayJson(body: unknown) {
+    if (
+      body &&
+      typeof body === "object" &&
+      !Array.isArray(body) &&
+      Object.prototype.hasOwnProperty.call(body, "auth")
+    ) {
+      const safeBody = { ...(body as Record<string, unknown>) };
+      delete safeBody.auth;
+      return originalJson(safeBody);
+    }
+    return originalJson(body);
+  };
+
   const query = req.query as Record<string, unknown>;
   query.conversation_id = decision.conversationId;
   query.xid = decision.participantXid;

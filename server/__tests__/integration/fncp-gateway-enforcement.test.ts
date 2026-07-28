@@ -106,6 +106,7 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
     ).query({ conversation_id: conversationId, lang: "en" });
     expect(response.status).toBe(200);
     expect(response.body.conversation.conversation_id).toBe(conversationId);
+    expect(response.body).not.toHaveProperty("auth");
   });
 
   test("all retained GET routes reach the exact stack", async () => {
@@ -199,6 +200,17 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
 
     const staff = await admin.get("/api/v3/conversations");
     expect(staff.status).toBe(200);
+  });
+
+  test("standard OIDC JWT responses remain unchanged while the gateway is enabled", async () => {
+    const response = await admin.get("/api/v3/users");
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        uid: expect.any(Number),
+        email: getPooledTestUser(4).email,
+      })
+    );
   });
 
   function trusted(request: Test, xid: string): Test {
