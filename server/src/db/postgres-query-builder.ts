@@ -25,6 +25,20 @@ interface Renderable {
 type QueryValue = unknown;
 type InValue = readonly QueryValue[] | Query;
 
+class TrustedSqlValue implements Renderable {
+  constructor(private readonly sql: "now_as_millis()") {}
+
+  render(_context: RenderContext): string {
+    return this.sql;
+  }
+}
+
+const DATABASE_NOW_AS_MILLIS = new TrustedSqlValue("now_as_millis()");
+
+export function databaseNowAsMillis(): unknown {
+  return DATABASE_NOW_AS_MILLIS;
+}
+
 function quoteIdentifier(identifier: string): string {
   return `"${identifier.replace(/"/gu, '""')}"`;
 }
@@ -86,6 +100,12 @@ function renderParameter(value: QueryValue, context: RenderContext): string {
   }
   context.values.push(value);
   return `$${context.values.length}`;
+}
+
+function renderWriteValue(value: QueryValue, context: RenderContext): string {
+  return value instanceof TrustedSqlValue
+    ? value.render(context)
+    : renderParameter(value, context);
 }
 
 abstract class Expression implements Renderable {
@@ -413,7 +433,10 @@ export class Query implements Renderable {
     const values = this.writeValues
       .map(
         ({ column, value }) =>
-          `${quoteIdentifier(column.name)} = ${renderParameter(value, context)}`
+          `${quoteIdentifier(column.name)} = ${renderWriteValue(
+            value,
+            context
+          )}`
       )
       .join(", ");
     let text = `UPDATE ${quoteIdentifier(this.table.name)} SET ${values}`;
@@ -426,7 +449,7 @@ export class Query implements Renderable {
       .map(({ column }) => quoteIdentifier(column.name))
       .join(", ");
     const values = this.writeValues
-      .map(({ value }) => renderParameter(value, context))
+      .map(({ value }) => renderWriteValue(value, context))
       .join(", ");
     return `INSERT INTO ${quoteIdentifier(
       this.table.name

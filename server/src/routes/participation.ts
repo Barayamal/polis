@@ -470,8 +470,9 @@ function handle_PUT_participants_extended(
     .update(fields)
     .where(sql_participants_extended.zid.equals(zid))
     .and(sql_participants_extended.uid.equals(uid));
+  const query = q.toQuery();
 
-  pg.queryP(q.toString(), [])
+  pg.queryP(query.text, query.values)
     .then((result: any) => {
       res.json(result);
     })

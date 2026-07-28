@@ -28,7 +28,8 @@ observed in this source tree:
 - equality, inequality, greater-than and not-null expressions;
 - IN and NOT IN, including empty lists, null values and subqueries;
 - returning, column ordering, descending ordering, limit and offset; and
-- parameterised `toQuery()` plus legacy-compatible inline `toString()`.
+- parameterised `toQuery()` plus legacy-compatible inline `toString()` for
+  compatibility testing only.
 
 Unsupported `node-sql` behaviour must not be assumed to work. The separate
 experimental report/client-report trees remain outside the minimal FNCP build.
@@ -39,8 +40,16 @@ Defense-in-depth restrictions added with the replacement:
   `random()` and `is_seed desc, random()`;
 - limit and offset require finite, safe, non-negative integers;
 - write keys must match declared table columns; and
+- database-authoritative report timestamps use one repository-owned,
+  constant-only `now_as_millis()` value rather than string replacement or an
+  application-host clock; and
 - empty `IN` and `NOT IN` expressions retain explicit fail-closed/succeed-empty
   semantics.
+
+Every non-experimental production call site now executes the local builder
+through `toQuery()` and forwards both `text` and `values` to the PostgreSQL
+wrapper. The nine reviewed consumer files contain 11 such executions and no
+production `.toString()` call.
 
 ## Verification
 
@@ -48,8 +57,8 @@ The staging source passed:
 
 - TypeScript production build;
 - ESLint;
-- 38 focused compatibility, dependency and rejection tests;
-- 141 non-database unit tests across 18 suites;
+- 48 focused compatibility, dependency, call-site and rejection tests;
+- 151 non-database unit tests across 18 suites;
 - three isolated PostgreSQL 16 integration tests;
 - production-tree checks proving `sql`, monolithic `lodash` and `sliced` are
   absent; and
@@ -63,8 +72,9 @@ fractional, non-finite, unsafe and non-numeric pagination values.
 ## Migrated-schema route matrix
 
 A separately generated PostgreSQL 17 database loaded all **61** public Pol.is
-tables from the pinned migration scripts. The built server then ran against
-that database and a loopback-only synthetic JWKS issuer.
+tables from the pinned migration scripts. After every production builder call
+site was parameterised, the rebuilt server ran against that database and a
+loopback-only synthetic JWKS issuer.
 
 | Route action | Result |
 |---|---:|
@@ -88,11 +98,6 @@ keys were deleted.
 
 ## Evidence limits
 
-- Production routes still use legacy-compatible inline `toString()` in several
-  places. Reviewed live write values are primitives, dates, nulls or ordinary
-  arrays; the legacy array-of-object JSON representation is not currently
-  reachable. Production should nevertheless migrate write paths to
-  parameterised `toQuery()` or explicitly reject that value class.
 - The route matrix is local synthetic evidence, not a browser, load,
   backup/restore, deletion, monitoring, multi-architecture or recovery result.
 - A network-disabled server image build stopped at `apk add libpq-dev` because
@@ -122,12 +127,10 @@ not a unified image scan, release attestation or exception approval.
 
 1. Perform an authorised clean pinned server build and fresh exact-image
    CycloneDX/Grype scan; confirm the server has zero Critical/High findings.
-2. Migrate or constrain remaining inline query rendering, then repeat the
-   migrated-schema route matrix.
-3. Clear the alpha and math Critical/High findings from exact corrected images.
-4. Complete the production gateway/authorisation adapter, native-route denial
+2. Clear the alpha and math Critical/High findings from exact corrected images.
+3. Complete the production gateway/authorisation adapter, native-route denial
    and immediate revocation tests.
-5. Complete backup/restore, deletion, monitoring, load, rollback,
+4. Complete backup/restore, deletion, monitoring, load, rollback,
    multi-architecture, real-browser and independent acceptance gates.
-6. Obtain the named Australian cloud, DNS, OIDC, billing, incident and recovery
+5. Obtain the named Australian cloud, DNS, OIDC, billing, incident and recovery
    decisions before creating any internet-reachable infrastructure.

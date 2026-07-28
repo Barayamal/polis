@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@jest/globals";
 
-import sql from "../../src/db/postgres-query-builder";
+import sql, { databaseNowAsMillis } from "../../src/db/postgres-query-builder";
 
 const LEGACY_TABLE_NAME = "fncp_rows";
 const LEGACY_COLUMNS = [
@@ -248,17 +248,17 @@ describe("local PostgreSQL query builder compatibility", () => {
     }
   );
 
-  test("preserves the report modified-expression replacement contract", () => {
+  test("preserves the database-authoritative report timestamp without string replacement", () => {
     const table = createTable();
     const query = table
-      .update({ txt: "now_as_millis()" })
+      .update({ txt: databaseNowAsMillis() })
       .where(table.id.equals(1))
-      .toString()
-      .replace("'now_as_millis()'", "now_as_millis()");
+      .toQuery();
 
-    expect(query).toBe(
-      'UPDATE "fncp_rows" SET "txt" = now_as_millis() WHERE ("fncp_rows"."id" = 1)'
-    );
+    expect(query).toEqual({
+      text: 'UPDATE "fncp_rows" SET "txt" = now_as_millis() WHERE ("fncp_rows"."id" = $1)',
+      values: [1],
+    });
   });
 
   test("quotes values while restricting identifiers to table definitions", () => {

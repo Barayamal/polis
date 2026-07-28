@@ -104,7 +104,11 @@ async function handle_PUT_users(
 
   try {
     const query = sql_users.update(fields).where(sql_users.uid.equals(uid));
-    const result = await pg.queryP(query.toString(), []);
+    const parameterizedQuery = query.toQuery();
+    const result = await pg.queryP(
+      parameterizedQuery.text,
+      parameterizedQuery.values
+    );
     res.status(200).json(result);
   } catch (error) {
     failJson(res, 500, "polis_err_put_user", error);

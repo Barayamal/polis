@@ -4,6 +4,7 @@ import { generateTokenP } from "../auth";
 import { isModerator } from "../utils/common";
 import { sql_reports } from "../db/sql";
 import pg from "../db/pg-query";
+import { databaseNowAsMillis } from "../db/postgres-query-builder";
 
 function handle_POST_reportCommentSelections(
   req: {
@@ -101,8 +102,8 @@ function handle_PUT_reports(
         return failJson(res, 403, "polis_err_put_reports_permissions");
       }
 
-      const fields: { [key: string]: string } = {
-        modified: "now_as_millis()",
+      const fields: { [key: string]: unknown } = {
+        modified: databaseNowAsMillis(),
       };
 
       sql_reports.columns
@@ -124,11 +125,9 @@ function handle_PUT_reports(
       }
 
       const q = sql_reports.update(fields).where(sql_reports.rid.equals(rid));
+      const query = q.toQuery();
 
-      let query = q.toString();
-      query = query.replace("'now_as_millis()'", "now_as_millis()"); // remove quotes added by sql lib
-
-      return pg.queryP(query, []).then(() => {
+      return pg.queryP(query.text, query.values).then(() => {
         res.json({});
       });
     })
