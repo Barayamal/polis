@@ -83,9 +83,35 @@ disabled and stopped before producing an image because the clean builder did
 not contain the cached Cognitect AWS descriptor. It was not retried with
 network access.
 
-Before any deployment, the committed Dockerfile must be rebuilt and rescanned
-from a clean source tree, and the worker must pass a disposable
-PostgreSQL-connected start, poll, write and stop lifecycle test.
+At source commit `e25b453b56b52457be7f98493ad990474d36c17d`, an exact
+committed-Dockerfile rebuild/scan and a disposable PostgreSQL lifecycle were
+still open. The follow-up below closes the local lifecycle finding; the exact
+image/SBOM/scan attestation remains open.
+
+### Disposable lifecycle follow-up
+
+Source commit
+`e1544d425138f45e2cbf648c14611cb8280c73f3` fixes signal forwarding in the
+long-running worker wrapper after the first lifecycle run exposed a forced
+Docker shutdown.
+
+The corrected source was rebuilt offline with the recovered Maven cache
+injected into the evidence-only build stage. That run:
+
+- preserved the exact 143-entry resolved classpath and reviewed `RandomSeq`
+  origin;
+- initialized 61 repository PostgreSQL tables on a fresh internal-only volume;
+- started the worker and observed live vote and moderation polling;
+- completed a synthetic temporary write and readback;
+- retained zero synthetic rows or evidence tables afterward;
+- stopped the component and Hikari pool;
+- completed `docker stop --timeout 10` in 3.08 seconds with exit code 0,
+  `OOMKilled=false`, no dead state and no forced kill; and
+- removed every task container, image, network, volume and temporary context.
+
+This closes the local lifecycle and graceful-stop findings. The build still
+used an evidence-only cache-injection step, so it does not replace the required
+clean committed-Dockerfile image/SBOM/scan attestation.
 
 ## Planning projection only
 
