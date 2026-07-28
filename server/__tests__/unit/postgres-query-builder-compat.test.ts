@@ -250,8 +250,12 @@ describe("local PostgreSQL query builder compatibility", () => {
 
   test("preserves the database-authoritative report timestamp without string replacement", () => {
     const table = createTable();
+    const databaseTime = databaseNowAsMillis();
+    expect(Object.isFrozen(databaseTime)).toBe(true);
+    expect(Object.getPrototypeOf(databaseTime)).toBeNull();
+
     const query = table
-      .update({ txt: databaseNowAsMillis() })
+      .update({ txt: databaseTime })
       .where(table.id.equals(1))
       .toQuery();
 

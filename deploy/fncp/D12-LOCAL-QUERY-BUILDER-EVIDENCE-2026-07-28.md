@@ -41,8 +41,9 @@ Defense-in-depth restrictions added with the replacement:
 - limit and offset require finite, safe, non-negative integers;
 - write keys must match declared table columns; and
 - database-authoritative report timestamps use one repository-owned,
-  constant-only `now_as_millis()` value rather than string replacement or an
-  application-host clock; and
+  frozen, prototype-free identity marker that renders only the constant
+  `now_as_millis()` value rather than string replacement or an application-host
+  clock; and
 - empty `IN` and `NOT IN` expressions retain explicit fail-closed/succeed-empty
   semantics.
 

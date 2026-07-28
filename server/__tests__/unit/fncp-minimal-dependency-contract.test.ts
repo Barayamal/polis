@@ -115,7 +115,10 @@ describe("minimal FNCP production dependency contract", () => {
     )?.source;
     expect(reportSource).toContain("modified: databaseNowAsMillis()");
     expect(localQueryBuilderSource).toContain(
-      'const DATABASE_NOW_AS_MILLIS = new TrustedSqlValue("now_as_millis()")'
+      "Object.freeze(Object.create(null))"
+    );
+    expect(localQueryBuilderSource).toContain(
+      'value === DATABASE_NOW_AS_MILLIS\n    ? "now_as_millis()"'
     );
     expect(reportSource).not.toContain(".replace(");
   });

@@ -25,15 +25,7 @@ interface Renderable {
 type QueryValue = unknown;
 type InValue = readonly QueryValue[] | Query;
 
-class TrustedSqlValue implements Renderable {
-  constructor(private readonly sql: "now_as_millis()") {}
-
-  render(_context: RenderContext): string {
-    return this.sql;
-  }
-}
-
-const DATABASE_NOW_AS_MILLIS = new TrustedSqlValue("now_as_millis()");
+const DATABASE_NOW_AS_MILLIS = Object.freeze(Object.create(null)) as object;
 
 export function databaseNowAsMillis(): unknown {
   return DATABASE_NOW_AS_MILLIS;
@@ -103,8 +95,8 @@ function renderParameter(value: QueryValue, context: RenderContext): string {
 }
 
 function renderWriteValue(value: QueryValue, context: RenderContext): string {
-  return value instanceof TrustedSqlValue
-    ? value.render(context)
+  return value === DATABASE_NOW_AS_MILLIS
+    ? "now_as_millis()"
     : renderParameter(value, context);
 }
 
