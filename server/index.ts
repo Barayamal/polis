@@ -6,7 +6,7 @@ import app from "./app";
 import Config from "./src/config";
 import logger from "./src/utils/logger";
 
-if (Config.nodeEnv === "production") {
+if (Config.nodeEnv === "production" && Config.enableTelemetry) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-var-requires
   const tracer = require("dd-trace").init();
 }

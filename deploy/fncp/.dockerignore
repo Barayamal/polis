@@ -1,0 +1,4 @@
+**
+!nginx/
+!nginx/Dockerfile
+!nginx/fncp-staging.conf

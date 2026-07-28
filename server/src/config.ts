@@ -97,6 +97,7 @@ export default {
   databaseSSL: isTrue(process.env.DATABASE_SSL),
   databaseURL: process.env.DATABASE_URL as string,
   ddEnv: process.env.DD_ENV as string,
+  enableTelemetry: isTrue(process.env.ENABLE_TELEMETRY),
   dynamoDbEndpoint: process.env.DYNAMODB_ENDPOINT || null,
   emailTransportTypes: process.env.EMAIL_TRANSPORT_TYPES || null,
   geminiApiKey: process.env.GEMINI_API_KEY || null,

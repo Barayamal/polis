@@ -21,9 +21,9 @@ node deploy/fncp/audit-production-dependencies.mjs --component=alpha
 The audit command contacts the configured npm registry and runs
 `npm audit --omit=dev --json` against the selected lockfile. The default
 component is `server`; reviewed values are `server`, `alpha`, `file-server`,
-`admin`, `legacy-participant` and `report`. Run each component separately
-because the current file-server image builds multiple independently locked
-clients and their counts cannot be safely deduplicated by adding them.
+`admin`, `legacy-participant` and `report`. The last four remain useful for
+auditing the upstream full file-server path, but that path is deliberately not
+built or shipped by the minimal FNCP staging Compose model.
 
 The command prints only the selected component, dependency package
 names/ranges, expected numeric dependency counts, direct/transitive severity
@@ -47,6 +47,13 @@ separately reviewed upgrade branches.
 - The disposable origin, API and OIDC simulator bind only to `127.0.0.1`.
 - Analytics, translation, LLM/report processors and outbound email are empty or
   disabled.
+- The configured FNCP conversation also has a server-side processing policy
+  that skips optional external language detection, Pro moderation enrichment
+  and statement-notification delivery. This prevents a future shared-server
+  feature toggle from sending an FNCP statement, topic, IP-derived location or
+  notification outside the reviewed participant path.
+- Production mode does not initialize telemetry unless
+  `ENABLE_TELEMETRY=true`; this disposable profile pins it to `false`.
 - The local OIDC simulator and its fixture users are for disposable QA only.
 - The current hosted conversation `4bumwmv4zf` and its data are not imported.
 - WordPress registration and First Nations eligibility evidence remain outside
@@ -67,7 +74,26 @@ staging environment.
 
 The second command proves the Compose model is valid, sensitive integrations
 are disabled, the live hosted conversation is absent and every published port
-is loopback-only.
+is loopback-only. Its static deployment contract also proves the selected path
+contains only the alpha participant assets and five exact URL locations with
+method guards covering the six permitted method-and-route capabilities:
+
+```sh
+node --test deploy/fncp/deployment-boundary.test.mjs
+```
+
+The full Pol.is file-server image is not part of this path, so its admin,
+legacy-participant and report bundles are neither built nor copied into the
+FNCP proxy. The alpha SSR service owns its own participant assets. This is a
+staging attack-surface reduction, not a claim that the remaining images are
+production-ready.
+
+This loopback proxy is **not a functional public participant gateway**. It does
+not redeem a Barayamal grant and does not supply an authority-backed,
+per-request gateway assertion to Pol.is. It must not be exposed to the
+internet. Its URL and method filters are defence-in-depth for disposable
+synthetic QA only; the production gateway and authorization/recovery service
+remain separate, mandatory work.
 
 ## Build and start
 

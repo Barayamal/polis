@@ -1,6 +1,11 @@
 # Disposable, loopback-only Pol.is origin for First Nations Community Pulse QA.
 # This is deliberately not a production topology and must never contain genuine
 # registration, eligibility or participation data.
+x-fncp-boundary:
+  classification: synthetic-loopback-only
+  genuine-data: prohibited
+  internet-ready: "false"
+
 services:
   postgres:
     build:
@@ -31,6 +36,7 @@ services:
       AUTH_ISSUER: ${AUTH_ISSUER}
       AUTH_SIMULATOR_PORT: ${AUTH_SIMULATOR_PORT}
       CERT_DIR: /root/.simulacrum/certs
+      NODE_ENV: production
     healthcheck:
       test:
         [
@@ -64,8 +70,13 @@ services:
     environment:
       DATABASE_SSL: "false"
       DATABASE_URL: ${DATABASE_URL}
-      NODE_ENV: development
+      DEV_MODE: "false"
+      ENABLE_TELEMETRY: "false"
+      NODE_ENV: production
       NODE_EXTRA_CA_CERTS: /root/.simulacrum/certs/rootCA.pem
+      STATIC_FILES_ADMIN_PORT: "4321"
+      STATIC_FILES_HOST: client-participation-alpha
+      STATIC_FILES_PARTICIPATION_PORT: "4321"
     networks: [fncp-internal, fncp-loopback]
     ports:
       - "127.0.0.1:5500:5000"
@@ -104,6 +115,7 @@ services:
       FNCP_GATEWAY_ENFORCEMENT: ${FNCP_GATEWAY_ENFORCEMENT}
       FNCP_GATEWAY_SHARED_SECRET: ${FNCP_GATEWAY_SHARED_SECRET}
       INTERNAL_SERVICE_URL: ${INTERNAL_SERVICE_URL}
+      NODE_ENV: production
       PUBLIC_AUTH_NAMESPACE: ${AUTH_NAMESPACE}
       PUBLIC_OIDC_CACHE_KEY_ID_TOKEN_SUFFIX: ${OIDC_CACHE_KEY_ID_TOKEN_SUFFIX}
       PUBLIC_OIDC_CACHE_KEY_PREFIX: ${OIDC_CACHE_KEY_PREFIX}
@@ -111,41 +123,16 @@ services:
     networks: [fncp-internal]
     restart: unless-stopped
 
-  file-server:
-    build:
-      context: ../..
-      dockerfile: file-server/Dockerfile
-      args:
-        ADMIN_UIDS: ${ADMIN_UIDS}
-        AUTH_AUDIENCE: ${AUTH_AUDIENCE}
-        AUTH_CLIENT_ID: ${AUTH_CLIENT_ID}
-        AUTH_ISSUER: ${AUTH_ISSUER}
-        AUTH_NAMESPACE: ${AUTH_NAMESPACE}
-        DD_APPLICATION_ID: ""
-        DD_CLIENT_TOKEN: ""
-        DD_SITE: ""
-        EMBED_SERVICE_HOSTNAME: ${EMBED_SERVICE_HOSTNAME}
-        GA_TRACKING_ID: ""
-        GIT_HASH: ${GIT_HASH}
-        NODE_ENV: production
-        OIDC_CACHE_KEY_ID_TOKEN_SUFFIX: ${OIDC_CACHE_KEY_ID_TOKEN_SUFFIX}
-        OIDC_CACHE_KEY_PREFIX: ${OIDC_CACHE_KEY_PREFIX}
-    depends_on: [server]
-    environment:
-      PORT: "8080"
-    networks: [fncp-internal]
-    restart: unless-stopped
-
   nginx-proxy:
     build:
-      context: ../../file-server
-      dockerfile: nginx.Dockerfile
+      context: .
+      dockerfile: nginx/Dockerfile
     depends_on:
       - client-participation-alpha
-      - file-server
       - server
-    environment:
-      API_SERVER_PORT: "5000"
+    labels:
+      org.barayamal.fncp.boundary: synthetic-loopback-only
+      org.barayamal.fncp.internet-ready: "false"
     networks: [fncp-internal, fncp-loopback]
     ports:
       - "127.0.0.1:8088:80"

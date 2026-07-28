@@ -13,6 +13,7 @@ test -s "$env_file" || {
 }
 
 grep -q "^GIT_HASH=$expected_upstream$" "$env_file"
+grep -q "^ENABLE_TELEMETRY=false$" "$env_file"
 grep -q "^SHOULD_USE_TRANSLATION_API=false$" "$env_file"
 grep -q "^GA_TRACKING_ID=$" "$env_file"
 grep -q "^ANTHROPIC_API_KEY=$" "$env_file"
@@ -23,6 +24,7 @@ grep -q "^OPENAI_API_KEY=$" "$env_file"
 grep -q '"127.0.0.1:8088:80"' "$compose_file"
 grep -q '"127.0.0.1:5500:5000"' "$compose_file"
 grep -q '"127.0.0.1:3000:3000"' "$compose_file"
+node --test "$deploy_dir/deployment-boundary.test.mjs"
 grep -q "Modified by Barayamal on 26 July 2026" \
   "$repo_root/server/src/auth/ensure-participant.ts"
 grep -q "Modified by Barayamal on 26 July 2026" \
