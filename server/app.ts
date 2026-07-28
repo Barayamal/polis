@@ -80,7 +80,6 @@ import {
   handle_GET_topics_feed,
 } from "./src/routes/api/v3/feeds";
 import { handle_GET_reportExport } from "./src/routes/export";
-import { handle_GET_reportNarrative } from "./src/routes/reportNarrative";
 import {
   handle_POST_auth_deregister_jwt,
   handle_POST_joinWithInvite,
@@ -1581,14 +1580,9 @@ helpersInitialized.then(
       handle_GET_reports
     );
 
-    app.get(
-      "/api/v3/reportNarrative",
-      hybridAuth(assignToP),
-      moveToBody,
-      need("report_id", getReportIdFetchRid, assignToPCustom("rid")),
-      handle_GET_reportNarrative
-    );
-
+    // FNCP's five-image runtime intentionally excludes the experimental
+    // reportNarrative route and its separate client-report/report_bundle
+    // consumers. See deploy/fncp/D11-SERVER-PRODUCTION-TREE-REMEDIATION-EVIDENCE-2026-07-28.md.
     app.post(
       "/api/v3/mathUpdate",
       moveToBody,
