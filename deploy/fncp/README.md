@@ -8,7 +8,9 @@ deployment and it must never receive a genuine registration, eligibility
 record, invitation, vote or statement.
 
 Latest recorded evidence:
-[26 July 2026 disposable staging results](./STAGING-EVIDENCE-2026-07-26.md).
+[disposable staging results observed through 28 July 2026](./STAGING-EVIDENCE-2026-07-26.md)
+and the
+[28 July D1 dependency reduction](./D1-DEPENDENCY-EVIDENCE-2026-07-28.md).
 
 Refresh the production package evidence without applying automatic fixes:
 
