@@ -23,4 +23,9 @@ wiki
 .lein-git-deps/debug-repl
 data
 .cpcache
+.env
+.env.*
 .git
+certs/
+keys/
+logs/

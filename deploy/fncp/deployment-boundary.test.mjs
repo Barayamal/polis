@@ -18,6 +18,11 @@ const proxyConfig = await readFile(
   join(deployDir, "nginx", "fncp-staging.conf"),
   "utf8"
 );
+const colimaStart = await readFile(
+  join(deployDir, "start-colima-staging.sh"),
+  "utf8"
+);
+const smoke = await readFile(join(deployDir, "smoke-test.sh"), "utf8");
 
 function composeServiceBlock(serviceName) {
   const match = compose.match(
@@ -132,4 +137,56 @@ test("public QA proxy exposes only alpha assets and six method-route capabilitie
     /location \/ \{[\s\S]*proxy_pass http:\/\/server:5000/
   );
   assert.doesNotMatch(proxyConfig, /\blisten\s+443\b|\bssl_certificate\b/);
+});
+
+test("cold-start helper validates and transfers disposable participant keys", () => {
+  assert.match(colimaStart, /keys_dir="server\/keys"/);
+  assert.match(
+    colimaStart,
+    /for signing_key in jwt-private\.pem jwt-public\.pem; do/
+  );
+  assert.match(
+    colimaStart,
+    /if \[ ! -s "\$keys_dir\/\$signing_key" \]; then/
+  );
+  assert.match(
+    colimaStart,
+    /docker cp "\$keys_dir" "\$server_container:\/app\/keys"/
+  );
+});
+
+test("disposable smoke is readiness-bounded and models secure proxy requests", () => {
+  assert.match(smoke, /while \[ "\$attempts" -lt 45 \]; do/);
+  assert.match(smoke, /did not become ready within 45 seconds/);
+
+  const apiRequests = [
+    "conversation",
+    "comment",
+    "allowlist",
+    "gate",
+    "allowed",
+    "vote",
+    "warm",
+    "missing",
+    "invalid",
+    "oidc_bypass",
+    "revoke",
+    "revoked",
+    "warm_revoked",
+    "close",
+  ];
+  for (const requestName of apiRequests) {
+    const block = smoke.match(
+      new RegExp(
+        `${requestName}_status="\\$\\(request[\\s\\S]*?` +
+          `\\n  "\\$api_origin\\/api\\/v3\\/[A-Za-z]+"\\)"`
+      )
+    );
+    assert.ok(block, `missing smoke request block: ${requestName}`);
+    assert.match(
+      block[0],
+      /--header "X-Forwarded-Proto: https"/,
+      `${requestName} must model the reviewed HTTPS proxy signal`
+    );
+  }
 });

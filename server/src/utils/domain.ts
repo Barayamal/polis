@@ -56,7 +56,7 @@ function redirectIfNotHttps(
       });
       return res.end();
     } else {
-      res.status(400).send("Please use HTTPS when submitting data.");
+      return res.status(400).send("Please use HTTPS when submitting data.");
     }
   }
   return next();

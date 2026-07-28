@@ -9,6 +9,11 @@ const packageJson = JSON.parse(
   dependencies: Record<string, string>;
   devDependencies: Record<string, string>;
 };
+const packageLock = JSON.parse(
+  readFileSync(resolve(__dirname, "../../package-lock.json"), "utf8")
+) as {
+  packages: Record<string, { version?: string }>;
+};
 const appSource = readFileSync(resolve(__dirname, "../../app.ts"), "utf8");
 const fileFetcherSource = readFileSync(
   resolve(__dirname, "../../src/utils/file-fetcher.ts"),
@@ -20,6 +25,10 @@ const moderationSource = readFileSync(
 );
 const serverMiddlewareSource = readFileSync(
   resolve(__dirname, "../../src/server-middleware.ts"),
+  "utf8"
+);
+const httpMiddlewareSource = readFileSync(
+  resolve(__dirname, "../../src/http-middleware.ts"),
   "utf8"
 );
 
@@ -50,11 +59,7 @@ describe("minimal FNCP production dependency contract", () => {
   });
 
   test("deprecated request clients are absent from the server runtime", () => {
-    for (const dependency of [
-      "request",
-      "request-promise",
-      "simple-oauth2",
-    ]) {
+    for (const dependency of ["request", "request-promise", "simple-oauth2"]) {
       expect(packageJson.dependencies).not.toHaveProperty(dependency);
     }
     expect(packageJson.devDependencies).not.toHaveProperty(
@@ -72,31 +77,45 @@ describe("minimal FNCP production dependency contract", () => {
     );
   });
 
-  test("unused direct middleware packages are absent without changing legacy Express semantics", () => {
-    for (const dependency of [
-      "body-parser",
-      "compression",
-      "connect-timeout",
-    ]) {
+  test("supported Express middleware replaces the legacy Connect stack", () => {
+    for (const dependency of ["body-parser", "connect-timeout"]) {
       expect(packageJson.dependencies).not.toHaveProperty(dependency);
     }
     expect(packageJson.devDependencies).not.toHaveProperty(
       "@types/connect-timeout"
     );
 
-    // Express 3 remains deliberately pinned: a major migration is outside the
-    // bounded dependency-hardening work and needs its own compatibility plan.
-    expect(packageJson.dependencies.express).toBe("~3.21.2");
+    // Express only supports the latest release in each maintained major line.
+    // Pin the reviewed 4.x release rather than silently drifting the framework.
+    expect(packageJson.dependencies.express).toBe("4.22.2");
+    expect(packageJson.dependencies.compression).toBe("1.8.1");
+    expect(packageJson.dependencies["cookie-parser"]).toBe("1.4.7");
+    expect(packageJson.devDependencies["@types/compression"]).toBe("1.8.1");
+    expect(packageJson.devDependencies["@types/cookie-parser"]).toBe("1.4.10");
+    expect(packageLock.packages["node_modules/express"]?.version).toBe(
+      "4.22.2"
+    );
+    expect(packageLock.packages).not.toHaveProperty("node_modules/connect");
+    expect(packageLock.packages).not.toHaveProperty("node_modules/multiparty");
 
-    // Preserve the existing body limit, cookies, compression, proxy handling
-    // and FNCP fail-closed middleware order while only replacing the one
-    // direct connect-timeout call.
+    // Preserve the existing body limit, JSON suffix support, nested form
+    // semantics, cookies, compression, proxy handling and FNCP fail-closed
+    // middleware order.
     expect(appSource).toContain('app.set("trust proxy", 1)');
-    expect(appSource).toContain('express.bodyParser({ limit: "50mb" })');
-    expect(appSource).toContain("express.cookieParser()");
-    expect(appSource).toContain("express.compress()");
+    expect(httpMiddlewareSource).toContain("express.json({");
+    expect(httpMiddlewareSource).toContain(
+      'type: ["application/json", "application/*+json"]'
+    );
+    expect(httpMiddlewareSource).toContain('const REQUEST_BODY_LIMIT = "50mb"');
+    expect(httpMiddlewareSource).toContain("extended: true");
+    expect(httpMiddlewareSource).toContain("cookieParser()");
+    expect(httpMiddlewareSource).toContain("compression()");
+    expect(httpMiddlewareSource).toContain('req.is("multipart/form-data")');
+    expect(appSource).not.toMatch(
+      /express\.(?:bodyParser|cookieParser|compress)/u
+    );
     expect(appSource).toMatch(
-      /app\.use\(express\.cookieParser\(\)\);[\s\S]*app\.use\(fncpGatewayMiddleware\);[\s\S]*app\.use\(writeDefaultHead\);[\s\S]*app\.use\(express\.compress\(\)\);/
+      /app\.use\(rejectUnsupportedMultipart\);[\s\S]*app\.use\(createJsonBodyParser\(\)\);[\s\S]*app\.use\(createUrlencodedBodyParser\(\)\);[\s\S]*app\.use\(createCookieParser\(\)\);[\s\S]*app\.use\(fncpGatewayMiddleware\);[\s\S]*app\.use\(writeDefaultHead\);[\s\S]*app\.use\(createResponseCompression\(\)\);/
     );
     expect(appSource).toContain("requestTimeout(15_000)");
     expect(appSource).not.toMatch(/from\s+["']connect-timeout["']/u);

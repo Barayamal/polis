@@ -20,6 +20,13 @@ import logger from "./src/utils/logger";
 import { fetchIndexForConversation } from "./src/conversation";
 import { getPidForParticipant } from "./src/user";
 import { fncpGatewayMiddleware } from "./src/auth/fncp-gateway";
+import {
+  createCookieParser,
+  createJsonBodyParser,
+  createResponseCompression,
+  createUrlencodedBodyParser,
+  rejectUnsupportedMultipart,
+} from "./src/http-middleware";
 
 import {
   middleware_check_if_options,
@@ -249,7 +256,7 @@ if (devMode) {
   app.use(middleware_http_json_logger);
 }
 
-// Trust the X-Forwarded-Proto and X-Forwarded-Host, but only on private subnets.
+// Trust one explicitly configured reverse-proxy hop for forwarded protocol/host.
 // See: https://github.com/pol-is/polis/issues/546
 // See: https://expressjs.com/en/guide/behind-proxies.html
 app.set("trust proxy", 1);
@@ -309,12 +316,14 @@ helpersInitialized.then(
     app.use(middleware_responseTime_start);
 
     app.use(redirectIfNotHttps);
-    app.use(express.bodyParser({ limit: "50mb" }));
-    app.use(express.cookieParser()); // Add cookie parser to access req.cookies
+    app.use(rejectUnsupportedMultipart);
+    app.use(createJsonBodyParser());
+    app.use(createUrlencodedBodyParser());
+    app.use(createCookieParser()); // Add cookie parser to access req.cookies
     app.use(fncpGatewayMiddleware);
     app.use(writeDefaultHead);
 
-    app.use(express.compress());
+    app.use(createResponseCompression());
     app.use(middleware_log_request_body);
     app.use(middleware_log_middleware_errors);
 
@@ -2217,6 +2226,12 @@ helpersInitialized.then(
       app.get(/^\/[^(api\/)]?.*/, proxy);
     }
 
+    // Error middleware must be registered after every route. The routes above
+    // are installed asynchronously once the legacy helper bundle is ready, so
+    // registering this outside the callback would place it before the routes
+    // and allow late route/timeout errors to fall through to finalhandler.
+    app.use(globalErrorHandler);
+
     // move app.listen to index.ts
   },
 
@@ -2224,9 +2239,6 @@ helpersInitialized.then(
     logger.error("failed to init server", err);
   }
 );
-
-// Setup global error handling
-app.use(globalErrorHandler);
 
 // Initialize global process-level error handlers
 setupGlobalProcessHandlers();

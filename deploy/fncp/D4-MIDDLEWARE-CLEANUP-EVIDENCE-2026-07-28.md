@@ -1,5 +1,8 @@
 # FNCP Option C D4 middleware cleanup evidence — 28 July 2026
 
+Historical checkpoint: superseded for current-candidate status by
+[D5 supported Express migration](./D5-EXPRESS-4-MIGRATION-EVIDENCE-2026-07-28.md).
+
 ## Scope
 
 This bounded pass starts from public fork commit `cfd923d` and removes three

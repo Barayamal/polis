@@ -31,6 +31,26 @@ request() {
     --connect-timeout 3 --max-time 15 --write-out "%{http_code}" "$@"
 }
 
+wait_for_server() {
+  attempts=0
+  while [ "$attempts" -lt 45 ]; do
+    if status="$(curl --silent --output /dev/null \
+      --connect-timeout 1 --max-time 2 --write-out "%{http_code}" \
+      "$api_origin/api/v3/conversations")"; then
+      case "$status" in
+        [1-5][0-9][0-9])
+          return 0
+          ;;
+      esac
+    fi
+    attempts=$((attempts + 1))
+    sleep 1
+  done
+
+  echo "Pol.is server did not become ready within 45 seconds." >&2
+  return 1
+}
+
 expect_status() {
   actual="$1"
   expected="$2"
@@ -40,6 +60,8 @@ expect_status() {
     exit 1
   fi
 }
+
+wait_for_server
 
 token_status="$(request "$work_dir/token.json" \
   --cacert "$ca_file" \
@@ -62,6 +84,7 @@ admin_token="$(jq -er '.access_token' "$work_dir/token.json")"
 
 conversation_status="$(request "$work_dir/conversation.json" \
   --header "Authorization: Bearer $admin_token" \
+  --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
   --data '{
     "topic": "FNCP Option C disposable access QA",
@@ -78,6 +101,7 @@ conversation_id="$(jq -er '.conversation_id' "$work_dir/conversation.json")"
 
 comment_status="$(request "$work_dir/comment.json" \
   --header "Authorization: Bearer $admin_token" \
+  --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
   --data "$(jq -nc \
     --arg conversation_id "$conversation_id" \
@@ -93,6 +117,7 @@ allowed_xid="fncp_$(openssl rand -hex 24)"
 replacement_xid="fncp_$(openssl rand -hex 24)"
 allowlist_status="$(request "$work_dir/allowlist.json" \
   --header "Authorization: Bearer $admin_token" \
+  --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
   --data "$(jq -nc \
     --arg conversation_id "$conversation_id" \
@@ -109,6 +134,7 @@ expect_status "$allowlist_status" "200" "Create synthetic XID allowlist"
 gate_status="$(request "$work_dir/gate.json" \
   --request PUT \
   --header "Authorization: Bearer $admin_token" \
+  --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
   --data "$(jq -nc \
     --arg conversation_id "$conversation_id" \
@@ -121,6 +147,7 @@ expect_status "$gate_status" "200" "Enable synthetic XID gate"
 
 allowed_status="$(request "$work_dir/allowed.json" \
   --get \
+  --header "X-Forwarded-Proto: https" \
   --data-urlencode "conversation_id=$conversation_id" \
   --data-urlencode "xid=$allowed_xid" \
   --data-urlencode "pid=-1" \
@@ -131,6 +158,7 @@ expect_status "$allowed_status" "200" "Allowed XID"
 seed_tid="$(jq -er '.nextComment.tid' "$work_dir/allowed.json")"
 
 vote_status="$(request "$work_dir/vote.json" \
+  --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
   --data "$(jq -nc \
     --arg conversation_id "$conversation_id" \
@@ -147,6 +175,7 @@ expect_status "$vote_status" "200" "Establish synthetic XID participant"
 
 warm_status="$(request "$work_dir/warm.json" \
   --get \
+  --header "X-Forwarded-Proto: https" \
   --data-urlencode "conversation_id=$conversation_id" \
   --data-urlencode "xid=$allowed_xid" \
   --data-urlencode "pid=-1" \
@@ -165,6 +194,7 @@ fi
 
 missing_status="$(request "$work_dir/missing.json" \
   --get \
+  --header "X-Forwarded-Proto: https" \
   --data-urlencode "conversation_id=$conversation_id" \
   --data-urlencode "pid=-1" \
   --data-urlencode "lang=en" \
@@ -173,6 +203,7 @@ expect_status "$missing_status" "403" "Missing XID"
 
 invalid_status="$(request "$work_dir/invalid.json" \
   --get \
+  --header "X-Forwarded-Proto: https" \
   --data-urlencode "conversation_id=$conversation_id" \
   --data-urlencode "xid=fncp_not_allowlisted_0000000000000000" \
   --data-urlencode "pid=-1" \
@@ -183,6 +214,7 @@ expect_status "$invalid_status" "403" "Invalid XID"
 oidc_bypass_status="$(request "$work_dir/oidc-bypass.json" \
   --get \
   --header "Authorization: Bearer $admin_token" \
+  --header "X-Forwarded-Proto: https" \
   --data-urlencode "conversation_id=$conversation_id" \
   --data-urlencode "pid=-1" \
   --data-urlencode "lang=en" \
@@ -191,6 +223,7 @@ expect_status "$oidc_bypass_status" "403" "OIDC participant bypass"
 
 revoke_status="$(request "$work_dir/revoke.json" \
   --header "Authorization: Bearer $admin_token" \
+  --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
   --data "$(jq -nc \
     --arg conversation_id "$conversation_id" \
@@ -205,6 +238,7 @@ expect_status "$revoke_status" "200" "Revoke synthetic XID"
 
 revoked_status="$(request "$work_dir/revoked.json" \
   --get \
+  --header "X-Forwarded-Proto: https" \
   --data-urlencode "conversation_id=$conversation_id" \
   --data-urlencode "xid=$allowed_xid" \
   --data-urlencode "pid=-1" \
@@ -216,6 +250,7 @@ expect_status "$revoked_status" "403" "Revoked XID"
 warm_revoked_status="$(request "$work_dir/warm-revoked.json" \
   --get \
   --header "Authorization: Bearer $participant_token" \
+  --header "X-Forwarded-Proto: https" \
   --data-urlencode "conversation_id=$conversation_id" \
   --data-urlencode "xid=$allowed_xid" \
   --data-urlencode "pid=-1" \
@@ -227,6 +262,7 @@ expect_status "$warm_revoked_status" "403" "Revoked warm XID session"
 close_status="$(request "$work_dir/close.json" \
   --request PUT \
   --header "Authorization: Bearer $admin_token" \
+  --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
   --data "$(jq -nc --arg conversation_id "$conversation_id" \
     '{conversation_id: $conversation_id, is_active: false}')" \

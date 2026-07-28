@@ -1,6 +1,10 @@
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
+import path from "node:path";
 
 import { afterEach, describe, expect, jest, test } from "@jest/globals";
+import express from "express";
+import request from "supertest";
 
 import {
   globalErrorHandler,
@@ -150,5 +154,39 @@ describe("globalErrorHandler timeout response", () => {
       message: "Request timed out. Please try again.",
     });
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("returns the established timeout JSON through an actual Express stack", async () => {
+    const app = express();
+    app.use(requestTimeout(10));
+    app.get("/api/v3/nextComment", () => {
+      // Deliberately leave the request open so the timeout middleware advances
+      // to the error handler registered after the route.
+    });
+    app.use(globalErrorHandler);
+
+    const response = await request(app).get("/api/v3/nextComment");
+
+    expect(response.status).toBe(408);
+    expect(response.body).toEqual({
+      error: "request_timeout",
+      message: "Request timed out. Please try again.",
+    });
+  });
+
+  test("keeps the production error middleware after asynchronously installed routes", () => {
+    const appSource = fs.readFileSync(
+      path.resolve(__dirname, "../../app.ts"),
+      "utf8"
+    );
+    const routeOffset = appSource.indexOf(
+      'app.get(\n      "/api/v3/nextComment"'
+    );
+    const errorHandlerOffset = appSource.indexOf(
+      "app.use(globalErrorHandler);"
+    );
+
+    expect(routeOffset).toBeGreaterThan(-1);
+    expect(errorHandlerOffset).toBeGreaterThan(routeOffset);
   });
 });

@@ -866,7 +866,7 @@ export async function handle_GET_topics(
                   },
                 }) + `|||`
               );
-              // @ts-expect-error flush - calling due to use of compression
+              // compression middleware adds flush() for streamed responses.
               res.flush();
               resolve();
             }, (model === "gemini" ? 500 : 250) * i);
@@ -1023,7 +1023,7 @@ export async function handle_GET_reportNarrative(
     ];
     await Promise.all(promises);
   } catch (err) {
-    // @ts-expect-error flush - calling due to use of compression
+    // compression middleware adds flush() for streamed responses.
     res.flush();
     logger.error("Report narrative generation error:", err);
     const msg =

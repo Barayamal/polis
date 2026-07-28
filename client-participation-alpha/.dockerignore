@@ -1,12 +1,10 @@
 .env
 .env.*
 .git
-.google_creds_temp
-.venv/
+.DS_Store
 certs/
 coverage/
-dist
+dist/
 keys/
-logs/
 node_modules/
 npm-debug.log*

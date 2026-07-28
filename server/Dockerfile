@@ -11,14 +11,11 @@
 # For a dev build, use `--target dev`.
 # Should default to prod build, but you can also explicitly use `--target prod`
 
-FROM docker.io/node:22-alpine as base
+FROM docker.io/library/node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS base
 
 ARG NODE_ENV
 
 WORKDIR /app
-
-# Install Python and necessary tools (including pip)
-RUN apk add --no-cache python3 py3-pip
 
 # This package is needed at runtime
 RUN apk add libpq-dev
@@ -70,4 +67,11 @@ COPY . .
 
 RUN npm run build
 
-CMD npm run serve
+# The TypeScript compiler, npm CLI and test/lint tooling are needed to build
+# the image, but must not remain in the participant-facing runtime. The final
+# process invokes Node directly, so retaining npm would add an unnecessary
+# package-manager attack surface.
+RUN npm prune --omit=dev && npm cache clean --force && \
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
+CMD ["node", "--max_old_space_size=2048", "--gc_interval=100", "dist/index.js"]
