@@ -516,6 +516,7 @@ test("collector is local-only, immutable-tooling and no-overwrite", () => {
   assert.match(collector, /org\.opencontainers\.image\.base\.name/u);
   assert.match(collector, /configured_entrypoint/u);
   assert.match(collector, /configured_command/u);
+  assert.match(collector, /\$configured_command" != 'null'/u);
   assert.match(collector, /configured_user/u);
   assert.match(
     collector,

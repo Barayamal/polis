@@ -63,6 +63,9 @@ describe("minimal FNCP production dependency contract", () => {
     expect(packageJson.devDependencies.morgan).toBe("1.11.0");
     expect(appSource).not.toMatch(/import\s+morgan\s+from\s+"morgan"/);
     expect(appSource).toContain('const morgan = require("morgan")');
+    expect(appSource).toContain(
+      'logger.warn("Development request logger is not installed")'
+    );
   });
 
   test("unused mail and CLI packages are absent", () => {

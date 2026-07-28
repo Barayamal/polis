@@ -409,7 +409,7 @@ jobs:
                 --format '{{json .Config.Entrypoint}}' "$IMAGE")" = \
                 '["/usr/local/bin/fncp-run-migrations"]'
               test "$(docker image inspect \
-                --format '{{json .Config.Cmd}}' "$IMAGE")" = '[]'
+                --format '{{json .Config.Cmd}}' "$IMAGE")" = 'null'
               test "$(docker image inspect \
                 --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
                 "$IMAGE")" = "$GITHUB_SHA"

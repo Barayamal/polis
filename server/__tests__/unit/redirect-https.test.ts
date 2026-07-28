@@ -3,6 +3,21 @@ jest.mock("../../src/db/pg-query", () => ({
   default: {},
 }));
 
+jest.mock("../../src/config", () => ({
+  __esModule: true,
+  default: {
+    domainOverride: undefined,
+    getServerHostname: () => "api.example.test",
+    isDevMode: false,
+    isTesting: false,
+    nodeEnv: "production",
+    staticFilesHost: "static.example.test",
+    staticFilesParticipationPort: 443,
+    useNetworkHost: false,
+    whitelistItems: [],
+  },
+}));
+
 import { redirectIfNotHttps } from "../../src/utils/domain";
 
 describe("redirectIfNotHttps", () => {

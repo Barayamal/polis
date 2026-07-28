@@ -436,7 +436,7 @@ case " $SERVICES " in
       echo "Migration image entrypoint is not the reviewed runner." >&2
       exit 1
     fi
-    if [ "$configured_command" != '[]' ]; then
+    if [ "$configured_command" != 'null' ]; then
       echo "Migration image inherited an unexpected default command." >&2
       exit 1
     fi

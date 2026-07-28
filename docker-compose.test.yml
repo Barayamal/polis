@@ -31,7 +31,7 @@ services:
       - DATABASE_SSL=false
       - DATABASE_URL=${DATABASE_URL}
       - NODE_ENV=development
-      - NODE_EXTRA_CA_CERTS=/root/.simulacrum/certs/rootCA.pem
+      - NODE_EXTRA_CA_CERTS=/tmp/polis-rootCA.pem
     env_file:
       - test.env
     build:
@@ -45,8 +45,8 @@ services:
     networks:
       - polis-test
     volumes:
-      # Mount mkcert root CA for TLS verification
-      - ${AUTH_CERTS_PATH:-~/.simulacrum/certs}:/root/.simulacrum/certs:ro
+      # Mount only the mkcert root CA at a path readable by the non-root image.
+      - ${AUTH_CERTS_PATH:-~/.simulacrum/certs}/rootCA.pem:/tmp/polis-rootCA.pem:ro
     restart: unless-stopped
     depends_on:
       - oidc-simulator

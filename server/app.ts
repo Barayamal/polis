@@ -246,11 +246,24 @@ const HMAC_SIGNATURE_PARAM_NAME = "signature";
 if (devMode) {
   // Keep the development-only request formatter out of the minimal
   // production dependency tree and runtime module graph.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const morgan = require("morgan");
-  // 'dev' format is
-  // :method :url :status :response-time ms - :res[content-length]
-  app.use(morgan("dev"));
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const morgan = require("morgan");
+    // 'dev' format is
+    // :method :url :status :response-time ms - :res[content-length]
+    app.use(morgan("dev"));
+  } catch (error) {
+    const moduleError = error as NodeJS.ErrnoException;
+    if (
+      moduleError.code !== "MODULE_NOT_FOUND" ||
+      !moduleError.message.includes("'morgan'")
+    ) {
+      throw error;
+    }
+    // The test Compose stack deliberately runs the pruned production image
+    // with development behaviour. Request formatting is optional there.
+    logger.warn("Development request logger is not installed");
+  }
 } else {
   app.use(middleware_http_json_logger);
 }

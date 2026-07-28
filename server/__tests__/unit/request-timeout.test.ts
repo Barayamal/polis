@@ -189,4 +189,55 @@ describe("globalErrorHandler timeout response", () => {
     expect(routeOffset).toBeGreaterThan(-1);
     expect(errorHandlerOffset).toBeGreaterThan(routeOffset);
   });
+
+  test("preserves an intentional 4xx status and stable Pol.is error code", () => {
+    const req = makeRequest();
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const res = {
+      statusCode: 400,
+      headersSent: false,
+      status,
+    };
+    const next = jest.fn();
+
+    globalErrorHandler(
+      new Error(
+        "polis_err_param_missing_conversation_id: internal context is not public"
+      ),
+      req as never,
+      res as never,
+      next
+    );
+
+    expect(status).toHaveBeenCalledWith(400);
+    expect(json).toHaveBeenCalledWith({
+      error: "polis_err_param_missing_conversation_id",
+      message: "polis_err_param_missing_conversation_id",
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("does not expose an arbitrary 4xx exception message", () => {
+    const req = makeRequest();
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const res = {
+      statusCode: 400,
+      headersSent: false,
+      status,
+    };
+
+    globalErrorHandler(
+      new Error("sensitive implementation detail"),
+      req as never,
+      res as never,
+      jest.fn()
+    );
+
+    expect(json).toHaveBeenCalledWith({
+      error: "request_error",
+      message: "The request could not be processed. Please try again.",
+    });
+  });
 });

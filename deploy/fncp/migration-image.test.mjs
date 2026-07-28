@@ -396,7 +396,7 @@ test("Compose and CI include migration as an isolated fifth release artifact", (
   assert.match(runtimeJob, /--file server\/Dockerfile-migrate/u);
   assert.match(runtimeJob, /SOURCE_REVISION=\$\{GITHUB_SHA\}/u);
   assert.match(runtimeJob, /--format '\{\{json \.Config\.Cmd\}\}'/u);
-  assert.match(runtimeJob, /\.Config\.Cmd[\s\S]{0,120}= '\[\]'/u);
+  assert.match(runtimeJob, /\.Config\.Cmd[\s\S]{0,120}= 'null'/u);
   assert.match(
     runtimeJob,
     /\["\/usr\/local\/bin\/fncp-run-migrations"\]/u,

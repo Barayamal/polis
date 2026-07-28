@@ -294,6 +294,24 @@ function globalErrorHandler(
     return next(err);
   }
 
+  // Legacy parameter and route middleware sets an intentional 4xx status
+  // before forwarding a stable polis_err_* code. Preserve that public
+  // contract now that this handler is correctly installed after the routes.
+  // Do not expose arbitrary exception messages.
+  if (status >= 400 && status < 500) {
+    const publicError =
+      typeof err.message === "string" &&
+      /^polis_(?:err|fail)_[a-z0-9_]+(?:\b|$)/u.test(err.message)
+        ? err.message.match(/^polis_(?:err|fail)_[a-z0-9_]+/u)?.[0]
+        : undefined;
+
+    return res.status(status).json({
+      error: publicError || "request_error",
+      message:
+        publicError || "The request could not be processed. Please try again.",
+    });
+  }
+
   // Generic error response for everything else
   return res.status(500).json({
     error: "internal_server_error",
