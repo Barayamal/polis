@@ -7,8 +7,9 @@ Source commit `4931c67690b263926e43466553d304da3f0b91d0` is a reviewed
 attestation, registry artifact, release approval or production deployment.
 The Option C production decision remains **HOLD / NO-GO**.
 
-No network, cloud resource, internet-reachable service, conversation or
-participant data was used or changed.
+No package registry, cloud resource, internet-reachable service, conversation
+or participant data was used or changed. GitHub was used only to publish the
+reviewed source and evidence.
 
 ## Scope
 
