@@ -14,7 +14,7 @@ Latest recorded evidence:
 - [D3 request-client migration](./D3-REQUEST-MIGRATION-EVIDENCE-2026-07-28.md)
 - [D4 middleware cleanup](./D4-MIDDLEWARE-CLEANUP-EVIDENCE-2026-07-28.md)
 - [D5 supported Express migration](./D5-EXPRESS-4-MIGRATION-EVIDENCE-2026-07-28.md)
-- [D6 exact-image/SBOM production-gate result](./D6-IMAGE-SBOM-EVIDENCE-2026-07-28.md)
+- [D6 historical six-image/SBOM result](./D6-IMAGE-SBOM-EVIDENCE-2026-07-28.md)
 - [D7 bounded image remediation result](./D7-BOUNDED-IMAGE-REMEDIATION-EVIDENCE-2026-07-28.md)
 - [D8 Nginx slim-image evidence](./D8-NGINX-SLIM-IMAGE-EVIDENCE-2026-07-28.json)
 - [D9 alpha runtime-split evidence](./D9-ALPHA-RUNTIME-SPLIT-EVIDENCE-2026-07-28.json)
@@ -51,11 +51,17 @@ separately reviewed upgrade branches.
 
 ## Exact-image evidence
 
-The local-only image evidence collector builds the six-image minimal staging
-model, records a whole non-ignored source manifest and image IDs, asserts that
-generated participant keys and reviewed direct-development package sentinels
-are absent, then creates CycloneDX SBOMs and Grype JSON scans with
-digest-pinned scanner containers:
+The local-only image evidence collector defaults to the four Pol.is ARM64
+runtime candidates: API server, math worker, participant alpha and nginx
+proxy. The planned production topology uses managed RDS, so PostgreSQL is
+infrastructure rather than an application release image. The disposable
+PostgreSQL and OIDC simulator images remain available only through the explicit
+`staging-six` QA scope. The collector records a whole non-ignored source
+manifest, exact scope, build log and image IDs, asserts that generated
+participant keys and reviewed direct-development package sentinels are absent,
+then creates CycloneDX SBOMs and Grype JSON scans with digest-pinned scanner
+containers. Its ARM64 candidate gate is calculated only from the four runtime
+images:
 
 ```sh
 node --test deploy/fncp/image-security-evidence.test.mjs
@@ -67,13 +73,30 @@ node --test deploy/fncp/image-security-evidence.test.mjs
 Base and scanner image digests are reviewed in
 [`image-security.lock.json`](./image-security.lock.json). The collector refuses
 to overwrite evidence or label a dirty source tree as an exact candidate
-unless a WIP run explicitly opts in. It does not log in to a registry, push an
-image or invoke a cloud CLI.
+unless a WIP run explicitly opts in. Default candidate evidence forces
+`linux/arm64`, rejects architecture mismatches, performs a pull/no-cache build,
+cannot skip the build, disables scanner update checks after one recorded Grype
+database update, and retains a checksummed database cache snapshot. Use
+`FNCP_SCAN_SCOPE=staging-six` only when the two disposable QA-infrastructure
+images also need inspection. The generated summary explicitly records that
+this local evidence is not a release attestation: deployment architecture,
+immutable registry digests and multi-architecture verification remain
+unbound. The collector does not log in to a registry, push an image or invoke a
+cloud CLI.
 
-The 28 July WIP scan generated all six SBOMs and scans but failed the
-production policy with 57 Critical and 296 High match observations. See the
-[D6 evidence](./D6-IMAGE-SBOM-EVIDENCE-2026-07-28.md) for exact local image
-IDs, scanner/database evidence, interpretation limits and remediation order.
+Pull requests into `edge` also run a synthetic-only runtime-image matrix. Each
+matrix entry builds exactly one of the four application runtime stages on an
+ephemeral GitHub runner and checks its configured and effective non-root user
+plus reviewed runtime files. That workflow has read-only repository
+permission, does not log in to a registry, does not push an image and does not
+deploy. It is a regression gate for the Dockerfiles, not an SBOM scan or
+release attestation.
+
+The 28 July WIP scan generated all six SBOMs and scans. Its historical aggregate
+included the QA simulator and failed the then-combined policy with 57 Critical
+and 296 High match observations. See the [D6
+evidence](./D6-IMAGE-SBOM-EVIDENCE-2026-07-28.md) for exact local image IDs,
+scanner/database evidence, interpretation limits and remediation order.
 The subsequent bounded D7 pass rebuilt nginx, participant alpha and server,
 reducing those three images from 35 Critical/209 High to 2 Critical/38 High;
 the [D7 evidence](./D7-BOUNDED-IMAGE-REMEDIATION-EVIDENCE-2026-07-28.md)

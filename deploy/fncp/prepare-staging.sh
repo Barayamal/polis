@@ -19,8 +19,12 @@ auth_secret=$(openssl rand -hex 32)
 login_pepper=$(openssl rand -hex 32)
 encryption_password=$(openssl rand -hex 32)
 math_password=$(openssl rand -hex 24)
+server_runtime_uid=$(id -u)
+server_runtime_gid=$(id -g)
 
 sed \
+  -e "s/SERVER_RUNTIME_UID=REPLACE_WITH_LOCAL_UID/SERVER_RUNTIME_UID=$server_runtime_uid/" \
+  -e "s/SERVER_RUNTIME_GID=REPLACE_WITH_LOCAL_GID/SERVER_RUNTIME_GID=$server_runtime_gid/" \
   -e "s/POSTGRES_PASSWORD=REPLACE_WITH_RANDOM_VALUE/POSTGRES_PASSWORD=$postgres_password/" \
   -e "s#DATABASE_URL=postgres://fncp_polis:REPLACE_WITH_RANDOM_VALUE@postgres:5432/fncp_polis_staging#DATABASE_URL=postgres://fncp_polis:$postgres_password@postgres:5432/fncp_polis_staging#" \
   -e "s/AUTH_CLIENT_SECRET=REPLACE_WITH_RANDOM_VALUE/AUTH_CLIENT_SECRET=$auth_secret/" \
@@ -58,6 +62,7 @@ if [ ! -s "$keys_dir/jwt-private.pem" ] || [ ! -s "$keys_dir/jwt-public.pem" ]; 
     -out "$keys_dir/jwt-public.pem" >/dev/null 2>&1
   chmod 600 "$keys_dir/jwt-private.pem"
 fi
+chmod 644 "$keys_dir/jwt-public.pem" "$cert_dir/rootCA.pem"
 
 echo "Prepared disposable staging configuration."
 echo "Secrets and certificates are git-ignored and expire after seven days."

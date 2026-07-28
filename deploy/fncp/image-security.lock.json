@@ -3,6 +3,11 @@
   "resolvedAt": "2026-07-28",
   "registry": "docker.io",
   "buildPlatform": "linux/arm64",
+  "dockerfileFrontend": {
+    "tag": "docker.io/docker/dockerfile:1.4",
+    "indexDigest": "sha256:9ba7531bd80fb0a858632727cf7a112fbfd19b17e94c4e84ced81e24ef1a0dbc",
+    "arm64Digest": "sha256:f259fd86ee23d7b4a2944432e3a09f45fa288bb84bfbd222b19b2abc7ddffbb9"
+  },
   "baseImages": [
     {
       "component": "server",

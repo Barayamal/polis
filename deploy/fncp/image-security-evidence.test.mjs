@@ -1,13 +1,26 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { validateDockerfileBaseReferences } from "./image-security-evidence.mjs";
 
 const deployDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(deployDirectory, "../..");
 const evidenceTool = join(deployDirectory, "image-security-evidence.mjs");
+const evidenceToolSource = readFileSync(evidenceTool, "utf8");
+const ciWorkflow = readFileSync(
+  join(repositoryRoot, ".github", "workflows", "fncp-option-c-ci.yml"),
+  "utf8",
+);
 const collector = readFileSync(
   join(deployDirectory, "collect-image-security-evidence.sh"),
   "utf8",
@@ -87,6 +100,100 @@ function runTool(...args) {
   );
 }
 
+function writeJson(path, value) {
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function createSyntheticEvidenceDirectory() {
+  const directory = mkdtempSync(join(tmpdir(), "fncp-image-evidence-"));
+  mkdirSync(join(directory, "sbom"));
+  mkdirSync(join(directory, "scan"));
+  const services = [
+    "server",
+    "math",
+    "client-participation-alpha",
+    "nginx-proxy",
+  ];
+  const images = services.map((service, index) => ({
+    service,
+    reference: `fncp-${service}:latest`,
+    imageId: `sha256:${String(index + 1).padStart(64, "0")}`,
+    repoDigests: [],
+    architecture: "arm64",
+    os: "linux",
+    created: "2026-07-28T00:00:00.000Z",
+    size: 1,
+    rootFsLayers: ["sha256:layer"],
+  }));
+  writeJson(join(directory, "image-index.json"), {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    projectName: "fncp-synthetic",
+    scanScope: "arm64-candidate-four",
+    images,
+  });
+  const database = {
+    status: {
+      schemaVersion: "v6.1.9",
+      from: "https://grype.anchore.io/databases/reviewed",
+      built: new Date().toISOString(),
+      valid: true,
+    },
+    providers: { synthetic: { captured: "reviewed" } },
+  };
+  for (const image of images) {
+    const digest = image.imageId.slice("sha256:".length);
+    writeJson(join(directory, "sbom", `${image.service}.cdx.json`), {
+      bomFormat: "CycloneDX",
+      specVersion: "1.7",
+      metadata: {
+        tools: {
+          components: [
+            {
+              name: "syft",
+              version: imageSecurityLock.scannerImages.find(
+                ({ name }) => name === "syft",
+              ).version,
+            },
+          ],
+        },
+        component: { type: "container", version: digest },
+        properties: [
+          {
+            name: "syft:image:labels:com.docker.compose.service",
+            value: image.service,
+          },
+        ],
+      },
+      components: [],
+    });
+    writeJson(join(directory, "scan", `${image.service}.grype.json`), {
+      descriptor: {
+        name: "grype",
+        version: imageSecurityLock.scannerImages.find(
+          ({ name }) => name === "grype",
+        ).version,
+        configuration: {
+          "check-for-app-update": false,
+          db: { "auto-update": false },
+        },
+        db: database,
+      },
+      source: {
+        type: "image",
+        target: {
+          manifestDigest: digest,
+          labels: {
+            "com.docker.compose.service": image.service,
+          },
+        },
+      },
+      matches: [],
+    });
+  }
+  return { directory, images };
+}
+
 test("all application base images and scanners are locked by digest", () => {
   const result = runTool("validate-lock");
   assert.deepEqual(result, {
@@ -95,6 +202,167 @@ test("all application base images and scanners are locked by digest", () => {
     scannerImages: 2,
     buildPlatform: "linux/arm64",
   });
+  assert.match(
+    imageSecurityLock.dockerfileFrontend.indexDigest,
+    /^sha256:[a-f0-9]{64}$/u,
+  );
+  assert.match(
+    serverDockerfile,
+    new RegExp(
+      `^# syntax=${imageSecurityLock.dockerfileFrontend.tag.replace(
+        /[.*+?^${}()|[\]\\]/gu,
+        "\\$&",
+      )}@${imageSecurityLock.dockerfileFrontend.indexDigest}$`,
+      "mu",
+    ),
+  );
+});
+
+test("Dockerfile policy rejects malformed, missing and extra external FROM instructions", () => {
+  const reviewed =
+    "docker.io/library/node:24-alpine@" +
+    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  assert.doesNotThrow(() =>
+    validateDockerfileBaseReferences(
+      "Dockerfile",
+      [
+        `FROM ${reviewed} AS build`,
+        "FROM build AS pruned",
+        `FROM --platform=linux/arm64 ${reviewed} AS runtime`,
+      ].join("\n"),
+      new Set([reviewed]),
+    ),
+  );
+
+  for (const [label, dockerfile, expected] of [
+    [
+      "malformed trailing tokens",
+      `FROM ${reviewed} AS build unexpected`,
+      /malformed or unsupported FROM instruction/u,
+    ],
+    [
+      "unreviewed extra image",
+      `FROM ${reviewed} AS build\nFROM docker.io/library/busybox:latest AS extra`,
+      /uses unreviewed external base image/u,
+    ],
+    [
+      "reviewed image only in a comment",
+      `# ${reviewed}\nFROM scratch AS runtime`,
+      /uses unreviewed external base image scratch/u,
+    ],
+    [
+      "forward stage reference",
+      `FROM build AS runtime\nFROM ${reviewed} AS build`,
+      /uses unreviewed external base image build/u,
+    ],
+    [
+      "duplicate stage alias",
+      `FROM ${reviewed} AS build\nFROM build AS BUILD`,
+      /redefines build stage BUILD/u,
+    ],
+    [
+      "missing FROM",
+      `# FROM ${reviewed} AS build`,
+      /has no FROM instruction/u,
+    ],
+  ]) {
+    assert.throws(
+      () =>
+        validateDockerfileBaseReferences(
+          `${label}.Dockerfile`,
+          dockerfile,
+          new Set([reviewed]),
+        ),
+      expected,
+      label,
+    );
+  }
+});
+
+test("release scope separates four runtime images from QA infrastructure", () => {
+  assert.deepEqual(runTool("service-scope", "arm64-candidate-four"), {
+    schemaVersion: 1,
+    evidenceClass: "arm64-candidate-not-release-attestation",
+    selectedScope: "arm64-candidate-four",
+    selectedServices: [
+      "server",
+      "math",
+      "client-participation-alpha",
+      "nginx-proxy",
+    ],
+    productionRuntime: [
+      "server",
+      "math",
+      "client-participation-alpha",
+      "nginx-proxy",
+    ],
+    qaInfrastructure: ["postgres", "oidc-simulator"],
+    allStaging: [
+      "postgres",
+      "oidc-simulator",
+      "server",
+      "math",
+      "client-participation-alpha",
+      "nginx-proxy",
+    ],
+  });
+});
+
+test("scan gate requires the complete exact service and scanner provenance set", () => {
+  const { directory, images } = createSyntheticEvidenceDirectory();
+  try {
+    const complete = runTool("scan-summary", directory);
+    assert.equal(complete.arm64CandidateGate.status, "pass");
+    assert.equal(complete.releaseAttestation.status, "not-created");
+    assert.deepEqual(
+      complete.images.map(({ service }) => service),
+      images.map(({ service }) => service),
+    );
+
+    writeJson(join(directory, "image-index.json"), {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      projectName: "fncp-synthetic",
+      scanScope: "arm64-candidate-four",
+      images: images.slice(1),
+    });
+    assert.throws(
+      () =>
+        execFileSync("node", [evidenceTool, "scan-summary", directory], {
+          cwd: repositoryRoot,
+          stdio: "pipe",
+        }),
+      /Command failed/u,
+    );
+
+    const restored = {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      projectName: "fncp-synthetic",
+      scanScope: "arm64-candidate-four",
+      images,
+    };
+    writeJson(join(directory, "image-index.json"), restored);
+    const tamperedPath = join(
+      directory,
+      "scan",
+      "client-participation-alpha.grype.json",
+    );
+    const tampered = JSON.parse(readFileSync(tamperedPath, "utf8"));
+    tampered.descriptor.db.status.from =
+      "https://grype.anchore.io/databases/different";
+    writeJson(tamperedPath, tampered);
+    assert.throws(
+      () =>
+        execFileSync("node", [evidenceTool, "scan-summary", directory], {
+          cwd: repositoryRoot,
+          stdio: "pipe",
+        }),
+      /Command failed/u,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("source manifest covers the complete non-ignored working tree", () => {
@@ -112,12 +380,36 @@ test("source manifest covers the complete non-ignored working tree", () => {
 
 test("collector is local-only, immutable-tooling and no-overwrite", () => {
   assert.match(collector, /Refusing to overwrite existing evidence/u);
-  assert.match(collector, /docker compose[\s\S]+build --pull/u);
+  assert.match(
+    collector,
+    /PRODUCTION_SERVICES="server math client-participation-alpha nginx-proxy"/u,
+  );
+  assert.match(
+    collector,
+    /QA_INFRASTRUCTURE_SERVICES="postgres oidc-simulator"/u,
+  );
+  assert.match(collector, /FNCP_SCAN_SCOPE/u);
+  assert.match(collector, /arm64-candidate-four/u);
+  assert.match(collector, /staging-six/u);
+  assert.match(collector, /DOCKER_DEFAULT_PLATFORM="\$PLATFORM"/u);
+  assert.match(evidenceToolSource, /inspection\.Architecture/u);
+  assert.match(evidenceToolSource, /expected \$\{lock\.buildPlatform\}/u);
+  assert.match(collector, /build --pull --no-cache/u);
+  assert.match(
+    collector,
+    /ARM64 candidate evidence cannot use FNCP_SKIP_SCAN_BUILD=1/u,
+  );
+  assert.match(collector, /scope\.json/u);
+  assert.match(collector, /build\.log/u);
   assert.match(collector, /FNCP_SKIP_SCAN_BUILD/u);
   assert.match(collector, /docker run --rm/u);
   assert.match(collector, /scanner-ref syft/u);
   assert.match(collector, /scanner-ref grype/u);
   assert.match(collector, /GRYPE_DB_CACHE_DIR=\/grype-cache/u);
+  assert.match(collector, /GRYPE_DB_AUTO_UPDATE=false/u);
+  assert.match(collector, /GRYPE_CHECK_FOR_APP_UPDATE=false/u);
+  assert.match(collector, /SYFT_CHECK_FOR_APP_UPDATE=false/u);
+  assert.match(collector, /grype-db-cache\.tar\.gz/u);
   assert.match(
     collector,
     /\$OUTPUT_DIR\/grype-cache:\/grype-cache/u,
@@ -130,6 +422,42 @@ test("collector is local-only, immutable-tooling and no-overwrite", () => {
   assert.doesNotMatch(collector, /\b(?:aws|gcloud|az)\b/u);
 });
 
+test("PR gate builds and inspects every runtime image without publication actions", () => {
+  const runtimeJob = ciWorkflow.match(
+    /^  runtime-images:\n([\s\S]*?)(?=^  fncp-pr-gate:)/mu,
+  )?.[0];
+  assert.ok(runtimeJob, "missing runtime-images CI job");
+  for (const service of [
+    "server",
+    "math",
+    "client-participation-alpha",
+    "nginx-proxy",
+  ]) {
+    assert.match(runtimeJob, new RegExp(`          - ${service}$`, "mu"));
+  }
+  assert.match(runtimeJob, /docker build --pull --target prod/u);
+  assert.match(runtimeJob, /docker build --pull --target runtime/u);
+  assert.match(runtimeJob, /configured_user/u);
+  assert.match(runtimeJob, /test "\$\(id -u\)" -ne 0/u);
+  assert.match(runtimeJob, /src\/prompts\/moderation\/script\.xml/u);
+  assert.match(runtimeJob, /dist\/server\/entry\.mjs/u);
+  assert.match(runtimeJob, /--publish 127\.0\.0\.1:18080:8080/u);
+  assert.match(runtimeJob, /test "\$status" = 404/u);
+  assert.doesNotMatch(
+    runtimeJob,
+    /\bdocker\s+(?:login|push)\b|\baws\b|\bgcloud\b|\bkubectl\b|\bhelm\b/u,
+  );
+  assert.match(
+    ciWorkflow,
+    /needs: \[contracts, server, participant-alpha, math, runtime-images\]/u,
+  );
+  assert.equal(
+    [...ciWorkflow.matchAll(/persist-credentials: false/gu)].length,
+    5,
+    "every checkout must keep its GitHub credential out of build contexts",
+  );
+});
+
 test("generated participant JWT keys cannot enter the server build context", () => {
   assert.match(serverDockerignore, /^keys\/$/mu);
 });
@@ -137,16 +465,43 @@ test("generated participant JWT keys cannot enter the server build context", () 
 test("server final runtime prunes direct development dependencies", () => {
   const buildIndex = serverDockerfile.indexOf("RUN npm run build");
   const pruneIndex = serverDockerfile.indexOf("RUN npm prune --omit=dev");
+  const runtimeStageIndex = serverDockerfile.indexOf(" AS prod");
   const removeNpmIndex = serverDockerfile.indexOf(
-    "rm -rf /usr/local/lib/node_modules/npm",
+    "/usr/local/lib/node_modules/npm",
+    runtimeStageIndex,
   );
+  const copyDistIndex = serverDockerfile.indexOf(
+    "COPY --from=build --chown=node:node /app/dist ./dist",
+  );
+  const moderationAssetIndex = serverDockerfile.indexOf(
+    "/app/src/prompts/moderation/script.xml",
+  );
+  const reportSystemAssetIndex = serverDockerfile.indexOf(
+    "/app/src/prompts/report_experimental/system.xml",
+  );
+  const userIndex = serverDockerfile.indexOf("USER node");
   const commandIndex = serverDockerfile.indexOf(
     'CMD ["node", "--max_old_space_size=2048", "--gc_interval=100", "dist/index.js"]',
   );
   assert.ok(buildIndex >= 0);
   assert.ok(pruneIndex > buildIndex);
-  assert.ok(removeNpmIndex > pruneIndex);
-  assert.ok(commandIndex > removeNpmIndex);
+  assert.ok(runtimeStageIndex > pruneIndex);
+  assert.ok(removeNpmIndex > runtimeStageIndex);
+  assert.ok(copyDistIndex > removeNpmIndex);
+  assert.ok(moderationAssetIndex > copyDistIndex);
+  assert.ok(reportSystemAssetIndex > moderationAssetIndex);
+  assert.ok(userIndex > reportSystemAssetIndex);
+  assert.ok(commandIndex > userIndex);
+  assert.doesNotMatch(
+    serverDockerfile.slice(runtimeStageIndex),
+    /^COPY (?!-{2}from=build\b)/mu,
+  );
+  assert.doesNotMatch(serverDockerfile.slice(runtimeStageIndex), /COPY \. \./u);
+  assert.doesNotMatch(
+    serverDockerfile.slice(runtimeStageIndex),
+    /package-lock\.json/u,
+  );
+  assert.match(serverDockerfile, /find dist -type f -name '\*\.map' -delete/u);
 });
 
 test("participant image build does not submit Astro telemetry", () => {
@@ -213,12 +568,29 @@ test("other Node final runtimes prune direct development dependencies", () => {
 
 test("participant-facing Node runtimes remove the global npm CLI", () => {
   for (const dockerfile of [serverDockerfile, alphaDockerfile]) {
-    assert.match(
-      dockerfile,
-      /rm -rf \/usr\/local\/lib\/node_modules\/npm \/usr\/local\/bin\/npm \/usr\/local\/bin\/npx/u,
-    );
+    for (const path of [
+      "/usr/local/lib/node_modules/npm",
+      "/usr/local/bin/npm",
+      "/usr/local/bin/npx",
+    ]) {
+      assert.match(dockerfile, new RegExp(path, "u"));
+    }
   }
   assert.match(collector, /globalNpmRuntimePresent/u);
+  assert.match(collector, /packageManagerRuntimePathsPresent/u);
+  for (const binary of ["corepack", "pnpm", "pnpx", "yarn", "yarnpkg"]) {
+    assert.match(serverDockerfile, new RegExp(`/usr/local/bin/${binary}`, "u"));
+    assert.match(alphaDockerfile, new RegExp(`/usr/local/bin/${binary}`, "u"));
+  }
+});
+
+test("participant-facing Node runtimes execute as non-root users", () => {
+  const serverRuntimeStage = serverDockerfile.indexOf(" AS prod");
+  const alphaRuntimeStage = alphaDockerfile.indexOf(" AS runtime");
+  assert.ok(serverRuntimeStage >= 0);
+  assert.ok(alphaRuntimeStage >= 0);
+  assert.match(serverDockerfile.slice(serverRuntimeStage), /^USER node$/mu);
+  assert.match(alphaDockerfile.slice(alphaRuntimeStage), /^USER node$/mu);
 });
 
 test("participant runtime evidence rejects Sharp and esbuild package families", () => {

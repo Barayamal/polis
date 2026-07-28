@@ -1580,7 +1580,7 @@ helpersInitialized.then(
       handle_GET_reports
     );
 
-    // FNCP's five-image runtime intentionally excludes the experimental
+    // FNCP's four-image Pol.is runtime intentionally excludes the experimental
     // reportNarrative route and its separate client-report/report_bundle
     // consumers. See deploy/fncp/D11-SERVER-PRODUCTION-TREE-REMEDIATION-EVIDENCE-2026-07-28.md.
     app.post(

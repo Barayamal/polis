@@ -22,6 +22,11 @@ const colimaStart = await readFile(
   join(deployDir, "start-colima-staging.sh"),
   "utf8"
 );
+const prepare = await readFile(join(deployDir, "prepare-staging.sh"), "utf8");
+const stagingEnvironment = await readFile(
+  join(deployDir, "staging.env.example"),
+  "utf8"
+);
 const smoke = await readFile(join(deployDir, "smoke-test.sh"), "utf8");
 
 function composeServiceBlock(serviceName) {
@@ -48,7 +53,7 @@ test("staging Compose declares a synthetic loopback-only, non-internet boundary"
   assert.deepEqual(publishedPorts.sort(), [
     "127.0.0.1:3000:3000",
     "127.0.0.1:5500:5000",
-    "127.0.0.1:8088:80",
+    "127.0.0.1:8088:8080",
   ]);
 
   assert.match(compose, /DEV_MODE: "false"/);
@@ -61,6 +66,15 @@ test("staging Compose declares a synthetic loopback-only, non-internet boundary"
     assert.match(composeServiceBlock(nodeService), /NODE_ENV: production/);
   }
   assert.match(compose, /oidc-simulator:/);
+
+  const server = composeServiceBlock("server");
+  assert.match(server, /user: "\$\{SERVER_RUNTIME_UID\}:\$\{SERVER_RUNTIME_GID\}"/);
+  assert.match(server, /NODE_EXTRA_CA_CERTS: \/run\/fncp-ca\/rootCA\.pem/);
+  assert.match(server, /\.\/certs:\/run\/fncp-ca:ro/);
+  assert.match(stagingEnvironment, /SERVER_RUNTIME_UID=REPLACE_WITH_LOCAL_UID/);
+  assert.match(stagingEnvironment, /SERVER_RUNTIME_GID=REPLACE_WITH_LOCAL_GID/);
+  assert.match(prepare, /server_runtime_uid=\$\(id -u\)/);
+  assert.match(prepare, /server_runtime_gid=\$\(id -g\)/);
 });
 
 test("minimal FNCP path ships alpha assets without full legacy bundles", () => {
@@ -68,6 +82,9 @@ test("minimal FNCP path ships alpha assets without full legacy bundles", () => {
   assert.doesNotMatch(compose, /file-server\/Dockerfile/);
   assert.match(compose, /dockerfile: nginx\/Dockerfile/);
   assert.match(compose, /STATIC_FILES_HOST: client-participation-alpha/);
+  const alpha = composeServiceBlock("client-participation-alpha");
+  assert.match(alpha, /PUBLIC_AUTH_NAMESPACE: \$\{AUTH_NAMESPACE\}/);
+  assert.doesNotMatch(alpha, /^\s+AUTH_NAMESPACE:/mu);
   assert.deepEqual(dockerignore.trim().split("\n"), [
     "**",
     "!nginx/",
@@ -147,6 +164,8 @@ test("public QA proxy exposes only alpha assets and six method-route capabilitie
     /location \/ \{[\s\S]*proxy_pass http:\/\/server:5000/
   );
   assert.doesNotMatch(proxyConfig, /\blisten\s+443\b|\bssl_certificate\b/);
+  assert.match(proxyConfig, /\blisten\s+8080\s+default_server\b/);
+  assert.match(proxyDockerfile, /^USER nginx$/mu);
 });
 
 test("cold-start helper validates and transfers disposable participant keys", () => {
@@ -161,7 +180,7 @@ test("cold-start helper validates and transfers disposable participant keys", ()
   );
   assert.match(
     colimaStart,
-    /docker cp "\$keys_dir" "\$server_container:\/app\/keys"/
+    /docker cp -a "\$keys_dir" "\$server_container:\/app\/keys"/
   );
 });
 

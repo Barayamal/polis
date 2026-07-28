@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker.io/docker/dockerfile:1.4@sha256:9ba7531bd80fb0a858632727cf7a112fbfd19b17e94c4e84ced81e24ef1a0dbc
 FROM docker.io/library/node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS build
 WORKDIR /app
 
@@ -62,7 +62,17 @@ ENV ASTRO_TELEMETRY_DISABLED=1
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 
-RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+RUN rm -rf \
+  /usr/local/lib/node_modules/npm \
+  /usr/local/bin/corepack \
+  /usr/local/bin/npm \
+  /usr/local/bin/npx \
+  /usr/local/bin/pnpm \
+  /usr/local/bin/pnpx \
+  /usr/local/bin/yarn \
+  /usr/local/bin/yarnpkg
+
+USER node
 
 EXPOSE 4321
 CMD ["node", "dist/server/entry.mjs"]

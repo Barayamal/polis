@@ -73,7 +73,7 @@ services:
       DEV_MODE: "false"
       ENABLE_TELEMETRY: "false"
       NODE_ENV: production
-      NODE_EXTRA_CA_CERTS: /root/.simulacrum/certs/rootCA.pem
+      NODE_EXTRA_CA_CERTS: /run/fncp-ca/rootCA.pem
       STATIC_FILES_ADMIN_PORT: "4321"
       STATIC_FILES_HOST: client-participation-alpha
       STATIC_FILES_PARTICIPATION_PORT: "4321"
@@ -81,8 +81,11 @@ services:
     ports:
       - "127.0.0.1:5500:5000"
     restart: unless-stopped
+    # Local QA bind mounts are owned by the invoking user. Match that same
+    # non-root numeric identity; production uses managed secret delivery.
+    user: "${SERVER_RUNTIME_UID}:${SERVER_RUNTIME_GID}"
     volumes:
-      - ./certs:/root/.simulacrum/certs:ro
+      - ./certs:/run/fncp-ca:ro
       - ../../server/keys:/app/keys:ro
 
   math:
@@ -105,9 +108,9 @@ services:
       context: ../../client-participation-alpha
       dockerfile: Dockerfile
       args:
-        AUTH_NAMESPACE: ${AUTH_NAMESPACE}
         OIDC_CACHE_KEY_ID_TOKEN_SUFFIX: ${OIDC_CACHE_KEY_ID_TOKEN_SUFFIX}
         OIDC_CACHE_KEY_PREFIX: ${OIDC_CACHE_KEY_PREFIX}
+        PUBLIC_AUTH_NAMESPACE: ${AUTH_NAMESPACE}
         PUBLIC_SERVICE_URL: ${PUBLIC_SERVICE_URL}
     depends_on: [server]
     environment:
@@ -135,7 +138,7 @@ services:
       org.barayamal.fncp.internet-ready: "false"
     networks: [fncp-internal, fncp-loopback]
     ports:
-      - "127.0.0.1:8088:80"
+      - "127.0.0.1:8088:8080"
     restart: unless-stopped
 
 networks:

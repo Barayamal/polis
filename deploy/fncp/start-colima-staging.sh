@@ -49,8 +49,8 @@ if [ -z "$oidc_container" ] || [ -z "$server_container" ]; then
 fi
 
 docker cp "$cert_dir/." "$oidc_container:/root/.simulacrum/certs/"
-docker cp "$cert_dir/rootCA.pem" "$server_container:/tmp/fncp-rootCA.pem"
-docker cp "$keys_dir" "$server_container:/app/keys"
+docker cp -a "$cert_dir/rootCA.pem" "$server_container:/tmp/fncp-rootCA.pem"
+docker cp -a "$keys_dir" "$server_container:/app/keys"
 
 compose start
 compose ps

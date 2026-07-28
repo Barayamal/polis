@@ -15,6 +15,13 @@ const repositoryRoot = resolve(deployDirectory, "../..");
 const lockPath = join(deployDirectory, "image-security.lock.json");
 const lock = JSON.parse(readFileSync(lockPath, "utf8"));
 const digestPattern = /^sha256:[a-f0-9]{64}$/u;
+const productionServiceNames = [
+  "server",
+  "math",
+  "client-participation-alpha",
+  "nginx-proxy",
+];
+const qaInfrastructureServiceNames = ["postgres", "oidc-simulator"];
 const serviceNames = [
   "postgres",
   "oidc-simulator",
@@ -23,6 +30,10 @@ const serviceNames = [
   "client-participation-alpha",
   "nginx-proxy",
 ];
+const scanScopes = {
+  "arm64-candidate-four": productionServiceNames,
+  "staging-six": serviceNames,
+};
 const forbiddenDevelopmentPackageSentinels = {
   server: ["jest", "nodemon", "prettier", "supertest", "ts-jest"],
   "client-participation-alpha": [
@@ -51,6 +62,60 @@ function run(command, args) {
   }).trim();
 }
 
+export function validateDockerfileBaseReferences(
+  dockerfilePath,
+  dockerfile,
+  reviewedReferences,
+) {
+  const reviewed = new Set(reviewedReferences);
+  const observedExternal = new Set();
+  const stageAliases = new Set();
+  let fromCount = 0;
+
+  for (const [index, line] of dockerfile.split(/\r?\n/u).entries()) {
+    if (!/^\s*FROM\b/iu.test(line)) continue;
+    fromCount += 1;
+    const match = line.match(
+      /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+([A-Za-z][A-Za-z0-9_.-]*))?\s*$/iu,
+    );
+    if (!match) {
+      fail(
+        `${dockerfilePath}:${index + 1} has a malformed or unsupported FROM instruction`,
+      );
+    }
+
+    const [, reference, alias] = match;
+    const normalizedReference = reference.toLowerCase();
+    if (!stageAliases.has(normalizedReference)) {
+      if (!reviewed.has(reference)) {
+        fail(
+          `${dockerfilePath}:${index + 1} uses unreviewed external base image ${reference}`,
+        );
+      }
+      observedExternal.add(reference);
+    }
+
+    if (alias) {
+      const normalizedAlias = alias.toLowerCase();
+      if (stageAliases.has(normalizedAlias)) {
+        fail(
+          `${dockerfilePath}:${index + 1} redefines build stage ${alias}`,
+        );
+      }
+      stageAliases.add(normalizedAlias);
+    }
+  }
+
+  if (fromCount === 0) {
+    fail(`${dockerfilePath} has no FROM instruction`);
+  }
+  for (const reference of reviewed) {
+    if (!observedExternal.has(reference)) {
+      fail(`${dockerfilePath} does not use reviewed base image ${reference}`);
+    }
+  }
+}
+
 function validateLock() {
   if (lock.schemaVersion !== 1) {
     fail("image-security.lock.json must use schemaVersion 1");
@@ -64,8 +129,16 @@ function validateLock() {
   if (lock.baseImages.length !== 6 || lock.scannerImages.length !== 2) {
     fail("The lock must contain six base images and two scanner images");
   }
+  if (
+    lock.dockerfileFrontend?.tag !== "docker.io/docker/dockerfile:1.4" ||
+    !digestPattern.test(lock.dockerfileFrontend?.indexDigest ?? "") ||
+    !digestPattern.test(lock.dockerfileFrontend?.arm64Digest ?? "")
+  ) {
+    fail("The reviewed Dockerfile frontend must be locked by digest");
+  }
 
   const componentNames = new Set();
+  const reviewedReferencesByDockerfile = new Map();
   for (const image of lock.baseImages) {
     if (componentNames.has(image.component)) {
       fail(`Duplicate base-image component: ${image.component}`);
@@ -78,13 +151,35 @@ function validateLock() {
       fail(`Invalid arm64 digest for ${image.component}`);
     }
 
-    const dockerfilePath = resolve(repositoryRoot, image.dockerfile);
-    const dockerfile = readFileSync(dockerfilePath, "utf8");
     const exactReference = `${image.tag}@${image.indexDigest}`;
-    if (!dockerfile.includes(exactReference)) {
-      fail(
-        `${relative(repositoryRoot, dockerfilePath)} does not pin ${exactReference}`,
-      );
+    const reviewedReferences =
+      reviewedReferencesByDockerfile.get(image.dockerfile) ?? new Set();
+    reviewedReferences.add(exactReference);
+    reviewedReferencesByDockerfile.set(image.dockerfile, reviewedReferences);
+  }
+  for (const [dockerfilePath, reviewedReferences] of
+    reviewedReferencesByDockerfile) {
+    const dockerfile = readFileSync(
+      resolve(repositoryRoot, dockerfilePath),
+      "utf8",
+    );
+    validateDockerfileBaseReferences(
+      relative(repositoryRoot, resolve(repositoryRoot, dockerfilePath)),
+      dockerfile,
+      reviewedReferences,
+    );
+  }
+  const exactFrontendReference =
+    `# syntax=${lock.dockerfileFrontend.tag}` +
+    `@${lock.dockerfileFrontend.indexDigest}`;
+  for (const path of [
+    "server/Dockerfile",
+    "client-participation-alpha/Dockerfile",
+    "oidc-simulator/Dockerfile",
+  ]) {
+    const dockerfile = readFileSync(resolve(repositoryRoot, path), "utf8");
+    if (!dockerfile.startsWith(exactFrontendReference)) {
+      fail(`${path} does not pin ${exactFrontendReference}`);
     }
   }
 
@@ -120,6 +215,30 @@ function scannerReference(name) {
     fail(`Unknown scanner: ${name}`);
   }
   return `${image.tag}@${image.indexDigest}`;
+}
+
+function servicesForScanScope(scopeName) {
+  const services = scanScopes[scopeName];
+  if (!services) {
+    fail(
+      `Unknown scan scope: ${scopeName}. Expected one of ` +
+        Object.keys(scanScopes).join(", "),
+    );
+  }
+  return services;
+}
+
+function serviceScope(scopeName = "arm64-candidate-four") {
+  const selectedServices = servicesForScanScope(scopeName);
+  return {
+    schemaVersion: 1,
+    evidenceClass: "arm64-candidate-not-release-attestation",
+    selectedScope: scopeName,
+    selectedServices,
+    productionRuntime: productionServiceNames,
+    qaInfrastructure: qaInfrastructureServiceNames,
+    allStaging: serviceNames,
+  };
 }
 
 function sourceFiles() {
@@ -179,17 +298,29 @@ function sourceManifest() {
   };
 }
 
-function imageIndex(projectName) {
+function imageIndex(projectName, scopeName = "arm64-candidate-four") {
   validateLock();
+  const selectedServices = servicesForScanScope(scopeName);
+  const expectedArchitecture = lock.buildPlatform.split("/")[1];
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     projectName,
-    images: serviceNames.map((service) => {
+    scanScope: scopeName,
+    images: selectedServices.map((service) => {
       const reference = `${projectName}-${service}:latest`;
       const [inspection] = JSON.parse(
         run("docker", ["image", "inspect", reference]),
       );
+      if (
+        inspection.Architecture !== expectedArchitecture ||
+        inspection.Os !== "linux"
+      ) {
+        fail(
+          `${service} is ${inspection.Os}/${inspection.Architecture}; ` +
+            `expected ${lock.buildPlatform}`,
+        );
+      }
       return {
         service,
         reference,
@@ -240,10 +371,68 @@ function fixedCounts(matches) {
   );
 }
 
+function emptyTotals() {
+  return {
+    components: 0,
+    matches: 0,
+    severities: {
+      Critical: 0,
+      High: 0,
+      Medium: 0,
+      Low: 0,
+      Negligible: 0,
+      Unknown: 0,
+    },
+  };
+}
+
+function summariseImages(images) {
+  return images.reduce((summary, image) => {
+    summary.components += image.sbom.components;
+    summary.matches += image.vulnerabilityScan.matches;
+    for (const [severity, count] of Object.entries(
+      image.vulnerabilityScan.severities,
+    )) {
+      summary.severities[severity] =
+        (summary.severities[severity] ?? 0) + count;
+    }
+    return summary;
+  }, emptyTotals());
+}
+
 function scanSummary(evidenceDirectory) {
+  validateLock();
   const imageIndexPath = join(evidenceDirectory, "image-index.json");
   const index = readJson(imageIndexPath);
+  if (index.schemaVersion !== 1) {
+    fail("image-index.json must use schemaVersion 1");
+  }
+  const expectedServices = servicesForScanScope(index.scanScope);
+  const actualServices = (index.images ?? []).map(({ service }) => service);
+  if (
+    actualServices.length !== new Set(actualServices).size ||
+    JSON.stringify(actualServices) !== JSON.stringify(expectedServices)
+  ) {
+    fail(
+      `image-index.json must contain the exact ${index.scanScope} service set`,
+    );
+  }
+  const syftVersion = lock.scannerImages.find(
+    ({ name }) => name === "syft",
+  )?.version;
+  const grypeVersion = lock.scannerImages.find(
+    ({ name }) => name === "grype",
+  )?.version;
+  const grypeDatabaseFingerprints = new Set();
+  const generatedAt = Date.now();
   const images = index.images.map((image) => {
+    if (
+      !digestPattern.test(image.imageId) ||
+      image.architecture !== lock.buildPlatform.split("/")[1] ||
+      image.os !== "linux"
+    ) {
+      fail(`${image.service} image metadata does not match the locked platform`);
+    }
     const sbomPath = join(
       evidenceDirectory,
       "sbom",
@@ -256,6 +445,47 @@ function scanSummary(evidenceDirectory) {
     );
     const sbom = readJson(sbomPath);
     const scan = readJson(scanPath);
+    const syft = sbom.metadata?.tools?.components?.find(
+      ({ name }) => name === "syft",
+    );
+    if (
+      sbom.bomFormat !== "CycloneDX" ||
+      syft?.version !== syftVersion ||
+      sbom.metadata?.component?.type !== "container" ||
+      `sha256:${sbom.metadata?.component?.version}` !== image.imageId
+    ) {
+      fail(`${image.service} SBOM is not bound to the locked Syft/image subject`);
+    }
+    const sbomService = sbom.metadata?.properties?.find(
+      ({ name }) => name === "syft:image:labels:com.docker.compose.service",
+    )?.value;
+    if (sbomService !== image.service) {
+      fail(`${image.service} SBOM has the wrong Compose service label`);
+    }
+    const database = scan.descriptor?.db;
+    const databaseStatus = database?.status;
+    const databaseBuilt = Date.parse(databaseStatus?.built ?? "");
+    if (
+      scan.descriptor?.name !== "grype" ||
+      scan.descriptor?.version !== grypeVersion ||
+      scan.descriptor?.configuration?.["check-for-app-update"] !== false ||
+      scan.descriptor?.configuration?.db?.["auto-update"] !== false ||
+      scan.source?.type !== "image" ||
+      `sha256:${scan.source?.target?.manifestDigest}` !== image.imageId ||
+      scan.source?.target?.labels?.["com.docker.compose.service"] !==
+        image.service ||
+      databaseStatus?.valid !== true ||
+      !databaseStatus?.schemaVersion ||
+      !databaseStatus?.from ||
+      !Number.isFinite(databaseBuilt) ||
+      databaseBuilt > generatedAt + 5 * 60 * 1000 ||
+      generatedAt - databaseBuilt > 5 * 24 * 60 * 60 * 1000
+    ) {
+      fail(
+        `${image.service} scan is not bound to the locked Grype/image/database subject`,
+      );
+    }
+    grypeDatabaseFingerprints.add(sha256(JSON.stringify(database)));
     const matches = scan.matches ?? [];
     const componentNames = new Set(
       (sbom.components ?? []).map(({ name }) => name),
@@ -267,6 +497,9 @@ function scanSummary(evidenceDirectory) {
     );
     return {
       service: image.service,
+      releaseScope: productionServiceNames.includes(image.service)
+        ? "production-runtime"
+        : "qa-infrastructure",
       localImageId: image.imageId,
       architecture: image.architecture,
       os: image.os,
@@ -287,32 +520,19 @@ function scanSummary(evidenceDirectory) {
       },
     };
   });
+  if (grypeDatabaseFingerprints.size !== 1) {
+    fail("Every image scan must use the exact same Grype database");
+  }
 
-  const totals = images.reduce(
-    (summary, image) => {
-      summary.components += image.sbom.components;
-      summary.matches += image.vulnerabilityScan.matches;
-      for (const [severity, count] of Object.entries(
-        image.vulnerabilityScan.severities,
-      )) {
-        summary.severities[severity] =
-          (summary.severities[severity] ?? 0) + count;
-      }
-      return summary;
-    },
-    {
-      components: 0,
-      matches: 0,
-      severities: {
-        Critical: 0,
-        High: 0,
-        Medium: 0,
-        Low: 0,
-        Negligible: 0,
-        Unknown: 0,
-      },
-    },
+  const productionImages = images.filter(
+    ({ releaseScope }) => releaseScope === "production-runtime",
   );
+  const qaOnlyImages = images.filter(
+    ({ releaseScope }) => releaseScope === "qa-infrastructure",
+  );
+  const totals = summariseImages(images);
+  const productionTotals = summariseImages(productionImages);
+  const qaOnlyTotals = summariseImages(qaOnlyImages);
   const firstScan = readJson(
     join(evidenceDirectory, "scan", `${images[0].service}.grype.json`),
   );
@@ -323,10 +543,14 @@ function scanSummary(evidenceDirectory) {
       package: packageName,
     })),
   );
+  const productionDevelopmentPackageSentinelsPresent =
+    developmentPackageSentinelsPresent.filter(({ service }) =>
+      productionServiceNames.includes(service),
+    );
   const gate =
-    totals.severities.Critical === 0 &&
-    totals.severities.High === 0 &&
-    developmentPackageSentinelsPresent.length === 0
+    productionTotals.severities.Critical === 0 &&
+    productionTotals.severities.High === 0 &&
+    productionDevelopmentPackageSentinelsPresent.length === 0
       ? "pass"
       : "fail";
 
@@ -336,29 +560,58 @@ function scanSummary(evidenceDirectory) {
     sourceManifest: "source-manifest.json",
     imageIndex: "image-index.json",
     scannerLock: "image-security.lock.json",
+    scannerProvenance: {
+      syftVersion,
+      grypeVersion,
+      grypeDatabaseSha256: [...grypeDatabaseFingerprints][0],
+    },
     grypeDatabase: database,
     images,
     totals,
-    productionGate: {
+    releaseScopes: {
+      productionRuntime: {
+        services: productionServiceNames,
+        totals: productionTotals,
+      },
+      qaInfrastructure: {
+        services: qaInfrastructureServiceNames,
+        totals: qaOnlyTotals,
+      },
+    },
+    arm64CandidateGate: {
       status: gate,
       policy:
-        "Zero Critical and zero High matches across all six images, " +
-        "with no Node runtime development-package sentinels",
+        "Zero Critical and zero High matches across the four Pol.is " +
+        "ARM64 runtime candidates, with no Node runtime development-package " +
+        "sentinels. Managed RDS is infrastructure rather than an image; the " +
+        "disposable PostgreSQL and OIDC simulator images are QA-only.",
       developmentPackageSentinels:
         forbiddenDevelopmentPackageSentinels,
-      developmentPackageSentinelsPresent,
+      developmentPackageSentinelsPresent:
+        productionDevelopmentPackageSentinelsPresent,
+    },
+    releaseAttestation: {
+      status: "not-created",
+      reasons: [
+        "deployment architecture and release digests are not bound",
+        "images are local and not published to an immutable registry",
+        "multi-architecture verification is incomplete",
+      ],
     },
   };
 }
 
 function main() {
-  const [command, argument] = process.argv.slice(2);
+  const [command, argument, secondary] = process.argv.slice(2);
   switch (command) {
     case "validate-lock":
       console.log(JSON.stringify(validateLock(), null, 2));
       return;
     case "scanner-ref":
       console.log(scannerReference(argument));
+      return;
+    case "service-scope":
+      console.log(JSON.stringify(serviceScope(argument), null, 2));
       return;
     case "source-manifest":
       console.log(JSON.stringify(sourceManifest(), null, 2));
@@ -367,7 +620,7 @@ function main() {
       if (!argument) {
         fail("image-index requires a Compose project name");
       }
-      console.log(JSON.stringify(imageIndex(argument), null, 2));
+      console.log(JSON.stringify(imageIndex(argument, secondary), null, 2));
       return;
     case "scan-summary":
       if (!argument) {
@@ -391,10 +644,15 @@ function main() {
     default:
       fail(
         "Usage: image-security-evidence.mjs " +
-          "{validate-lock|scanner-ref|source-manifest|image-index|" +
+          "{validate-lock|scanner-ref|service-scope|source-manifest|image-index|" +
           "scan-summary|image-id}",
       );
   }
 }
 
-main();
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main();
+}
