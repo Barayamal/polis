@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -108,6 +108,7 @@ function createSyntheticEvidenceDirectory() {
   const directory = mkdtempSync(join(tmpdir(), "fncp-image-evidence-"));
   mkdirSync(join(directory, "sbom"));
   mkdirSync(join(directory, "scan"));
+  mkdirSync(join(directory, "runtime-assertions"));
   const services = [
     "server",
     "math",
@@ -191,6 +192,41 @@ function createSyntheticEvidenceDirectory() {
       },
       matches: [],
     });
+    const assertion = {
+      status: "pass",
+      artifact: image.service,
+      effectiveUser: "non-root",
+    };
+    if (["server", "client-participation-alpha"].includes(image.service)) {
+      Object.assign(assertion, {
+        developmentPackageSentinelsPresent: [],
+        generatedKeysDirectoryPresent: false,
+        globalNpmRuntimePresent: false,
+        packageManagerRuntimePathsPresent: [],
+        buildOnlyPackagePathsPresent: [],
+        expectedAlpinePackages: [],
+        alpinePackageMismatches: [],
+      });
+    } else if (image.service === "math") {
+      assertion.clojureBuildToolPresent = false;
+    } else if (image.service === "nginx-proxy") {
+      assertion.reviewedConfigPresent = true;
+    } else {
+      Object.assign(assertion, {
+        migrationRunner: "/usr/local/bin/fncp-run-migrations",
+        migrationRunnerPresent: true,
+        requiredToolsPresent: true,
+        serverAndLifecycleToolsPresent: false,
+        initdbHooksPresent: false,
+        topLevelMigrationsOnly: true,
+        psqlPresent: true,
+        postgresServerPresent: false,
+      });
+    }
+    writeJson(
+      join(directory, "runtime-assertions", `${image.service}.json`),
+      assertion,
+    );
   }
   return { directory, images };
 }
@@ -322,6 +358,9 @@ test("scan gate requires the complete exact service and scanner provenance set",
       complete.images.map(({ service }) => service),
       images.map(({ service }) => service),
     );
+    for (const image of complete.images) {
+      assert.match(image.runtimeAssertionSha256, /^[a-f0-9]{64}$/u);
+    }
 
     writeJson(join(directory, "image-index.json"), {
       schemaVersion: 1,
@@ -364,6 +403,81 @@ test("scan gate requires the complete exact service and scanner provenance set",
         }),
       /Command failed/u,
     );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("production runtime assertions are required, exact and tamper-evident", () => {
+  for (const [service, mutate, message] of [
+    [
+      "server",
+      (assertion) => {
+        assertion.status = "fail";
+      },
+      /server runtime assertion is missing or failed/u,
+    ],
+    [
+      "client-participation-alpha",
+      (assertion) => {
+        assertion.buildOnlyPackagePathsPresent = ["/app/node_modules/vite"];
+      },
+      /client-participation-alpha runtime closure assertion is invalid/u,
+    ],
+    [
+      "math",
+      (assertion) => {
+        assertion.clojureBuildToolPresent = true;
+      },
+      /math runtime closure assertion is invalid/u,
+    ],
+    [
+      "nginx-proxy",
+      (assertion) => {
+        assertion.reviewedConfigPresent = false;
+      },
+      /nginx-proxy runtime configuration assertion is invalid/u,
+    ],
+    [
+      "polis-migration",
+      (assertion) => {
+        assertion.psqlPresent = false;
+      },
+      /polis-migration runtime assertion is invalid/u,
+    ],
+  ]) {
+    const { directory } = createSyntheticEvidenceDirectory();
+    try {
+      const assertionPath = join(
+        directory,
+        "runtime-assertions",
+        `${service}.json`,
+      );
+      const assertion = JSON.parse(readFileSync(assertionPath, "utf8"));
+      mutate(assertion);
+      writeJson(assertionPath, assertion);
+      const result = spawnSync(
+        "node",
+        [evidenceTool, "scan-summary", directory],
+        { cwd: repositoryRoot, encoding: "utf8" },
+      );
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, message);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+
+  const { directory } = createSyntheticEvidenceDirectory();
+  try {
+    rmSync(join(directory, "runtime-assertions", "polis-migration.json"));
+    const result = spawnSync(
+      "node",
+      [evidenceTool, "scan-summary", directory],
+      { cwd: repositoryRoot, encoding: "utf8" },
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /ENOENT/u);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -445,6 +559,19 @@ test("collector is local-only, immutable-tooling and no-overwrite", () => {
     /\$OUTPUT_DIR\/grype-cache:\/grype-cache/u,
   );
   assert.match(collector, /runtime-assertions\/\$service\.json/u);
+  assert.match(evidenceToolSource, /runtimeAssertionSha256/u);
+  for (const option of [
+    "--network none",
+    "--read-only",
+    "--cap-drop ALL",
+    "--security-opt no-new-privileges",
+  ]) {
+    assert.equal(
+      [...collector.matchAll(new RegExp(option, "gu"))].length,
+      4,
+      `${option} must isolate every runtime assertion family`,
+    );
+  }
   assert.match(collector, /generatedKeysDirectoryPresent/u);
   assert.match(collector, /developmentPackageSentinelsPresent/u);
   assert.match(collector, /TREE_STATE[\s\S]+FNCP_ALLOW_DIRTY_SOURCE/u);
@@ -477,6 +604,14 @@ test("PR gate builds and inspects every runtime image without publication action
   assert.match(runtimeJob, /test "\$\(id -u\)" -ne 0/u);
   assert.match(runtimeJob, /src\/prompts\/moderation\/script\.xml/u);
   assert.match(runtimeJob, /dist\/server\/entry\.mjs/u);
+  assert.match(
+    runtimeJob,
+    /--publish 127\.0\.0\.1:14321:4321/u,
+  );
+  assert.match(
+    runtimeJob,
+    /http:\/\/127\.0\.0\.1:14321\/[\s\S]{0,500}test "\$status" = 404/u,
+  );
   assert.match(runtimeJob, /--publish 127\.0\.0\.1:18080:8080/u);
   assert.match(runtimeJob, /test "\$status" = 404/u);
   assert.doesNotMatch(
@@ -626,14 +761,22 @@ test("participant runtime crosses only reviewed build output into a fresh stage"
   );
 
   for (const buildOnlyPath of [
+    "node_modules/@astrojs",
     "node_modules/@esbuild",
     "node_modules/@img",
+    "node_modules/@oxc-project",
+    "node_modules/@rolldown",
     "node_modules/@types",
     "node_modules/@visx/vendor/node_modules/@types",
+    "node_modules/@vitejs",
+    "node_modules/astro",
     "node_modules/astro/node_modules/@esbuild",
     "node_modules/astro/node_modules/esbuild",
     "node_modules/esbuild",
+    "node_modules/lightningcss",
+    "node_modules/rolldown",
     "node_modules/sharp",
+    "node_modules/vite",
   ]) {
     assert.ok(
       alphaDockerfile.includes(buildOnlyPath),
@@ -641,10 +784,18 @@ test("participant runtime crosses only reviewed build output into a fresh stage"
     );
   }
   assert.match(alphaDockerfile, /find node_modules -type d/u);
+  assert.match(alphaDockerfile, /-name '@astrojs'/u);
   assert.match(alphaDockerfile, /-name '@esbuild'/u);
+  assert.match(alphaDockerfile, /-name '@oxc-project'/u);
+  assert.match(alphaDockerfile, /-name '@rolldown'/u);
   assert.match(alphaDockerfile, /-name '@types'/u);
+  assert.match(alphaDockerfile, /-name '@vitejs'/u);
+  assert.match(alphaDockerfile, /-name 'astro'/u);
   assert.match(alphaDockerfile, /-name 'esbuild'/u);
+  assert.match(alphaDockerfile, /-name 'lightningcss'/u);
+  assert.match(alphaDockerfile, /-name 'rolldown'/u);
   assert.match(alphaDockerfile, /-name 'sharp'/u);
+  assert.match(alphaDockerfile, /-name 'vite'/u);
   assert.match(alphaDockerfile, /-path '\*\/@img\/sharp-\*'/u);
 });
 
@@ -697,9 +848,17 @@ test("participant runtime evidence rejects Sharp and esbuild package families", 
   assert.match(collector, /\/lib\/apk\/db\/installed/u);
   assert.match(collector, /alpinePackageMismatches/u);
   assert.match(collector, /entry\.name === "@esbuild"/u);
+  assert.match(collector, /entry\.name === "@astrojs"/u);
+  assert.match(collector, /entry\.name === "@oxc-project"/u);
+  assert.match(collector, /entry\.name === "@rolldown"/u);
   assert.match(collector, /entry\.name === "@types"/u);
+  assert.match(collector, /entry\.name === "@vitejs"/u);
+  assert.match(collector, /entry\.name === "astro"/u);
   assert.match(collector, /entry\.name === "esbuild"/u);
+  assert.match(collector, /entry\.name === "lightningcss"/u);
+  assert.match(collector, /entry\.name === "rolldown"/u);
   assert.match(collector, /entry\.name === "sharp"/u);
+  assert.match(collector, /entry\.name === "vite"/u);
   assert.match(collector, /entry\.name\.startsWith\("sharp-"\)/u);
 });
 

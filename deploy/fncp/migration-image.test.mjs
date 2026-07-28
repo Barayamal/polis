@@ -122,6 +122,7 @@ test("migration image is digest-pinned, source-bound and non-root by default", (
     );
   }
   assert.match(dockerfile, /test -x \/usr\/local\/bin\/psql/u);
+  assert.match(dockerfile, /rm -rf \/docker-entrypoint-initdb\.d/u);
   assert.doesNotMatch(dockerfile, /\bapk add\b/u);
 });
 
@@ -335,6 +336,7 @@ test("Compose and CI include migration as an isolated fifth release artifact", (
   assert.match(runtimeJob, /\bpg_createsubscriber\b/u);
   assert.match(runtimeJob, /\bpg_walsummary\b/u);
   assert.match(runtimeJob, /\bpostmaster\b/u);
+  assert.match(runtimeJob, /test ! -e \/docker-entrypoint-initdb\.d/u);
   assert.match(
     runtimeJob,
     /pg_waldump[\s\S]{0,120}postgres[\s\S]{0,120}reindexdb[\s\S]{0,120}vacuumdb vacuumlo/u,

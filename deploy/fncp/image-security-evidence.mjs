@@ -402,6 +402,56 @@ function summariseImages(images) {
   }, emptyTotals());
 }
 
+function validateRuntimeAssertion(service, assertion) {
+  if (
+    assertion.status !== "pass" ||
+    assertion.artifact !== service ||
+    assertion.effectiveUser !== "non-root"
+  ) {
+    fail(`${service} runtime assertion is missing or failed`);
+  }
+  if (["server", "client-participation-alpha"].includes(service)) {
+    for (const field of [
+      "developmentPackageSentinelsPresent",
+      "packageManagerRuntimePathsPresent",
+      "buildOnlyPackagePathsPresent",
+      "alpinePackageMismatches",
+    ]) {
+      if (!Array.isArray(assertion[field]) || assertion[field].length !== 0) {
+        fail(`${service} runtime closure assertion is invalid`);
+      }
+    }
+    if (
+      assertion.generatedKeysDirectoryPresent !== false ||
+      assertion.globalNpmRuntimePresent !== false
+    ) {
+      fail(`${service} runtime closure assertion is invalid`);
+    }
+  } else if (
+    service === "math" &&
+    assertion.clojureBuildToolPresent !== false
+  ) {
+    fail("math runtime closure assertion is invalid");
+  } else if (
+    service === "nginx-proxy" &&
+    assertion.reviewedConfigPresent !== true
+  ) {
+    fail("nginx-proxy runtime configuration assertion is invalid");
+  } else if (
+    service === "polis-migration" &&
+    (assertion.migrationRunner !== "/usr/local/bin/fncp-run-migrations" ||
+      assertion.migrationRunnerPresent !== true ||
+      assertion.requiredToolsPresent !== true ||
+      assertion.serverAndLifecycleToolsPresent !== false ||
+      assertion.initdbHooksPresent !== false ||
+      assertion.topLevelMigrationsOnly !== true ||
+      assertion.psqlPresent !== true ||
+      assertion.postgresServerPresent !== false)
+  ) {
+    fail("polis-migration runtime assertion is invalid");
+  }
+}
+
 function scanSummary(evidenceDirectory) {
   validateLock();
   const imageIndexPath = join(evidenceDirectory, "image-index.json");
@@ -434,6 +484,18 @@ function scanSummary(evidenceDirectory) {
       image.os !== "linux"
     ) {
       fail(`${image.service} image metadata does not match the locked platform`);
+    }
+    let runtimeAssertionSha256 = null;
+    if (productionServiceNames.includes(image.service)) {
+      const runtimeAssertionPath = join(
+        evidenceDirectory,
+        "runtime-assertions",
+        `${image.service}.json`,
+      );
+      const runtimeAssertionBytes = readFileSync(runtimeAssertionPath);
+      const runtimeAssertion = JSON.parse(runtimeAssertionBytes);
+      validateRuntimeAssertion(image.service, runtimeAssertion);
+      runtimeAssertionSha256 = sha256(runtimeAssertionBytes);
     }
     const sbomPath = join(
       evidenceDirectory,
@@ -507,6 +569,7 @@ function scanSummary(evidenceDirectory) {
       os: image.os,
       bytes: image.size,
       rootFsLayers: image.rootFsLayers.length,
+      runtimeAssertionSha256,
       sbom: {
         format: sbom.bomFormat,
         specificationVersion: sbom.specVersion,

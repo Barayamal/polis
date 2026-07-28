@@ -32,19 +32,47 @@ RUN npm prune --omit=dev && npm cache clean --force && \
     rm -rf \
       node_modules/@esbuild \
       node_modules/@img \
+      node_modules/@astrojs \
+      node_modules/@oxc-project \
+      node_modules/@rolldown \
       node_modules/@types \
       node_modules/@visx/vendor/node_modules/@types \
+      node_modules/@vitejs \
+      node_modules/astro \
       node_modules/astro/node_modules/@esbuild \
       node_modules/astro/node_modules/esbuild \
       node_modules/esbuild \
-      node_modules/sharp && \
+      node_modules/lightningcss \
+      node_modules/lightningcss-* \
+      node_modules/rolldown \
+      node_modules/sharp \
+      node_modules/vite \
+      node_modules/.bin/astro \
+      node_modules/.bin/rolldown \
+      node_modules/.bin/vite && \
     test -z "$(find node_modules -type d \( \
+      -name '@astrojs' -o \
       -name '@esbuild' -o \
+      -name '@oxc-project' -o \
+      -name '@rolldown' -o \
       -name '@types' -o \
+      -name '@vitejs' -o \
+      -name 'astro' -o \
       -name 'esbuild' -o \
+      -name 'lightningcss' -o \
+      -name 'lightningcss-*' -o \
+      -name 'rolldown' -o \
       -name 'sharp' -o \
+      -name 'vite' -o \
       -path '*/@img/sharp-*' \
-    \) -print -quit)"
+    \) -print -quit)" && \
+    for path in \
+      node_modules/.bin/astro \
+      node_modules/.bin/rolldown \
+      node_modules/.bin/vite; do \
+        test ! -e "$path"; \
+        test ! -L "$path"; \
+    done
 
 FROM docker.io/library/node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS runtime
 WORKDIR /app

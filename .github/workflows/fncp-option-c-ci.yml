@@ -329,11 +329,46 @@ jobs:
                   ! command -v "$command"
                 done
                 test -z "$(find /app/node_modules -type d \
-                  \( -name "@esbuild" -o -name "@types" -o \
-                     -name "esbuild" -o \
-                     -name "sharp" -o -path "*/@img/sharp-*" \) \
+                  \( -name "@astrojs" -o -name "@esbuild" -o \
+                     -name "@oxc-project" -o -name "@rolldown" -o \
+                     -name "@types" -o -name "@vitejs" -o \
+                     -name "astro" -o -name "esbuild" -o \
+                     -name "lightningcss" -o -name "lightningcss-*" -o \
+                     -name "rolldown" -o -name "sharp" -o \
+                     -name "vite" -o -path "*/@img/sharp-*" \) \
                   -print -quit)"
+                for path in \
+                  /app/node_modules/.bin/astro \
+                  /app/node_modules/.bin/rolldown \
+                  /app/node_modules/.bin/vite; do
+                  test ! -e "$path"
+                  test ! -L "$path"
+                done
               '
+              container_name="fncp-participant-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+              trap 'docker rm -f "$container_name" >/dev/null 2>&1 || true' EXIT
+              docker run \
+                --detach \
+                --name "$container_name" \
+                --publish 127.0.0.1:14321:4321 \
+                "$IMAGE"
+              for attempt in {1..15}; do
+                status="$(curl \
+                  --silent \
+                  --output /dev/null \
+                  --write-out '%{http_code}' \
+                  http://127.0.0.1:14321/ || true)"
+                if [ "$status" = 404 ]; then
+                  break
+                fi
+                if ! docker container inspect "$container_name" \
+                  --format '{{.State.Running}}' | grep -qx true; then
+                  docker logs "$container_name" >&2
+                  exit 1
+                fi
+                sleep 1
+              done
+              test "$status" = 404
               ;;
             nginx-proxy)
               docker run --rm --entrypoint sh "$IMAGE" -euc '
@@ -409,6 +444,7 @@ jobs:
                   vacuumdb vacuumlo; do
                   ! command -v "$forbidden_command" >/dev/null
                 done
+                test ! -e /docker-entrypoint-initdb.d
                 test "$(find /opt/fncp/migrations -mindepth 1 -maxdepth 1 \
                   -type f -name "*.sql" | wc -l | tr -d " ")" -gt 0
                 test -z "$(find /opt/fncp/migrations \

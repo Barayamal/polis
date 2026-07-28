@@ -60,6 +60,7 @@ RUN chmod 0555 /usr/local/bin/fncp-run-migrations && \
       /usr/local/bin/reindexdb \
       /usr/local/bin/vacuumdb \
       /usr/local/bin/vacuumlo && \
+    rm -rf /docker-entrypoint-initdb.d && \
     test -x /usr/local/bin/psql && \
     test "$(find /opt/fncp/migrations -mindepth 1 -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d ' ')" -gt 0 && \
     test -z "$(find /opt/fncp/migrations -mindepth 2 -print -quit)"

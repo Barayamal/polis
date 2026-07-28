@@ -188,7 +188,12 @@ for service in server client-participation-alpha oidc-simulator; do
   )
   docker run --rm \
     --platform "$PLATFORM" \
+    --network none \
+    --read-only \
+    --cap-drop ALL \
+    --security-opt no-new-privileges \
     --entrypoint node \
+    -e "FNCP_SERVICE=$service" \
     -e "FNCP_SENTINELS=$sentinels" \
     -e "FNCP_CHECK_KEYS=$check_keys" \
     -e "FNCP_CHECK_NPM=$check_npm" \
@@ -197,6 +202,8 @@ for service in server client-participation-alpha oidc-simulator; do
     "$image_id" \
     -e '
       const fs = require("node:fs");
+      const service = process.env.FNCP_SERVICE;
+      const effectiveUser = process.getuid() === 0 ? "root" : "non-root";
       const sentinels = process.env.FNCP_SENTINELS.split(",");
       const present = sentinels.filter((name) =>
         fs.existsSync(`/app/node_modules/${name}/package.json`),
@@ -219,6 +226,9 @@ for service in server client-participation-alpha oidc-simulator; do
               "/usr/local/bin/pnpx",
               "/usr/local/bin/yarn",
               "/usr/local/bin/yarnpkg",
+              "/app/node_modules/.bin/astro",
+              "/app/node_modules/.bin/rolldown",
+              "/app/node_modules/.bin/vite",
             ].filter((path) => fs.existsSync(path))
           : [];
       const buildOnlyPackagePathsPresent = [];
@@ -255,10 +265,19 @@ for service in server client-participation-alpha oidc-simulator; do
           if (!entry.isDirectory()) continue;
           const absolute = `${directory}/${entry.name}`;
           const forbidden =
+            entry.name === "@astrojs" ||
             entry.name === "@esbuild" ||
+            entry.name === "@oxc-project" ||
+            entry.name === "@rolldown" ||
             entry.name === "@types" ||
+            entry.name === "@vitejs" ||
+            entry.name === "astro" ||
             entry.name === "esbuild" ||
+            entry.name === "lightningcss" ||
+            entry.name.startsWith("lightningcss-") ||
+            entry.name === "rolldown" ||
             entry.name === "sharp" ||
+            entry.name === "vite" ||
             (directory.endsWith("/@img") && entry.name.startsWith("sharp-"));
           if (forbidden) {
             buildOnlyPackagePathsPresent.push(absolute);
@@ -275,6 +294,7 @@ for service in server client-participation-alpha oidc-simulator; do
       }
       const result = {
         status:
+          effectiveUser === "non-root" &&
           present.length === 0 &&
           !keysPresent &&
           packageManagerRuntimePathsPresent.length === 0 &&
@@ -282,6 +302,8 @@ for service in server client-participation-alpha oidc-simulator; do
           alpinePackageMismatches.length === 0
             ? "pass"
             : "fail",
+        artifact: service,
+        effectiveUser,
         developmentPackageSentinels: sentinels,
         developmentPackageSentinelsPresent: present,
         generatedKeysDirectoryPresent: keysPresent,
@@ -294,6 +316,58 @@ for service in server client-participation-alpha oidc-simulator; do
       console.log(JSON.stringify(result, null, 2));
       if (result.status !== "pass") process.exit(1);
     ' >"$OUTPUT_DIR/runtime-assertions/$service.json"
+done
+
+for service in math nginx-proxy; do
+  case " $SERVICES " in
+    *" $service "*) ;;
+    *) continue ;;
+  esac
+  image_id=$(
+    node "$EVIDENCE_TOOL" image-id \
+      "$OUTPUT_DIR/image-index.json" "$service"
+  )
+  case "$service" in
+    math)
+      docker run --rm \
+        --platform "$PLATFORM" \
+        --network none \
+        --read-only \
+        --cap-drop ALL \
+        --security-opt no-new-privileges \
+        --entrypoint sh \
+        "$image_id" \
+        -euc '
+          test "$(id -u)" -ne 0
+          test -x /app/bin/run
+          test -r /app/classpath
+          test ! -e /app/deps.edn
+          test ! -e /usr/local/lib/clojure
+          test ! -e /usr/local/bin/clj
+          test ! -e /usr/local/bin/clojure
+          printf "%s\n" \
+            "{\"status\":\"pass\",\"artifact\":\"math\",\"effectiveUser\":\"non-root\",\"clojureBuildToolPresent\":false}"
+        ' >"$OUTPUT_DIR/runtime-assertions/math.json"
+      ;;
+    nginx-proxy)
+      docker run --rm \
+        --platform "$PLATFORM" \
+        --network none \
+        --read-only \
+        --cap-drop ALL \
+        --security-opt no-new-privileges \
+        --entrypoint sh \
+        "$image_id" \
+        -euc '
+          test "$(id -u)" -ne 0
+          test -r /etc/nginx/conf.d/default.conf
+          grep -q "listen 8080 default_server;" \
+            /etc/nginx/conf.d/default.conf
+          printf "%s\n" \
+            "{\"status\":\"pass\",\"artifact\":\"nginx-proxy\",\"effectiveUser\":\"non-root\",\"reviewedConfigPresent\":true}"
+        ' >"$OUTPUT_DIR/runtime-assertions/nginx-proxy.json"
+      ;;
+  esac
 done
 
 case " $SERVICES " in
@@ -368,6 +442,10 @@ case " $SERVICES " in
     fi
     docker run --rm \
       --platform "$PLATFORM" \
+      --network none \
+      --read-only \
+      --cap-drop ALL \
+      --security-opt no-new-privileges \
       --entrypoint sh \
       "$migration_image_id" \
       -euc '
@@ -391,11 +469,12 @@ case " $SERVICES " in
           vacuumlo; do
           ! command -v "$forbidden_command" >/dev/null
         done
+        test ! -e /docker-entrypoint-initdb.d
         test "$(find /opt/fncp/migrations -mindepth 1 -maxdepth 1 \
           -type f -name "*.sql" | wc -l | tr -d " ")" -gt 0
         test -z "$(find /opt/fncp/migrations -mindepth 2 -print -quit)"
         printf "%s\n" \
-          "{\"status\":\"pass\",\"effectiveUser\":\"non-root\",\"entrypoint\":\"fncp-run-migrations\",\"command\":[],\"requiredToolsPresent\":true,\"serverAndLifecycleToolsPresent\":false,\"topLevelMigrationsOnly\":true}"
+          "{\"status\":\"pass\",\"artifact\":\"polis-migration\",\"effectiveUser\":\"non-root\",\"migrationRunner\":\"/usr/local/bin/fncp-run-migrations\",\"migrationRunnerPresent\":true,\"requiredToolsPresent\":true,\"serverAndLifecycleToolsPresent\":false,\"initdbHooksPresent\":false,\"topLevelMigrationsOnly\":true,\"psqlPresent\":true,\"postgresServerPresent\":false}"
       ' >"$OUTPUT_DIR/runtime-assertions/polis-migration.json"
     ;;
 esac

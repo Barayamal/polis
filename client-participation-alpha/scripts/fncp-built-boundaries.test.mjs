@@ -87,9 +87,13 @@ test('built SSR output uses Astro passthrough images without build-tool imports'
     combined,
     /(?:from\s+|import\()['"](?:@esbuild\/[^'"]+|esbuild)['"]/u
   )
+  assert.doesNotMatch(
+    combined,
+    /(?:from\s+|import\()['"](?:@astrojs\/[^'"]+|@oxc-project\/[^'"]+|@rolldown\/[^'"]+|@vitejs\/[^'"]+|astro|lightningcss|rolldown|vite)['"]/u
+  )
 
-  // Astro 5.18.2 still injects this internal route for every SSR build. The
-  // outer FNCP proxy contract, rather than generated-output rewriting, denies
-  // both public spellings.
+  // Astro injects this internal route for the SSR build. The outer FNCP proxy
+  // contract, rather than generated-output rewriting, denies both public
+  // spellings.
   assert.match(combined, /"route":"\/_image"/u)
 })
