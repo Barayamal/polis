@@ -64,6 +64,15 @@ const nginxSlimEvidence = JSON.parse(
     "utf8",
   ),
 );
+const alphaRuntimeEvidence = JSON.parse(
+  readFileSync(
+    join(
+      deployDirectory,
+      "D9-ALPHA-RUNTIME-SPLIT-EVIDENCE-2026-07-28.json",
+    ),
+    "utf8",
+  ),
+);
 
 function runTool(...args) {
   return JSON.parse(
@@ -321,4 +330,66 @@ test("nginx slim evidence is internally consistent and preserves the wider no-go
   );
   assert.equal(nginxSlimEvidence.boundaries.productionDeployed, false);
   assert.equal(nginxSlimEvidence.overallOptionCGate, "fail");
+});
+
+test("alpha runtime evidence is internally consistent and preserves the wider no-go", () => {
+  const alphaLock = imageSecurityLock.baseImages.find(
+    ({ component }) => component === "client-participation-alpha",
+  );
+  const severityTotal = Object.values(
+    alphaRuntimeEvidence.scan.severities,
+  ).reduce((sum, count) => sum + count, 0);
+  const findingOccurrences = alphaRuntimeEvidence.scan.findings.reduce(
+    (sum, finding) => sum + finding.occurrences,
+    0,
+  );
+  const criticalOrHigh =
+    alphaRuntimeEvidence.scan.severities.Critical +
+    alphaRuntimeEvidence.scan.severities.High;
+
+  assert.match(alphaRuntimeEvidence.source.imageCommit, /^[a-f0-9]{40}$/u);
+  assert.equal(alphaRuntimeEvidence.source.treeState, "clean");
+  assert.equal(
+    alphaRuntimeEvidence.source.platform,
+    imageSecurityLock.buildPlatform,
+  );
+  assert.equal(alphaRuntimeEvidence.candidate.baseTag, alphaLock.tag);
+  assert.equal(
+    alphaRuntimeEvidence.candidate.baseIndexDigest,
+    alphaLock.indexDigest,
+  );
+  assert.equal(
+    alphaRuntimeEvidence.candidate.baseArm64Digest,
+    alphaLock.arm64Digest,
+  );
+  assert.equal(
+    alphaRuntimeEvidence.tooling.syft.version,
+    imageSecurityLock.scannerImages.find(({ name }) => name === "syft").version,
+  );
+  assert.equal(
+    alphaRuntimeEvidence.tooling.grype.version,
+    imageSecurityLock.scannerImages.find(({ name }) => name === "grype").version,
+  );
+  assert.equal(severityTotal, alphaRuntimeEvidence.scan.total);
+  assert.equal(findingOccurrences, alphaRuntimeEvidence.scan.total);
+  assert.equal(criticalOrHigh, 5);
+  assert.equal(alphaRuntimeEvidence.scan.imageCandidateGate, "fail");
+  assert.equal(alphaRuntimeEvidence.runtimeChecks.packageBoundary, "pass");
+  assert.deepEqual(alphaRuntimeEvidence.runtimeChecks.forbiddenPackagePaths, []);
+  assert.equal(
+    alphaRuntimeEvidence.runtimeChecks.globalNpmRuntimePresent,
+    false,
+  );
+  assert.equal(alphaRuntimeEvidence.runtimeChecks.defaultCommandBoot, "pass");
+  assert.equal(alphaRuntimeEvidence.runtimeChecks.proxyConfiguration, "pass");
+  assert.equal(alphaRuntimeEvidence.runtimeChecks.directAstroImageStatus, 404);
+  assert.equal(
+    alphaRuntimeEvidence.runtimeChecks.alphaMountedAstroImageStatus,
+    404,
+  );
+  assert.equal(alphaRuntimeEvidence.runtimeChecks.allowedApiStatus, 204);
+  assert.equal(alphaRuntimeEvidence.runtimeChecks.disallowedMethodStatus, 405);
+  assert.equal(alphaRuntimeEvidence.runtimeChecks.unknownRouteStatus, 404);
+  assert.equal(alphaRuntimeEvidence.boundaries.productionDeployed, false);
+  assert.equal(alphaRuntimeEvidence.overallOptionCGate, "fail");
 });
