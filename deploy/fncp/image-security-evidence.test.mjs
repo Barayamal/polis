@@ -113,6 +113,7 @@ function createSyntheticEvidenceDirectory() {
     "math",
     "client-participation-alpha",
     "nginx-proxy",
+    "polis-migration",
   ];
   const images = services.map((service, index) => ({
     service,
@@ -129,7 +130,7 @@ function createSyntheticEvidenceDirectory() {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     projectName: "fncp-synthetic",
-    scanScope: "arm64-candidate-four",
+    scanScope: "arm64-candidate-five",
     images,
   });
   const database = {
@@ -198,7 +199,7 @@ test("all application base images and scanners are locked by digest", () => {
   const result = runTool("validate-lock");
   assert.deepEqual(result, {
     status: "pass",
-    baseImages: 6,
+    baseImages: 8,
     scannerImages: 2,
     buildPlatform: "linux/arm64",
   });
@@ -279,22 +280,24 @@ test("Dockerfile policy rejects malformed, missing and extra external FROM instr
   }
 });
 
-test("release scope separates four runtime images from QA infrastructure", () => {
-  assert.deepEqual(runTool("service-scope", "arm64-candidate-four"), {
+test("release scope separates five fork artifacts from QA infrastructure", () => {
+  assert.deepEqual(runTool("service-scope", "arm64-candidate-five"), {
     schemaVersion: 1,
     evidenceClass: "arm64-candidate-not-release-attestation",
-    selectedScope: "arm64-candidate-four",
+    selectedScope: "arm64-candidate-five",
     selectedServices: [
       "server",
       "math",
       "client-participation-alpha",
       "nginx-proxy",
+      "polis-migration",
     ],
-    productionRuntime: [
+    productionArtifacts: [
       "server",
       "math",
       "client-participation-alpha",
       "nginx-proxy",
+      "polis-migration",
     ],
     qaInfrastructure: ["postgres", "oidc-simulator"],
     allStaging: [
@@ -304,6 +307,7 @@ test("release scope separates four runtime images from QA infrastructure", () =>
       "math",
       "client-participation-alpha",
       "nginx-proxy",
+      "polis-migration",
     ],
   });
 });
@@ -323,7 +327,7 @@ test("scan gate requires the complete exact service and scanner provenance set",
       schemaVersion: 1,
       generatedAt: new Date().toISOString(),
       projectName: "fncp-synthetic",
-      scanScope: "arm64-candidate-four",
+      scanScope: "arm64-candidate-five",
       images: images.slice(1),
     });
     assert.throws(
@@ -339,7 +343,7 @@ test("scan gate requires the complete exact service and scanner provenance set",
       schemaVersion: 1,
       generatedAt: new Date().toISOString(),
       projectName: "fncp-synthetic",
-      scanScope: "arm64-candidate-four",
+      scanScope: "arm64-candidate-five",
       images,
     };
     writeJson(join(directory, "image-index.json"), restored);
@@ -382,15 +386,41 @@ test("collector is local-only, immutable-tooling and no-overwrite", () => {
   assert.match(collector, /Refusing to overwrite existing evidence/u);
   assert.match(
     collector,
-    /PRODUCTION_SERVICES="server math client-participation-alpha nginx-proxy"/u,
+    /PRODUCTION_SERVICES="server math client-participation-alpha nginx-proxy polis-migration"/u,
   );
   assert.match(
     collector,
     /QA_INFRASTRUCTURE_SERVICES="postgres oidc-simulator"/u,
   );
   assert.match(collector, /FNCP_SCAN_SCOPE/u);
-  assert.match(collector, /arm64-candidate-four/u);
-  assert.match(collector, /staging-six/u);
+  assert.match(collector, /arm64-candidate-five/u);
+  assert.match(collector, /staging-seven/u);
+  assert.match(collector, /runtime-assertions\/polis-migration\.json/u);
+  assert.match(collector, /org\.opencontainers\.image\.revision/u);
+  assert.match(collector, /org\.opencontainers\.image\.source/u);
+  assert.match(collector, /org\.opencontainers\.image\.base\.digest/u);
+  assert.match(collector, /org\.opencontainers\.image\.base\.name/u);
+  assert.match(collector, /configured_entrypoint/u);
+  assert.match(collector, /configured_command/u);
+  assert.match(collector, /configured_user/u);
+  assert.match(
+    collector,
+    /cat find mktemp psql rm sha256sum sh sort tr wc/u,
+  );
+  for (const command of [
+    "docker-enforce-initdb.sh",
+    "docker-ensure-initdb.sh",
+    "docker-entrypoint.sh",
+    "pg_createsubscriber",
+    "pg_walsummary",
+    "postmaster",
+  ]) {
+    assert.match(
+      collector,
+      new RegExp(`\\b${command.replace(".", "\\.")}\\b`, "u"),
+      command,
+    );
+  }
   assert.match(collector, /DOCKER_DEFAULT_PLATFORM="\$PLATFORM"/u);
   assert.match(evidenceToolSource, /inspection\.Architecture/u);
   assert.match(evidenceToolSource, /expected \$\{lock\.buildPlatform\}/u);
@@ -432,11 +462,17 @@ test("PR gate builds and inspects every runtime image without publication action
     "math",
     "client-participation-alpha",
     "nginx-proxy",
+    "polis-migration",
   ]) {
     assert.match(runtimeJob, new RegExp(`          - ${service}$`, "mu"));
   }
-  assert.match(runtimeJob, /docker build --pull --target prod/u);
-  assert.match(runtimeJob, /docker build --pull --target runtime/u);
+  assert.match(runtimeJob, /--target prod/u);
+  assert.match(runtimeJob, /--no-cache/u);
+  assert.equal(
+    [...runtimeJob.matchAll(/--no-cache/gu)].length,
+    5,
+    "every release artifact build must be cold",
+  );
   assert.match(runtimeJob, /configured_user/u);
   assert.match(runtimeJob, /test "\$\(id -u\)" -ne 0/u);
   assert.match(runtimeJob, /src\/prompts\/moderation\/script\.xml/u);
@@ -502,6 +538,60 @@ test("server final runtime prunes direct development dependencies", () => {
     /package-lock\.json/u,
   );
   assert.match(serverDockerfile, /find dist -type f -name '\*\.map' -delete/u);
+});
+
+test("server Alpine packages are exact-version pinned in every stage", () => {
+  for (const [specification, expectedOccurrences] of [
+    ["libpq-dev=18.4-r0", 2],
+    ["g++=15.2.0-r5", 2],
+    ["make=4.4.1-r4", 2],
+    ["python3=3.14.5-r0", 2],
+    ["libpq=18.4-r0", 1],
+    ["openssl=3.5.7-r0", 1],
+    ["ca-certificates=20260611-r0", 1],
+  ]) {
+    assert.equal(
+      serverDockerfile.split(specification).length - 1,
+      expectedOccurrences,
+      `${specification} must have the reviewed occurrence count`,
+    );
+  }
+  assert.doesNotMatch(
+    serverDockerfile,
+    /(?:^|\s)(?:libpq-dev|g\+\+|make|python3|libpq|openssl|ca-certificates)(?=\s|\\)/mu,
+  );
+  assert.match(ciWorkflow, /apk info --exists "libpq=18\.4-r0"/u);
+  assert.match(ciWorkflow, /apk info --exists "openssl=3\.5\.7-r0"/u);
+  assert.match(
+    ciWorkflow,
+    /apk info --exists "ca-certificates=20260611-r0"/u,
+  );
+});
+
+test("production Node dependency installs use no persistent build cache", () => {
+  const serverBuildStart = serverDockerfile.indexOf("FROM base as build");
+  const serverRuntimeStart = serverDockerfile.indexOf(" AS prod");
+  const serverProductionBuild = serverDockerfile.slice(
+    serverBuildStart,
+    serverRuntimeStart,
+  );
+  assert.ok(serverBuildStart >= 0);
+  assert.ok(serverRuntimeStart > serverBuildStart);
+  assert.match(serverProductionBuild, /RUN npm ci --production=false/u);
+  assert.doesNotMatch(serverProductionBuild, /--mount=type=cache/u);
+  assert.match(serverProductionBuild, /npm cache clean --force/u);
+
+  const alphaBuildStart = alphaDockerfile.indexOf(" AS build");
+  const alphaRuntimeStart = alphaDockerfile.indexOf(" AS runtime");
+  const alphaProductionBuild = alphaDockerfile.slice(
+    alphaBuildStart,
+    alphaRuntimeStart,
+  );
+  assert.ok(alphaBuildStart >= 0);
+  assert.ok(alphaRuntimeStart > alphaBuildStart);
+  assert.match(alphaProductionBuild, /RUN npm ci\n/u);
+  assert.doesNotMatch(alphaProductionBuild, /--mount=type=cache/u);
+  assert.match(alphaProductionBuild, /npm cache clean --force/u);
 });
 
 test("participant image build does not submit Astro telemetry", () => {
@@ -596,6 +686,13 @@ test("participant-facing Node runtimes execute as non-root users", () => {
 test("participant runtime evidence rejects Sharp and esbuild package families", () => {
   assert.match(collector, /FNCP_CHECK_ALPHA_BUILD_TOOLS/u);
   assert.match(collector, /buildOnlyPackagePathsPresent/u);
+  assert.match(collector, /FNCP_EXPECTED_ALPINE_PACKAGES/u);
+  assert.match(
+    collector,
+    /libpq=18\.4-r0,openssl=3\.5\.7-r0,ca-certificates=20260611-r0/u,
+  );
+  assert.match(collector, /\/lib\/apk\/db\/installed/u);
+  assert.match(collector, /alpinePackageMismatches/u);
   assert.match(collector, /entry\.name === "@esbuild"/u);
   assert.match(collector, /entry\.name === "esbuild"/u);
   assert.match(collector, /entry\.name === "sharp"/u);
@@ -639,7 +736,15 @@ test("math worker crosses only its runtime closure into a non-root stage", () =>
     /file:\/app\/lib\/core\.matrix-0\.63\.0\.jar/u,
   );
   assert.doesNotMatch(mathDockerfile, /sha256sum/u);
-  assert.match(mathDockerfile, /rm -rf \/usr\/local\/lib\/clojure/u);
+  assert.match(
+    mathDockerfile,
+    /FROM docker\.io\/library\/eclipse-temurin:17-jre-noble@sha256:[a-f0-9]{64} AS runtime/u,
+  );
+  assert.match(mathDockerfile, /^ENTRYPOINT \[\]$/mu);
+  assert.doesNotMatch(
+    mathDockerfile.slice(runtimeStageIndex),
+    /\/usr\/local\/(?:lib\/clojure|bin\/clj|bin\/clojure)/u,
+  );
   assert.match(mathDockerfile, /^USER 65532:65532$/mu);
   assert.doesNotMatch(mathDockerfile, /-M:dev/u);
 });

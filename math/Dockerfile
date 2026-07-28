@@ -35,11 +35,9 @@ RUN clojure -P -M:run \
     && cp -R src resources bin /runtime/app/ \
     && cp system.properties /runtime/app/
 
-FROM docker.io/library/clojure:temurin-17-tools-deps@sha256:8250a7e6b20954680c2e3bf2e84ad4caab1c5ea68c56c28bca41fb9ac5a2e96e AS runtime
-
-RUN rm -rf /usr/local/lib/clojure \
-    /usr/local/bin/clj \
-    /usr/local/bin/clojure
+# The participant release needs a JRE, not the Clojure CLI/JDK build image.
+# Keep the runtime on a separately reviewed ARM64-capable Docker Hub manifest.
+FROM docker.io/library/eclipse-temurin:17-jre-noble@sha256:543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8 AS runtime
 
 WORKDIR /app
 COPY --from=build --chown=65532:65532 /runtime/app ./
@@ -53,4 +51,5 @@ RUN classpath=$(cat /app/classpath) \
 
 USER 65532:65532
 
+ENTRYPOINT []
 CMD ["./bin/run"]

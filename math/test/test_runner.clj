@@ -26,19 +26,25 @@
   "Run all the pure tests for polisapp. The one integration test is in conv-man-tests, and should be run separately (and
   needs to be cleaned up to run on a separate poller system)"
   []
-  (apply
-    test/run-tests
-    '[cluster-tests
-      conversation-test
-      conv-edge-cases-test
-      export-test
-      index-hash-test
-      named-matrix-test
-      pca-test
-      silhouette-test
-      stats-test
-      utils-test
-      ptpt-stats-test]))
+  (let [summary
+        (apply
+          test/run-tests
+          '[cluster-tests
+            conversation-test
+            conv-edge-cases-test
+            export-test
+            index-hash-test
+            named-matrix-test
+            pca-test
+            silhouette-test
+            stats-test
+            utils-test
+            ptpt-stats-test])
+        failed (+ (:fail summary 0) (:error summary 0))]
+    ;; Parallel test helpers use Clojure's agent pools. Shut them down so a
+    ;; successful containerised test run terminates deterministically.
+    (shutdown-agents)
+    (System/exit (if (zero? failed) 0 1))))
 
 ;(-main)
 ;(test/run-tests 'conversation-test)

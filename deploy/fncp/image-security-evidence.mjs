@@ -20,6 +20,7 @@ const productionServiceNames = [
   "math",
   "client-participation-alpha",
   "nginx-proxy",
+  "polis-migration",
 ];
 const qaInfrastructureServiceNames = ["postgres", "oidc-simulator"];
 const serviceNames = [
@@ -29,10 +30,11 @@ const serviceNames = [
   "math",
   "client-participation-alpha",
   "nginx-proxy",
+  "polis-migration",
 ];
 const scanScopes = {
-  "arm64-candidate-four": productionServiceNames,
-  "staging-six": serviceNames,
+  "arm64-candidate-five": productionServiceNames,
+  "staging-seven": serviceNames,
 };
 const forbiddenDevelopmentPackageSentinels = {
   server: ["jest", "nodemon", "prettier", "supertest", "ts-jest"],
@@ -126,8 +128,8 @@ function validateLock() {
   if (lock.buildPlatform !== "linux/arm64") {
     fail("The recorded local evidence platform must be linux/arm64");
   }
-  if (lock.baseImages.length !== 6 || lock.scannerImages.length !== 2) {
-    fail("The lock must contain six base images and two scanner images");
+  if (lock.baseImages.length !== 8 || lock.scannerImages.length !== 2) {
+    fail("The lock must contain eight base images and two scanner images");
   }
   if (
     lock.dockerfileFrontend?.tag !== "docker.io/docker/dockerfile:1.4" ||
@@ -228,14 +230,14 @@ function servicesForScanScope(scopeName) {
   return services;
 }
 
-function serviceScope(scopeName = "arm64-candidate-four") {
+function serviceScope(scopeName = "arm64-candidate-five") {
   const selectedServices = servicesForScanScope(scopeName);
   return {
     schemaVersion: 1,
     evidenceClass: "arm64-candidate-not-release-attestation",
     selectedScope: scopeName,
     selectedServices,
-    productionRuntime: productionServiceNames,
+    productionArtifacts: productionServiceNames,
     qaInfrastructure: qaInfrastructureServiceNames,
     allStaging: serviceNames,
   };
@@ -298,7 +300,7 @@ function sourceManifest() {
   };
 }
 
-function imageIndex(projectName, scopeName = "arm64-candidate-four") {
+function imageIndex(projectName, scopeName = "arm64-candidate-five") {
   validateLock();
   const selectedServices = servicesForScanScope(scopeName);
   const expectedArchitecture = lock.buildPlatform.split("/")[1];
@@ -498,7 +500,7 @@ function scanSummary(evidenceDirectory) {
     return {
       service: image.service,
       releaseScope: productionServiceNames.includes(image.service)
-        ? "production-runtime"
+        ? "production-artifact"
         : "qa-infrastructure",
       localImageId: image.imageId,
       architecture: image.architecture,
@@ -525,7 +527,7 @@ function scanSummary(evidenceDirectory) {
   }
 
   const productionImages = images.filter(
-    ({ releaseScope }) => releaseScope === "production-runtime",
+    ({ releaseScope }) => releaseScope === "production-artifact",
   );
   const qaOnlyImages = images.filter(
     ({ releaseScope }) => releaseScope === "qa-infrastructure",
@@ -569,7 +571,7 @@ function scanSummary(evidenceDirectory) {
     images,
     totals,
     releaseScopes: {
-      productionRuntime: {
+      productionArtifacts: {
         services: productionServiceNames,
         totals: productionTotals,
       },
@@ -581,10 +583,11 @@ function scanSummary(evidenceDirectory) {
     arm64CandidateGate: {
       status: gate,
       policy:
-        "Zero Critical and zero High matches across the four Pol.is " +
-        "ARM64 runtime candidates, with no Node runtime development-package " +
-        "sentinels. Managed RDS is infrastructure rather than an image; the " +
-        "disposable PostgreSQL and OIDC simulator images are QA-only.",
+        "Zero Critical and zero High matches across the five fork-owned " +
+        "Pol.is ARM64 release artifacts, with no Node runtime " +
+        "development-package sentinels. The fifth artifact is the short-lived " +
+        "migration task. Managed RDS is infrastructure rather than an image; " +
+        "the disposable PostgreSQL and OIDC simulator images are QA-only.",
       developmentPackageSentinels:
         forbiddenDevelopmentPackageSentinels,
       developmentPackageSentinelsPresent:

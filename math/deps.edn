@@ -1,20 +1,24 @@
 {:paths ["src"]
  :deps {org.clojure/clojure {:mvn/version "1.12.5"}
         org.clojure/spec.alpha {:mvn/version "0.3.218"}
-        org.clojure/core.async {:mvn/version "1.6.673"}
+        org.clojure/core.async {:mvn/version "1.8.741"}
         org.clojure/data.csv {:mvn/version "1.0.1"}
         clojure-csv/clojure-csv {:mvn/version "2.0.1"}
         org.clojure/math.numeric-tower {:mvn/version "0.0.5"}
         org.clojure/core.match {:mvn/version "1.0.1"}
         org.clojure/tools.namespace {:mvn/version "1.3.0"}
-        org.clojure/tools.logging {:mvn/version "1.2.4"}
+        org.clojure/tools.logging {:mvn/version "1.3.1"}
         org.clojure/tools.trace {:mvn/version "0.7.11"}
         org.clojure/tools.reader {:mvn/version "1.3.6"}
         org.clojure/java.jdbc {:mvn/version "0.6.1"}
 
         org.flatland/ordered {:mvn/version "1.15.10"} 
         ;; Other stuff
-        cheshire/cheshire {:mvn/version "5.11.0"}
+        cheshire/cheshire {:mvn/version "6.2.0"}
+        ;; Keep Cheshire's binary formats on the same patched Jackson line.
+        com.fasterxml.jackson.core/jackson-core {:mvn/version "2.21.4"}
+        com.fasterxml.jackson.dataformat/jackson-dataformat-smile {:mvn/version "2.21.4"}
+        com.fasterxml.jackson.dataformat/jackson-dataformat-cbor {:mvn/version "2.21.4"}
         com.taoensso/timbre {:mvn/version "5.2.1"}
         com.stuartsierra/component {:mvn/version "0.3.1"}
         ;; Troublesome carmine... was using this for simulation stuff
@@ -32,11 +36,14 @@
         ;; Can't find bouncycastle trying to use this
         ;incanter {:mvn/version "1.9.3" :exclusions [org.clojure/clojure]}
         bigml/sampling {:mvn/version "3.2"}
-        com.cognitect.aws/api {:mvn/version "0.8.641"}
+        com.cognitect.aws/api {:mvn/version "0.8.838"}
         com.cognitect.aws/endpoints {:mvn/version "1.1.12.398"}
         com.cognitect.aws/s3 {:mvn/version "825.2.1250.0"}
+        ;; Modern Cognitect HTTP client uses the JDK client and removes the
+        ;; vulnerable legacy Jetty 9 transport from the production graph.
+        com.cognitect/http-client {:mvn/version "1.0.148"}
 
-        org.postgresql/postgresql {:mvn/version "42.5.2"}
+        org.postgresql/postgresql {:mvn/version "42.7.13"}
         ;; Enhanced connection pooling
         com.zaxxer/HikariCP {:mvn/version "5.0.1"}
         clj-time/clj-time {:mvn/version "0.15.2"}
@@ -48,7 +55,15 @@
         honeysql/honeysql {:mvn/version "1.0.461"}
         ;; Dev
         org.clojure/test.check {:mvn/version "1.1.1"}
-        techascent/tech.ml.dataset {:mvn/version "6.104"}}
+        ;; Keep the reviewed dataset API line, but replace its old Nippy
+        ;; compressor graph. Nippy 3.6 uses Aircompressor and no longer brings
+        ;; the unpatched org.lz4/lz4-java coordinate into the runtime.
+        techascent/tech.ml.dataset {:mvn/version "6.104"
+                                    :exclusions [com.taoensso/nippy]}
+        com.taoensso/nippy {:mvn/version "3.6.0"}
+        io.airlift/aircompressor {:mvn/version "2.0.3"}
+        commons-io/commons-io {:mvn/version "2.22.0"}
+        ch.qos.logback/logback-classic {:mvn/version "1.3.16"}}
  :aliases {:dev 
            {:extra-paths ["dev" "test"]
             :extra-deps {cider/cider-nrepl {:mvn/version "0.30.0"}

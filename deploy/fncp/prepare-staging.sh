@@ -21,6 +21,17 @@ encryption_password=$(openssl rand -hex 32)
 math_password=$(openssl rand -hex 24)
 server_runtime_uid=$(id -u)
 server_runtime_gid=$(id -g)
+source_revision=$(git -C "$repo_root" rev-parse HEAD)
+case "$source_revision" in
+  ""|*[!0-9a-f]*)
+    echo "Could not resolve an exact 40-character source revision." >&2
+    exit 1
+    ;;
+esac
+if [ "${#source_revision}" -ne 40 ]; then
+  echo "Could not resolve an exact 40-character source revision." >&2
+  exit 1
+fi
 
 sed \
   -e "s/SERVER_RUNTIME_UID=REPLACE_WITH_LOCAL_UID/SERVER_RUNTIME_UID=$server_runtime_uid/" \
@@ -31,6 +42,7 @@ sed \
   -e "s/LOGIN_CODE_PEPPER=REPLACE_WITH_RANDOM_VALUE/LOGIN_CODE_PEPPER=$login_pepper/" \
   -e "s/ENCRYPTION_PASSWORD_00001=REPLACE_WITH_RANDOM_VALUE/ENCRYPTION_PASSWORD_00001=$encryption_password/" \
   -e "s/WEBSERVER_PASS=REPLACE_WITH_RANDOM_VALUE/WEBSERVER_PASS=$math_password/" \
+  -e "s/FNCP_SOURCE_REVISION=REPLACE_WITH_SOURCE_REVISION/FNCP_SOURCE_REVISION=$source_revision/" \
   "$deploy_dir/staging.env.example" >"$env_file"
 chmod 600 "$env_file"
 

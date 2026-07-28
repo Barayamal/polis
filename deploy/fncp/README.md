@@ -49,19 +49,79 @@ audit could not be completed or its npm v2 report was malformed or internally
 inconsistent. The command never changes the lockfile; remediation belongs in
 separately reviewed upgrade branches.
 
+## Production-shaped migration artifact
+
+`server/Dockerfile-migrate` defines the fifth fork-owned release artifact: a
+short-lived, non-root libpq client that runs the 19 reviewed top-level Pol.is
+migrations and exits. It uses the same digest-pinned PostgreSQL 17 Alpine base
+as disposable QA, but removes the PostgreSQL server and lifecycle utilities.
+The image requires an exact 40-character `SOURCE_REVISION` build argument and
+records OCI source, revision, base-name and base-digest labels.
+
+The entrypoint accepts no arguments. At action time its task environment must
+provide:
+
+- `DATABASE_URL` as a `postgresql://` URI without query parameters;
+- `PGSSLMODE=verify-full`;
+- `PGSSLROOTCERT` as an absolute, readable CA-bundle path;
+- `FNCP_EXPECTED_DATABASE`;
+- `FNCP_EXPECTED_MIGRATION_ROLE`; and
+- `FNCP_RUNTIME_DB_ROLE`.
+
+The runner keeps the connection secret out of argv and logs, disables psql
+startup files, sets `ON_ERROR_STOP`, acquires one session advisory lock and
+applies only sorted, regular top-level migration files. Each filename and
+SHA-256 is recorded in the migration-role-owned
+`fncp_deploy.schema_migrations` table. An already-recorded filename with a
+different SHA fails closed. It also verifies from `pg_stat_ssl` that the live
+session uses TLS and refuses a recovery/read-only target.
+
+The runtime database role must already exist and be distinct from the
+migration role. Before any migration is applied, the runner rejects a runtime
+role that is elevated, a member of another role, an object/schema/database
+owner or already able to create persistent objects. After migration it grants
+only public-schema table DML, sequence use and function execution (including
+matching default privileges), while revoking database/schema creation,
+temporary-object creation, table DDL-like privileges and all access to
+`fncp_deploy`.
+
+The migration role is also a pre-provisioned, dedicated role—not the RDS
+master or database owner. It must be `LOGIN NOINHERIT NOSUPERUSER NOCREATEDB
+NOCREATEROLE NOREPLICATION NOBYPASSRLS`, have no role memberships, and remain
+distinct from the runtime role. Its effective database privileges must be
+exactly those required for migration: `CONNECT` and `CREATE`, but not
+`TEMPORARY`; it must also have `USAGE` and `CREATE` on the existing `public`
+schema. A separate database owner/bootstrap process must establish those
+grants and revoke public temporary access before this task is run. The
+migration role then owns the schema objects it creates, while never owning the
+database itself. These conditions are checked before the tracking schema or
+any application migration is changed.
+
+The `polis-migration` Compose entry is deliberately build-only: it has no
+network, credentials or ports and is behind the
+`release-assurance-build-only` profile. Disposable QA continues to initialize
+the separate `postgres` service; neither that database image nor the OIDC
+simulator is a release artifact. The real migration task belongs on the
+private no-ingress production migration path and must complete successfully
+before any long-running runtime task starts.
+
 ## Exact-image evidence
 
-The local-only image evidence collector defaults to the four Pol.is ARM64
-runtime candidates: API server, math worker, participant alpha and nginx
-proxy. The planned production topology uses managed RDS, so PostgreSQL is
-infrastructure rather than an application release image. The disposable
-PostgreSQL and OIDC simulator images remain available only through the explicit
-`staging-six` QA scope. The collector records a whole non-ignored source
+The local-only image evidence collector defaults to the five fork-owned Pol.is
+ARM64 release artifacts: API server, math worker, participant alpha, nginx
+proxy and the short-lived migration task. The planned production topology uses
+managed RDS, so PostgreSQL is infrastructure rather than an application
+release image. The disposable PostgreSQL and OIDC simulator images remain
+available only through the explicit `staging-seven` QA scope. The collector
+builds the math dependencies in the pinned Clojure image, but copies only the
+reviewed runtime closure into the separately pinned Temurin 17 JRE image; the
+Clojure CLI and JDK build image do not cross into production. The collector
+records a whole non-ignored source
 manifest, exact scope, build log and image IDs, asserts that generated
 participant keys and reviewed direct-development package sentinels are absent,
 then creates CycloneDX SBOMs and Grype JSON scans with digest-pinned scanner
-containers. Its ARM64 candidate gate is calculated only from the four runtime
-images:
+containers. Its ARM64 candidate gate is calculated only from the five release
+artifacts:
 
 ```sh
 node --test deploy/fncp/image-security-evidence.test.mjs
@@ -77,17 +137,25 @@ unless a WIP run explicitly opts in. Default candidate evidence forces
 `linux/arm64`, rejects architecture mismatches, performs a pull/no-cache build,
 cannot skip the build, disables scanner update checks after one recorded Grype
 database update, and retains a checksummed database cache snapshot. Use
-`FNCP_SCAN_SCOPE=staging-six` only when the two disposable QA-infrastructure
+`FNCP_SCAN_SCOPE=staging-seven` only when the two disposable QA-infrastructure
 images also need inspection. The generated summary explicitly records that
 this local evidence is not a release attestation: deployment architecture,
 immutable registry digests and multi-architecture verification remain
 unbound. The collector does not log in to a registry, push an image or invoke a
 cloud CLI.
 
+The Node production build stages deliberately perform cold `npm ci`
+installations without persistent BuildKit npm-cache mounts. Their final images
+cross only the pruned production closure. Every Alpine package added by the
+server Dockerfile is pinned to its reviewed exact package release, and the CI
+runtime check verifies the three final-stage packages by version. Development
+may still use a local npm cache mount; that target is not a release artifact.
+
 Pull requests into `edge` also run a synthetic-only runtime-image matrix. Each
-matrix entry builds exactly one of the four application runtime stages on an
-ephemeral GitHub runner and checks its configured and effective non-root user
-plus reviewed runtime files. That workflow has read-only repository
+matrix entry builds exactly one of the five fork-owned release artifacts on an
+ephemeral GitHub runner and checks its configured and effective non-root user,
+reviewed runtime files and—on the migration artifact—its immutable source/base
+labels and exact entrypoint. That workflow has read-only repository
 permission, does not log in to a registry, does not push an image and does not
 deploy. It is a regression gate for the Dockerfiles, not an SBOM scan or
 release attestation.

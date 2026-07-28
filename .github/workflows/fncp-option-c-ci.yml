@@ -35,13 +35,15 @@ jobs:
           sh -n deploy/fncp/prepare-staging.sh
           sh -n deploy/fncp/smoke-test.sh
           sh -n deploy/fncp/verify-staging.sh
+          sh -n server/bin/fncp-run-migrations.sh
 
       - name: Run synthetic deployment and evidence tests
         run: |
           node --test \
             deploy/fncp/audit-production-dependencies.test.mjs \
             deploy/fncp/deployment-boundary.test.mjs \
-            deploy/fncp/image-security-evidence.test.mjs
+            deploy/fncp/image-security-evidence.test.mjs \
+            deploy/fncp/migration-image.test.mjs
 
       - name: Reject whitespace errors
         run: |
@@ -209,6 +211,7 @@ jobs:
           - math
           - client-participation-alpha
           - nginx-proxy
+          - polis-migration
     env:
       IMAGE: fncp-${{ matrix.service }}-runtime:${{ github.sha }}
       SERVICE: ${{ matrix.service }}
@@ -224,14 +227,25 @@ jobs:
           set -euo pipefail
           case "$SERVICE" in
             server)
-              docker build --pull --target prod --tag "$IMAGE" server
+              docker build \
+                --pull \
+                --no-cache \
+                --target prod \
+                --tag "$IMAGE" \
+                server
               ;;
             math)
-              docker build --pull --target runtime --tag "$IMAGE" math
+              docker build \
+                --pull \
+                --no-cache \
+                --target runtime \
+                --tag "$IMAGE" \
+                math
               ;;
             client-participation-alpha)
               docker build \
                 --pull \
+                --no-cache \
                 --target runtime \
                 --build-arg PUBLIC_SERVICE_URL=https://fncp.invalid \
                 --build-arg INTERNAL_SERVICE_URL=http://server:5000 \
@@ -244,9 +258,19 @@ jobs:
             nginx-proxy)
               docker build \
                 --pull \
+                --no-cache \
                 --file deploy/fncp/nginx/Dockerfile \
                 --tag "$IMAGE" \
                 deploy/fncp
+              ;;
+            polis-migration)
+              docker build \
+                --pull \
+                --no-cache \
+                --file server/Dockerfile-migrate \
+                --build-arg "SOURCE_REVISION=${GITHUB_SHA}" \
+                --tag "$IMAGE" \
+                server
               ;;
             *)
               echo "Unknown runtime image service: $SERVICE" >&2
@@ -271,6 +295,9 @@ jobs:
             server)
               docker run --rm --entrypoint sh "$IMAGE" -euc '
                 test "$(id -u)" -ne 0
+                apk info --exists "libpq=18.4-r0"
+                apk info --exists "openssl=3.5.7-r0"
+                apk info --exists "ca-certificates=20260611-r0"
                 test -r /app/dist/index.js
                 test -r /app/src/prompts/moderation/script.xml
                 test -r /app/src/prompts/report_experimental/system.xml
@@ -311,7 +338,8 @@ jobs:
               docker run --rm --entrypoint sh "$IMAGE" -euc '
                 test "$(id -u)" -ne 0
                 test -r /etc/nginx/conf.d/default.conf
-                grep -q "listen 8080;" /etc/nginx/conf.d/default.conf
+                grep -q "listen 8080 default_server;" \
+                  /etc/nginx/conf.d/default.conf
               '
               container_name="fncp-nginx-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
               trap 'docker rm -f "$container_name" >/dev/null 2>&1 || true' EXIT
@@ -339,6 +367,49 @@ jobs:
                 sleep 1
               done
               test "$status" = 404
+              ;;
+            polis-migration)
+              test "$(docker image inspect \
+                --format '{{json .Config.Entrypoint}}' "$IMAGE")" = \
+                '["/usr/local/bin/fncp-run-migrations"]'
+              test "$(docker image inspect \
+                --format '{{json .Config.Cmd}}' "$IMAGE")" = '[]'
+              test "$(docker image inspect \
+                --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+                "$IMAGE")" = "$GITHUB_SHA"
+              test "$(docker image inspect \
+                --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' \
+                "$IMAGE")" = "https://github.com/Barayamal/polis"
+              test "$(docker image inspect \
+                --format '{{ index .Config.Labels "org.opencontainers.image.base.digest" }}' \
+                "$IMAGE")" = \
+                "sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193"
+              test "$(docker image inspect \
+                --format '{{ index .Config.Labels "org.opencontainers.image.base.name" }}' \
+                "$IMAGE")" = "docker.io/library/postgres:17-alpine"
+              docker run --rm --entrypoint sh "$IMAGE" -euc '
+                test "$(id -u)" -ne 0
+                test -x /usr/local/bin/fncp-run-migrations
+                for required_command in \
+                  find mktemp psql sha256sum sh sort; do
+                  command -v "$required_command" >/dev/null
+                done
+                for forbidden_command in \
+                  clusterdb createdb createuser docker-entrypoint.sh \
+                  dropdb dropuser ecpg initdb \
+                  oid2name pg_amcheck pg_archivecleanup pg_basebackup pgbench \
+                  pg_checksums pg_combinebackup pg_config pg_controldata \
+                  pg_ctl pg_dump pg_dumpall pg_isready pg_receivewal \
+                  pg_recvlogical pg_resetwal pg_restore pg_rewind \
+                  pg_test_fsync pg_test_timing pg_upgrade pg_verifybackup \
+                  pg_waldump postgres reindexdb vacuumdb vacuumlo; do
+                  ! command -v "$forbidden_command" >/dev/null
+                done
+                test "$(find /opt/fncp/migrations -mindepth 1 -maxdepth 1 \
+                  -type f -name "*.sql" | wc -l | tr -d " ")" -gt 0
+                test -z "$(find /opt/fncp/migrations \
+                  -mindepth 2 -print -quit)"
+              '
               ;;
           esac
 

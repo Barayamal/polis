@@ -9,23 +9,35 @@ RUNTIME_ENV="$SCRIPT_DIR/.env.staging"
 EVIDENCE_TOOL="$SCRIPT_DIR/image-security-evidence.mjs"
 LOCK_FILE="$SCRIPT_DIR/image-security.lock.json"
 PLATFORM=linux/arm64
-PRODUCTION_SERVICES="server math client-participation-alpha nginx-proxy"
+PRODUCTION_SERVICES="server math client-participation-alpha nginx-proxy polis-migration"
 QA_INFRASTRUCTURE_SERVICES="postgres oidc-simulator"
-SCAN_SCOPE=${FNCP_SCAN_SCOPE:-arm64-candidate-four}
+SCAN_SCOPE=${FNCP_SCAN_SCOPE:-arm64-candidate-five}
 case "$SCAN_SCOPE" in
-  arm64-candidate-four)
+  arm64-candidate-five)
     SERVICES="$PRODUCTION_SERVICES"
     ;;
-  staging-six)
-    SERVICES="postgres oidc-simulator server math client-participation-alpha nginx-proxy"
+  staging-seven)
+    SERVICES="postgres oidc-simulator server math client-participation-alpha nginx-proxy polis-migration"
     ;;
   *)
     echo "Unknown scan scope: $SCAN_SCOPE" >&2
-    echo "Expected arm64-candidate-four or staging-six." >&2
+    echo "Expected arm64-candidate-five or staging-seven." >&2
     exit 2
     ;;
 esac
 SOURCE_SHORT=$(git -C "$REPOSITORY_ROOT" rev-parse --short=12 HEAD)
+SOURCE_REVISION=$(git -C "$REPOSITORY_ROOT" rev-parse HEAD)
+case "$SOURCE_REVISION" in
+  ""|*[!0-9a-f]*)
+    echo "Could not resolve an exact source revision." >&2
+    exit 2
+    ;;
+esac
+if [ "${#SOURCE_REVISION}" -ne 40 ]; then
+  echo "Could not resolve an exact source revision." >&2
+  exit 2
+fi
+export FNCP_SOURCE_REVISION="$SOURCE_REVISION"
 PROJECT_NAME=${FNCP_SCAN_PROJECT_NAME:-"fncp-option-c-scan-$SOURCE_SHORT"}
 OUTPUT_DIR=${1:-"$HOME/Documents/Codex/option-c-image-security-$SOURCE_SHORT"}
 CREATED_RUNTIME_ENV=0
@@ -56,7 +68,7 @@ case "$PROJECT_NAME" in
     ;;
 esac
 
-if [ "$SCAN_SCOPE" = arm64-candidate-four ] && [ "$SKIP_BUILD" -eq 1 ]; then
+if [ "$SCAN_SCOPE" = arm64-candidate-five ] && [ "$SKIP_BUILD" -eq 1 ]; then
   echo "ARM64 candidate evidence cannot use FNCP_SKIP_SCAN_BUILD=1." >&2
   exit 2
 fi
@@ -151,6 +163,7 @@ for service in server client-participation-alpha oidc-simulator; do
       check_keys=1
       check_npm=1
       check_alpha_build_tools=0
+      expected_alpine_packages="libpq=18.4-r0,openssl=3.5.7-r0,ca-certificates=20260611-r0"
       ;;
     client-participation-alpha)
       # Astro resolves TypeScript through production dependencies (tsconfck and
@@ -159,12 +172,14 @@ for service in server client-participation-alpha oidc-simulator; do
       check_keys=1
       check_npm=1
       check_alpha_build_tools=1
+      expected_alpine_packages=
       ;;
     oidc-simulator)
       sentinels=nodemon
       check_keys=1
       check_npm=0
       check_alpha_build_tools=0
+      expected_alpine_packages=
       ;;
   esac
   image_id=$(
@@ -178,6 +193,7 @@ for service in server client-participation-alpha oidc-simulator; do
     -e "FNCP_CHECK_KEYS=$check_keys" \
     -e "FNCP_CHECK_NPM=$check_npm" \
     -e "FNCP_CHECK_ALPHA_BUILD_TOOLS=$check_alpha_build_tools" \
+    -e "FNCP_EXPECTED_ALPINE_PACKAGES=$expected_alpine_packages" \
     "$image_id" \
     -e '
       const fs = require("node:fs");
@@ -206,6 +222,34 @@ for service in server client-participation-alpha oidc-simulator; do
             ].filter((path) => fs.existsSync(path))
           : [];
       const buildOnlyPackagePathsPresent = [];
+      const expectedAlpinePackages = (
+        process.env.FNCP_EXPECTED_ALPINE_PACKAGES || ""
+      ).split(",").filter(Boolean);
+      const installedAlpinePackages = new Map();
+      if (
+        expectedAlpinePackages.length > 0 &&
+        fs.existsSync("/lib/apk/db/installed")
+      ) {
+        for (const record of fs
+          .readFileSync("/lib/apk/db/installed", "utf8")
+          .split(/\n\n/u)) {
+          const lines = record.split(/\n/u);
+          const name = lines.find((line) => line.startsWith("P:"))?.slice(2);
+          const version = lines.find((line) => line.startsWith("V:"))?.slice(2);
+          if (name && version) installedAlpinePackages.set(name, version);
+        }
+      }
+      const alpinePackageMismatches = expectedAlpinePackages
+        .map((specification) => {
+          const separator = specification.indexOf("=");
+          const name = specification.slice(0, separator);
+          const expectedVersion = specification.slice(separator + 1);
+          const actualVersion = installedAlpinePackages.get(name) || null;
+          return actualVersion === expectedVersion
+            ? null
+            : { name, expectedVersion, actualVersion };
+        })
+        .filter(Boolean);
       const collectBuildOnlyPackages = (directory) => {
         for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
           if (!entry.isDirectory()) continue;
@@ -233,7 +277,8 @@ for service in server client-participation-alpha oidc-simulator; do
           present.length === 0 &&
           !keysPresent &&
           packageManagerRuntimePathsPresent.length === 0 &&
-          buildOnlyPackagePathsPresent.length === 0
+          buildOnlyPackagePathsPresent.length === 0 &&
+          alpinePackageMismatches.length === 0
             ? "pass"
             : "fail",
         developmentPackageSentinels: sentinels,
@@ -242,11 +287,117 @@ for service in server client-participation-alpha oidc-simulator; do
         globalNpmRuntimePresent,
         packageManagerRuntimePathsPresent,
         buildOnlyPackagePathsPresent,
+        expectedAlpinePackages,
+        alpinePackageMismatches,
       };
       console.log(JSON.stringify(result, null, 2));
       if (result.status !== "pass") process.exit(1);
     ' >"$OUTPUT_DIR/runtime-assertions/$service.json"
 done
+
+case " $SERVICES " in
+  *" polis-migration "*)
+    migration_image_id=$(
+      node "$EVIDENCE_TOOL" image-id \
+        "$OUTPUT_DIR/image-index.json" polis-migration
+    )
+    configured_revision=$(
+      docker image inspect \
+        --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+        "$migration_image_id"
+    )
+    configured_source=$(
+      docker image inspect \
+        --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' \
+        "$migration_image_id"
+    )
+    configured_base_digest=$(
+      docker image inspect \
+        --format '{{ index .Config.Labels "org.opencontainers.image.base.digest" }}' \
+        "$migration_image_id"
+    )
+    configured_base_name=$(
+      docker image inspect \
+        --format '{{ index .Config.Labels "org.opencontainers.image.base.name" }}' \
+        "$migration_image_id"
+    )
+    configured_user=$(
+      docker image inspect --format '{{.Config.User}}' "$migration_image_id"
+    )
+    configured_entrypoint=$(
+      docker image inspect \
+        --format '{{json .Config.Entrypoint}}' "$migration_image_id"
+    )
+    configured_command=$(
+      docker image inspect \
+        --format '{{json .Config.Cmd}}' "$migration_image_id"
+    )
+    if [ "$configured_revision" != "$SOURCE_REVISION" ]; then
+      echo "Migration image revision label does not match the exact source." >&2
+      exit 1
+    fi
+    if [ "$configured_source" != "https://github.com/Barayamal/polis" ]; then
+      echo "Migration image source label does not match the reviewed fork." >&2
+      exit 1
+    fi
+    if [ "$configured_base_digest" != \
+      "sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193" ]; then
+      echo "Migration image base digest label is not the reviewed digest." >&2
+      exit 1
+    fi
+    if [ "$configured_base_name" != \
+      "docker.io/library/postgres:17-alpine" ]; then
+      echo "Migration image base-name label is not the reviewed image." >&2
+      exit 1
+    fi
+    case "$configured_user" in
+      ""|0|0:*|root|root:*)
+        echo "Migration image has an unsafe configured user." >&2
+        exit 1
+        ;;
+    esac
+    if [ "$configured_entrypoint" != \
+      '["/usr/local/bin/fncp-run-migrations"]' ]; then
+      echo "Migration image entrypoint is not the reviewed runner." >&2
+      exit 1
+    fi
+    if [ "$configured_command" != '[]' ]; then
+      echo "Migration image inherited an unexpected default command." >&2
+      exit 1
+    fi
+    docker run --rm \
+      --platform "$PLATFORM" \
+      --entrypoint sh \
+      "$migration_image_id" \
+      -euc '
+        test "$(id -u)" -ne 0
+        test -x /usr/local/bin/fncp-run-migrations
+        for required_command in \
+          cat find mktemp psql rm sha256sum sh sort tr wc; do
+          command -v "$required_command" >/dev/null
+        done
+        for forbidden_command in \
+          clusterdb createdb createuser docker-enforce-initdb.sh \
+          docker-ensure-initdb.sh docker-entrypoint.sh \
+          dropdb dropuser ecpg initdb \
+          oid2name pg_amcheck pg_archivecleanup pg_basebackup pgbench \
+          pg_checksums pg_combinebackup pg_config pg_controldata \
+          pg_createsubscriber \
+          pg_ctl pg_dump pg_dumpall pg_isready pg_receivewal \
+          pg_recvlogical pg_resetwal pg_restore pg_rewind \
+          pg_test_fsync pg_test_timing pg_upgrade pg_verifybackup \
+          pg_waldump pg_walsummary postmaster postgres reindexdb vacuumdb \
+          vacuumlo; do
+          ! command -v "$forbidden_command" >/dev/null
+        done
+        test "$(find /opt/fncp/migrations -mindepth 1 -maxdepth 1 \
+          -type f -name "*.sql" | wc -l | tr -d " ")" -gt 0
+        test -z "$(find /opt/fncp/migrations -mindepth 2 -print -quit)"
+        printf "%s\n" \
+          "{\"status\":\"pass\",\"effectiveUser\":\"non-root\",\"entrypoint\":\"fncp-run-migrations\",\"command\":[],\"requiredToolsPresent\":true,\"serverAndLifecycleToolsPresent\":false,\"topLevelMigrationsOnly\":true}"
+      ' >"$OUTPUT_DIR/runtime-assertions/polis-migration.json"
+    ;;
+esac
 
 SYFT_IMAGE=$(node "$EVIDENCE_TOOL" scanner-ref syft)
 GRYPE_IMAGE=$(node "$EVIDENCE_TOOL" scanner-ref grype)

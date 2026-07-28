@@ -24,11 +24,25 @@
       "arm64Digest": "sha256:b797483593b82cbea9a7ee41c88f324a90d10d9c2504d40e755d91c75456366d"
     },
     {
+      "component": "polis-migration",
+      "dockerfile": "server/Dockerfile-migrate",
+      "tag": "docker.io/library/postgres:17-alpine",
+      "indexDigest": "sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193",
+      "arm64Digest": "sha256:b797483593b82cbea9a7ee41c88f324a90d10d9c2504d40e755d91c75456366d"
+    },
+    {
       "component": "math",
       "dockerfile": "math/Dockerfile",
       "tag": "docker.io/library/clojure:temurin-17-tools-deps",
       "indexDigest": "sha256:8250a7e6b20954680c2e3bf2e84ad4caab1c5ea68c56c28bca41fb9ac5a2e96e",
       "arm64Digest": "sha256:eac2596798b3ceccc7d11918ed89f533f226909f0402203fb7e31e6677aff3c2"
+    },
+    {
+      "component": "math-runtime",
+      "dockerfile": "math/Dockerfile",
+      "tag": "docker.io/library/eclipse-temurin:17-jre-noble",
+      "indexDigest": "sha256:543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8",
+      "arm64Digest": "sha256:eb7754fa217849b3c84ade86f2bce71fe9d2071ea3feb2622b378fa74bb0f5dc"
     },
     {
       "component": "client-participation-alpha",

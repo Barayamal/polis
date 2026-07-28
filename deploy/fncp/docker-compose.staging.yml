@@ -26,6 +26,30 @@ services:
     volumes:
       - fncp-postgres:/var/lib/postgresql/data
 
+  # Build-only definition for the production-shaped, short-lived migration
+  # artifact. The disposable QA database above still initializes itself and is
+  # excluded from the release artifact set. This profile has no network or
+  # credentials and therefore cannot accidentally migrate either database.
+  polis-migration:
+    profiles: [release-assurance-build-only]
+    build:
+      context: ../../server
+      dockerfile: Dockerfile-migrate
+      args:
+        SOURCE_REVISION: ${FNCP_SOURCE_REVISION}
+    labels:
+      org.barayamal.fncp.artifact: polis-migration
+      org.barayamal.fncp.lifecycle: short-lived
+      org.barayamal.fncp.release-scope: production
+    network_mode: none
+    read_only: true
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,mode=0700,uid=70,gid=70
+
   oidc-simulator:
     build:
       context: ../../oidc-simulator

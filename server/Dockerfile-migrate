@@ -1,0 +1,71 @@
+FROM docker.io/library/postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+
+ARG SOURCE_REVISION
+LABEL org.barayamal.fncp.artifact="polis-migration" \
+      org.barayamal.fncp.lifecycle="short-lived" \
+      org.barayamal.fncp.release-scope="production" \
+      org.opencontainers.image.base.digest="sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193" \
+      org.opencontainers.image.base.name="docker.io/library/postgres:17-alpine" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}" \
+      org.opencontainers.image.source="https://github.com/Barayamal/polis"
+
+COPY --chown=postgres:postgres ./bin/fncp-run-migrations.sh /usr/local/bin/fncp-run-migrations
+COPY --chown=postgres:postgres ./postgres/migrations/*.sql /opt/fncp/migrations/
+
+# The release task needs only the libpq client. Remove database-server and
+# lifecycle utilities so this image cannot initialize or host PostgreSQL.
+RUN chmod 0555 /usr/local/bin/fncp-run-migrations && \
+    chmod 0444 /opt/fncp/migrations/*.sql && \
+    test "${#SOURCE_REVISION}" -eq 40 && \
+    case "$SOURCE_REVISION" in *[!0-9a-f]*) exit 1;; esac && \
+    rm -f \
+      /usr/local/bin/clusterdb \
+      /usr/local/bin/createdb \
+      /usr/local/bin/createuser \
+      /usr/local/bin/docker-enforce-initdb.sh \
+      /usr/local/bin/docker-ensure-initdb.sh \
+      /usr/local/bin/docker-entrypoint.sh \
+      /usr/local/bin/dropdb \
+      /usr/local/bin/dropuser \
+      /usr/local/bin/ecpg \
+      /usr/local/bin/initdb \
+      /usr/local/bin/oid2name \
+      /usr/local/bin/pg_amcheck \
+      /usr/local/bin/pg_archivecleanup \
+      /usr/local/bin/pg_basebackup \
+      /usr/local/bin/pgbench \
+      /usr/local/bin/pg_checksums \
+      /usr/local/bin/pg_combinebackup \
+      /usr/local/bin/pg_config \
+      /usr/local/bin/pg_controldata \
+      /usr/local/bin/pg_createsubscriber \
+      /usr/local/bin/pg_ctl \
+      /usr/local/bin/pg_dump \
+      /usr/local/bin/pg_dumpall \
+      /usr/local/bin/pg_isready \
+      /usr/local/bin/pg_receivewal \
+      /usr/local/bin/pg_recvlogical \
+      /usr/local/bin/pg_resetwal \
+      /usr/local/bin/pg_restore \
+      /usr/local/bin/pg_rewind \
+      /usr/local/bin/pg_test_fsync \
+      /usr/local/bin/pg_test_timing \
+      /usr/local/bin/pg_upgrade \
+      /usr/local/bin/pg_verifybackup \
+      /usr/local/bin/pg_waldump \
+      /usr/local/bin/pg_walsummary \
+      /usr/local/bin/postmaster \
+      /usr/local/bin/postgres \
+      /usr/local/bin/reindexdb \
+      /usr/local/bin/vacuumdb \
+      /usr/local/bin/vacuumlo && \
+    test -x /usr/local/bin/psql && \
+    test "$(find /opt/fncp/migrations -mindepth 1 -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d ' ')" -gt 0 && \
+    test -z "$(find /opt/fncp/migrations -mindepth 2 -print -quit)"
+
+USER postgres
+WORKDIR /opt/fncp
+
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/usr/local/bin/fncp-run-migrations"]
+CMD []

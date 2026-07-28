@@ -1,7 +1,7 @@
 # syntax=docker.io/docker/dockerfile:1.4@sha256:9ba7531bd80fb0a858632727cf7a112fbfd19b17e94c4e84ced81e24ef1a0dbc
 # Requires BuildKit (default in Docker 23+; on older versions prefix
-# the build command with `DOCKER_BUILDKIT=1`). The `RUN --mount=type=cache`
-# directives below are silently ignored without BuildKit.
+# the build command with `DOCKER_BUILDKIT=1`). Only the development target uses
+# a persistent npm cache mount; production dependency installation is cold.
 # To build locally, for example:
 # docker build -t polis-server:local .
 # To run locally, for example:
@@ -28,7 +28,11 @@ FROM base as dev
 
 # Set default NODE_ENV to development unless overridden at build time with --build-arg NODE_ENV=production
 ENV NODE_ENV ${NODE_ENV:-development}
-RUN apk add --no-cache libpq-dev g++ make python3
+RUN apk add --no-cache \
+    libpq-dev=18.4-r0 \
+    g++=15.2.0-r5 \
+    make=4.4.1-r4 \
+    python3=3.14.5-r0
 RUN npm config set fetch-retries 5 && \
     npm config set fetch-retry-mintimeout 20000 && \
     npm config set fetch-retry-maxtimeout 120000
@@ -47,12 +51,16 @@ FROM base as build
 
 ENV NODE_ENV ${NODE_ENV:-production}
 
-RUN apk add --no-cache libpq-dev g++ make python3
+RUN apk add --no-cache \
+    libpq-dev=18.4-r0 \
+    g++=15.2.0-r5 \
+    make=4.4.1-r4 \
+    python3=3.14.5-r0
 
 RUN npm config set fetch-retries 5 && \
     npm config set fetch-retry-mintimeout 20000 && \
     npm config set fetch-retry-maxtimeout 120000
-RUN --mount=type=cache,target=/root/.npm npm ci --production=false
+RUN npm ci --production=false
 
 COPY tsconfig.json index.ts app.ts unsupportedBrowser.html ./
 COPY src ./src
@@ -72,7 +80,10 @@ FROM docker.io/library/node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c
 ENV NODE_ENV ${NODE_ENV:-production}
 WORKDIR /app
 
-RUN apk add --no-cache libpq openssl ca-certificates && \
+RUN apk add --no-cache \
+      libpq=18.4-r0 \
+      openssl=3.5.7-r0 \
+      ca-certificates=20260611-r0 && \
     rm -rf \
       /usr/local/lib/node_modules/npm \
       /usr/local/bin/corepack \
