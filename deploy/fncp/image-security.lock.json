@@ -42,9 +42,9 @@
     {
       "component": "nginx-proxy",
       "dockerfile": "deploy/fncp/nginx/Dockerfile",
-      "tag": "docker.io/library/nginx:1.30.4-alpine3.24",
-      "indexDigest": "sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46",
-      "arm64Digest": "sha256:d64d001f60e9a65d45980907e9070fc46d418980f311052e73c0df2eccc3cc30"
+      "tag": "docker.io/library/nginx:1.30.4-alpine3.24-slim",
+      "indexDigest": "sha256:ddde39c6e51f02fde7410c2e9c234cf2d0a4c7bdbbe176aeb37d8ad7ab4eb58c",
+      "arm64Digest": "sha256:c41cf343e2b3980e69d9890f9a8ec7120a54aa84232796414e251a1b387e4fc9"
     }
   ],
   "scannerImages": [

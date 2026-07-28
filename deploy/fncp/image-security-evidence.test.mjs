@@ -194,7 +194,7 @@ test("proxy uses an exact supported nginx stable release on current Alpine", () 
   assert.ok(proxyLock);
   assert.match(
     proxyLock.tag,
-    /^docker\.io\/library\/nginx:\d+\.\d+\.\d+-alpine3\.24$/u,
+    /^docker\.io\/library\/nginx:\d+\.\d+\.\d+-alpine3\.24-slim$/u,
   );
   assert.doesNotMatch(proxyLock.tag, /(?:latest|stable|mainline)/u);
   assert.match(
