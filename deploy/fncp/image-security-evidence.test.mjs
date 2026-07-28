@@ -628,6 +628,8 @@ test("participant runtime crosses only reviewed build output into a fresh stage"
   for (const buildOnlyPath of [
     "node_modules/@esbuild",
     "node_modules/@img",
+    "node_modules/@types",
+    "node_modules/@visx/vendor/node_modules/@types",
     "node_modules/astro/node_modules/@esbuild",
     "node_modules/astro/node_modules/esbuild",
     "node_modules/esbuild",
@@ -640,6 +642,7 @@ test("participant runtime crosses only reviewed build output into a fresh stage"
   }
   assert.match(alphaDockerfile, /find node_modules -type d/u);
   assert.match(alphaDockerfile, /-name '@esbuild'/u);
+  assert.match(alphaDockerfile, /-name '@types'/u);
   assert.match(alphaDockerfile, /-name 'esbuild'/u);
   assert.match(alphaDockerfile, /-name 'sharp'/u);
   assert.match(alphaDockerfile, /-path '\*\/@img\/sharp-\*'/u);
@@ -694,6 +697,7 @@ test("participant runtime evidence rejects Sharp and esbuild package families", 
   assert.match(collector, /\/lib\/apk\/db\/installed/u);
   assert.match(collector, /alpinePackageMismatches/u);
   assert.match(collector, /entry\.name === "@esbuild"/u);
+  assert.match(collector, /entry\.name === "@types"/u);
   assert.match(collector, /entry\.name === "esbuild"/u);
   assert.match(collector, /entry\.name === "sharp"/u);
   assert.match(collector, /entry\.name\.startsWith\("sharp-"\)/u);

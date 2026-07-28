@@ -83,6 +83,7 @@ test("migration image is digest-pinned, source-bound and non-root by default", (
     "dropdb",
     "dropuser",
     "ecpg",
+    "gosu",
     "initdb",
     "oid2name",
     "pg_amcheck",
@@ -312,17 +313,32 @@ test("Compose and CI include migration as an isolated fifth release artifact", (
   assert.match(runtimeJob, /org\.opencontainers\.image\.base\.digest/u);
   assert.match(runtimeJob, /org\.opencontainers\.image\.base\.name/u);
   for (const command of [
+    "cat",
     "find",
     "mktemp",
     "psql",
+    "rm",
     "sha256sum",
     "sh",
     "sort",
+    "tr",
+    "wc",
   ]) {
     assert.match(runtimeJob, new RegExp(`\\b${command}\\b`, "u"));
   }
   assert.match(runtimeJob, /clusterdb createdb createuser/u);
-  assert.match(runtimeJob, /pg_waldump postgres reindexdb vacuumdb vacuumlo/u);
+  assert.match(
+    runtimeJob,
+    /docker-enforce-initdb\.sh[\s\S]{0,120}docker-ensure-initdb\.sh/u,
+  );
+  assert.match(runtimeJob, /\bgosu\b/u);
+  assert.match(runtimeJob, /\bpg_createsubscriber\b/u);
+  assert.match(runtimeJob, /\bpg_walsummary\b/u);
+  assert.match(runtimeJob, /\bpostmaster\b/u);
+  assert.match(
+    runtimeJob,
+    /pg_waldump[\s\S]{0,120}postgres[\s\S]{0,120}reindexdb[\s\S]{0,120}vacuumdb vacuumlo/u,
+  );
   assert.match(
     runtimeJob,
     /grep -q "listen 8080 default_server;"/u,

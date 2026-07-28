@@ -32,12 +32,15 @@ RUN npm prune --omit=dev && npm cache clean --force && \
     rm -rf \
       node_modules/@esbuild \
       node_modules/@img \
+      node_modules/@types \
+      node_modules/@visx/vendor/node_modules/@types \
       node_modules/astro/node_modules/@esbuild \
       node_modules/astro/node_modules/esbuild \
       node_modules/esbuild \
       node_modules/sharp && \
     test -z "$(find node_modules -type d \( \
       -name '@esbuild' -o \
+      -name '@types' -o \
       -name 'esbuild' -o \
       -name 'sharp' -o \
       -path '*/@img/sharp-*' \

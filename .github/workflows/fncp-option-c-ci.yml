@@ -329,7 +329,8 @@ jobs:
                   ! command -v "$command"
                 done
                 test -z "$(find /app/node_modules -type d \
-                  \( -name "@esbuild" -o -name "esbuild" -o \
+                  \( -name "@esbuild" -o -name "@types" -o \
+                     -name "esbuild" -o \
                      -name "sharp" -o -path "*/@img/sharp-*" \) \
                   -print -quit)"
               '
@@ -391,18 +392,21 @@ jobs:
                 test "$(id -u)" -ne 0
                 test -x /usr/local/bin/fncp-run-migrations
                 for required_command in \
-                  find mktemp psql sha256sum sh sort; do
+                  cat find mktemp psql rm sha256sum sh sort tr wc; do
                   command -v "$required_command" >/dev/null
                 done
                 for forbidden_command in \
-                  clusterdb createdb createuser docker-entrypoint.sh \
-                  dropdb dropuser ecpg initdb \
+                  clusterdb createdb createuser docker-enforce-initdb.sh \
+                  docker-ensure-initdb.sh docker-entrypoint.sh \
+                  dropdb dropuser ecpg gosu initdb \
                   oid2name pg_amcheck pg_archivecleanup pg_basebackup pgbench \
                   pg_checksums pg_combinebackup pg_config pg_controldata \
-                  pg_ctl pg_dump pg_dumpall pg_isready pg_receivewal \
+                  pg_createsubscriber pg_ctl pg_dump pg_dumpall pg_isready \
+                  pg_receivewal \
                   pg_recvlogical pg_resetwal pg_restore pg_rewind \
                   pg_test_fsync pg_test_timing pg_upgrade pg_verifybackup \
-                  pg_waldump postgres reindexdb vacuumdb vacuumlo; do
+                  pg_waldump pg_walsummary postmaster postgres reindexdb \
+                  vacuumdb vacuumlo; do
                   ! command -v "$forbidden_command" >/dev/null
                 done
                 test "$(find /opt/fncp/migrations -mindepth 1 -maxdepth 1 \

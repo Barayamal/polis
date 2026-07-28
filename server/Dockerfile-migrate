@@ -28,6 +28,7 @@ RUN chmod 0555 /usr/local/bin/fncp-run-migrations && \
       /usr/local/bin/dropdb \
       /usr/local/bin/dropuser \
       /usr/local/bin/ecpg \
+      /usr/local/bin/gosu \
       /usr/local/bin/initdb \
       /usr/local/bin/oid2name \
       /usr/local/bin/pg_amcheck \

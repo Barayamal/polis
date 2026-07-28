@@ -256,6 +256,7 @@ for service in server client-participation-alpha oidc-simulator; do
           const absolute = `${directory}/${entry.name}`;
           const forbidden =
             entry.name === "@esbuild" ||
+            entry.name === "@types" ||
             entry.name === "esbuild" ||
             entry.name === "sharp" ||
             (directory.endsWith("/@img") && entry.name.startsWith("sharp-"));
@@ -379,7 +380,7 @@ case " $SERVICES " in
         for forbidden_command in \
           clusterdb createdb createuser docker-enforce-initdb.sh \
           docker-ensure-initdb.sh docker-entrypoint.sh \
-          dropdb dropuser ecpg initdb \
+          dropdb dropuser ecpg gosu initdb \
           oid2name pg_amcheck pg_archivecleanup pg_basebackup pgbench \
           pg_checksums pg_combinebackup pg_config pg_controldata \
           pg_createsubscriber \
