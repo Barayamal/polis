@@ -8,18 +8,17 @@ deployment and it must never receive a genuine registration, eligibility
 record, invitation, vote or statement.
 
 Latest recorded evidence:
-[disposable staging results observed through 28 July 2026](./STAGING-EVIDENCE-2026-07-26.md)
-and the
-[28 July D1 dependency reduction](./D1-DEPENDENCY-EVIDENCE-2026-07-28.md) and
-[D3 request-client migration](./D3-REQUEST-MIGRATION-EVIDENCE-2026-07-28.md)
-and
-[D4 middleware cleanup](./D4-MIDDLEWARE-CLEANUP-EVIDENCE-2026-07-28.md) and
-the
-[D5 supported Express migration](./D5-EXPRESS-4-MIGRATION-EVIDENCE-2026-07-28.md)
-and the
-[D6 exact-image/SBOM production-gate result](./D6-IMAGE-SBOM-EVIDENCE-2026-07-28.md)
-and the
-[D7 bounded image remediation result](./D7-BOUNDED-IMAGE-REMEDIATION-EVIDENCE-2026-07-28.md).
+
+- [Disposable staging results observed through 28 July 2026](./STAGING-EVIDENCE-2026-07-26.md)
+- [D1 dependency reduction](./D1-DEPENDENCY-EVIDENCE-2026-07-28.md)
+- [D3 request-client migration](./D3-REQUEST-MIGRATION-EVIDENCE-2026-07-28.md)
+- [D4 middleware cleanup](./D4-MIDDLEWARE-CLEANUP-EVIDENCE-2026-07-28.md)
+- [D5 supported Express migration](./D5-EXPRESS-4-MIGRATION-EVIDENCE-2026-07-28.md)
+- [D6 exact-image/SBOM production-gate result](./D6-IMAGE-SBOM-EVIDENCE-2026-07-28.md)
+- [D7 bounded image remediation result](./D7-BOUNDED-IMAGE-REMEDIATION-EVIDENCE-2026-07-28.md)
+- [D8 Nginx slim-image evidence](./D8-NGINX-SLIM-IMAGE-EVIDENCE-2026-07-28.json)
+- [D9 alpha runtime-split evidence](./D9-ALPHA-RUNTIME-SPLIT-EVIDENCE-2026-07-28.json)
+- [D10 offline dependency-remediation evidence](./D10-OFFLINE-DEPENDENCY-REMEDIATION-EVIDENCE-2026-07-28.md)
 
 Refresh the production package evidence without applying automatic fixes:
 
