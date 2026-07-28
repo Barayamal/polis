@@ -20,6 +20,7 @@ Latest recorded evidence:
 - [D9 alpha runtime-split evidence](./D9-ALPHA-RUNTIME-SPLIT-EVIDENCE-2026-07-28.json)
 - [D10 offline dependency-remediation evidence](./D10-OFFLINE-DEPENDENCY-REMEDIATION-EVIDENCE-2026-07-28.md)
 - [D11 server production-tree remediation evidence](./D11-SERVER-PRODUCTION-TREE-REMEDIATION-EVIDENCE-2026-07-28.md)
+- [D12 local PostgreSQL query-builder evidence](./D12-LOCAL-QUERY-BUILDER-EVIDENCE-2026-07-28.md)
 
 Refresh the production package evidence without applying automatic fixes:
 

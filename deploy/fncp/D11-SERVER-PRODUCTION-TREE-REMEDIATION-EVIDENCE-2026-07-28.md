@@ -11,6 +11,12 @@ No package registry, cloud resource, internet-reachable service, conversation
 or participant data was used or changed. GitHub was used only to publish the
 reviewed source and evidence.
 
+Follow-up: [D12](./D12-LOCAL-QUERY-BUILDER-EVIDENCE-2026-07-28.md)
+replaces the `sql`/monolithic-Lodash path in synthetic staging and records the
+expanded compatibility and migrated-schema route evidence. This D11 scan
+remains the latest exact server production-tree scan until a clean image is
+rebuilt and rescanned.
+
 ## Scope
 
 The five-image FNCP runtime does not build or ship the upstream

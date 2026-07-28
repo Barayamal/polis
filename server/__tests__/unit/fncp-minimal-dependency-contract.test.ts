@@ -31,6 +31,14 @@ const httpMiddlewareSource = readFileSync(
   resolve(__dirname, "../../src/http-middleware.ts"),
   "utf8"
 );
+const sqlTablesSource = readFileSync(
+  resolve(__dirname, "../../src/db/sql.ts"),
+  "utf8"
+);
+const localQueryBuilderSource = readFileSync(
+  resolve(__dirname, "../../src/db/postgres-query-builder.ts"),
+  "utf8"
+);
 
 describe("minimal FNCP production dependency contract", () => {
   test("test and development HTTP clients stay outside production dependencies", () => {
@@ -51,6 +59,26 @@ describe("minimal FNCP production dependency contract", () => {
       expect(packageJson.dependencies).not.toHaveProperty(unused);
       expect(packageJson.devDependencies).not.toHaveProperty(unused);
     }
+  });
+
+  test("the legacy node-sql and monolithic Lodash runtime are absent", () => {
+    for (const dependency of ["sql", "lodash"]) {
+      expect(packageJson.dependencies).not.toHaveProperty(dependency);
+      expect(packageJson.devDependencies).not.toHaveProperty(dependency);
+    }
+    expect(packageLock.packages).not.toHaveProperty("node_modules/sql");
+    expect(packageLock.packages).not.toHaveProperty("node_modules/lodash");
+    expect(packageLock.packages).not.toHaveProperty(
+      "node_modules/sql/node_modules/lodash"
+    );
+    expect(sqlTablesSource).toContain(
+      'import sql from "./postgres-query-builder"'
+    );
+    expect(sqlTablesSource).not.toMatch(/from\s+["']sql["']/u);
+    expect(localQueryBuilderSource).toContain(
+      "function quoteIdentifier(identifier: string)"
+    );
+    expect(localQueryBuilderSource).toContain("resolveWriteValues");
   });
 
   test("bounded compatible production upgrades are pinned", () => {
