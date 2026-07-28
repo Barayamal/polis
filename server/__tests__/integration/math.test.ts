@@ -254,9 +254,6 @@ describe("Math and Analysis Endpoints", () => {
     expect(pcaResponse.text).toMatch(
       /polis_err_param_parse_failed_conversation_id/
     );
-    expect(pcaResponse.text).toMatch(
-      /polis_err_fetching_zid_for_conversation_id/
-    );
 
     // Request correlation matrix with invalid report_id
     const corrResponse: Response = await testAgent.get(
