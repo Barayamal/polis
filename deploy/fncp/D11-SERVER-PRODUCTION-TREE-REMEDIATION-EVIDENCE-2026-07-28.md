@@ -79,12 +79,12 @@ the historical five-image baseline gives:
 
 | Severity | Planning projection |
 |---|---:|
-| Critical | 1 |
+| Critical | 2 |
 | High | 30 |
 | Medium | 463 |
 | Low | 143 |
 | Negligible | 6 |
-| **Total** | **643** |
+| **Total** | **644** |
 
 This combines different source states and evidence types. It is not a unified
 build, current image scan, registry record, release attestation or exception
