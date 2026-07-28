@@ -45,10 +45,26 @@ describe("minimal FNCP production dependency contract", () => {
     expect(packageJson.dependencies.underscore).toBe("1.13.8");
   });
 
-  test("deprecated request packages remain until both runtime callers migrate", () => {
-    expect(packageJson.dependencies.request).toBe("~2.88.2");
-    expect(packageJson.dependencies["request-promise"]).toBe("~4.2.6");
-    expect(fileFetcherSource).toMatch(/import request from "request-promise"/);
-    expect(moderationSource).toMatch(/import request from "request-promise"/);
+  test("deprecated request clients are absent from the server runtime", () => {
+    for (const dependency of [
+      "request",
+      "request-promise",
+      "simple-oauth2",
+    ]) {
+      expect(packageJson.dependencies).not.toHaveProperty(dependency);
+    }
+    expect(packageJson.devDependencies).not.toHaveProperty(
+      "@types/request-promise"
+    );
+    expect(fileFetcherSource).not.toMatch(
+      /from\s+["']request(?:-promise)?["']|require\(["']request/u
+    );
+    expect(moderationSource).not.toMatch(
+      /from\s+["']request(?:-promise)?["']|require\(["']request/u
+    );
+    expect(fileFetcherSource).toContain('redirect: "follow"');
+    expect(moderationSource).toContain(
+      "AbortSignal.timeout(IP_LOOKUP_TIMEOUT_MS)"
+    );
   });
 });
