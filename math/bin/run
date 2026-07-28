@@ -8,5 +8,12 @@ do
   echo "XXXXXXXXXXXXXXXXXX REBOOTING MATH WORKER XXXXXXXXXXXXXXXXXX"
   echo "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
   echo "                                                           "
-  timeout -s KILL 14400 clojure -M:run full
+  classpath=$(cat /app/classpath)
+  timeout -s KILL 14400 \
+    /opt/java/openjdk/bin/java \
+    -Xmx4g \
+    -cp "$classpath" \
+    clojure.main \
+    -m polismath.runner \
+    full
 done

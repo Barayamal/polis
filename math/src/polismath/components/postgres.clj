@@ -47,7 +47,7 @@
     (HikariDataSource. config)))
 
 (defn heroku-db-spec
-  "Create a korma db-spec given a heroku db-uri with HikariCP connection pooling"
+  "Create a JDBC datasource spec from a Heroku-style database URI."
   [db-uri _ignore-ssl pool-config]  ; ignore-ssl parameter kept for compatibility but not used with HikariCP
   (let [datasource (create-hikari-datasource db-uri pool-config)]
     {:datasource datasource}))
@@ -474,5 +474,4 @@
   :endcomment)
 
 :ok
-
 

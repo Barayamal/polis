@@ -28,6 +28,10 @@ const mathDockerfile = readFileSync(
   join(repositoryRoot, "math", "Dockerfile"),
   "utf8",
 );
+const mathRunScript = readFileSync(
+  join(repositoryRoot, "math", "bin", "run"),
+  "utf8",
+);
 const oidcDockerfile = readFileSync(
   join(repositoryRoot, "oidc-simulator", "Dockerfile"),
   "utf8",
@@ -226,9 +230,61 @@ test("participant runtime evidence rejects Sharp and esbuild package families", 
   assert.match(collector, /entry\.name\.startsWith\("sharp-"\)/u);
 });
 
-test("math worker resolves only its runtime alias", () => {
-  assert.match(mathDockerfile, /RUN clojure -P -M:run$/mu);
+test("math worker crosses only its runtime closure into a non-root stage", () => {
+  const buildStageIndex = mathDockerfile.indexOf(" AS build");
+  const dependencyIndex = mathDockerfile.indexOf("clojure -P -M:run");
+  const runtimeStageIndex = mathDockerfile.indexOf(" AS runtime");
+  const copyIndex = mathDockerfile.indexOf(
+    "COPY --from=build --chown=65532:65532 /runtime/app ./",
+  );
+  const commandIndex = mathDockerfile.indexOf('CMD ["./bin/run"]');
+
+  assert.ok(buildStageIndex >= 0);
+  assert.ok(dependencyIndex > buildStageIndex);
+  assert.ok(runtimeStageIndex > dependencyIndex);
+  assert.ok(copyIndex > runtimeStageIndex);
+  assert.ok(commandIndex > copyIndex);
+  assert.match(mathDockerfile, /clojure -Spath -M:run/u);
+  assert.match(
+    mathDockerfile,
+    /target="\/runtime\/app\/lib\/\$\(basename "\$artifact"\)"/u,
+  );
+  assert.match(mathDockerfile, /cmp -s "\$artifact" "\$target"/u);
+  assert.match(
+    mathDockerfile,
+    /printf '%s' '\/app\/src:\/app\/resources' > \/runtime\/app\/classpath/u,
+  );
+  assert.match(
+    mathDockerfile,
+    /printf ':\/app\/lib\/%s' "\$\(basename "\$artifact"\)"/u,
+  );
+  assert.match(
+    mathDockerfile,
+    /Class\/forName "clojure\.core\.matrix\.random\.RandomSeq"/u,
+  );
+  assert.match(
+    mathDockerfile,
+    /file:\/app\/lib\/core\.matrix-0\.63\.0\.jar/u,
+  );
+  assert.doesNotMatch(mathDockerfile, /sha256sum/u);
+  assert.match(mathDockerfile, /rm -rf \/usr\/local\/lib\/clojure/u);
+  assert.match(mathDockerfile, /^USER 65532:65532$/mu);
   assert.doesNotMatch(mathDockerfile, /-M:dev/u);
+});
+
+test("math runtime bypasses the removed Clojure CLI and preserves restart bounds", () => {
+  assert.match(mathRunScript, /timeout -s KILL 14400/u);
+  assert.match(mathRunScript, /\/opt\/java\/openjdk\/bin\/java/u);
+  assert.match(mathRunScript, /-Xmx4g/u);
+  assert.match(
+    mathRunScript,
+    /classpath=\$\(cat \/app\/classpath\)/u,
+  );
+  assert.match(mathRunScript, /-cp "\$classpath"/u);
+  assert.doesNotMatch(mathRunScript, /\/app\/lib\/\*/u);
+  assert.match(mathRunScript, /clojure\.main/u);
+  assert.match(mathRunScript, /-m polismath\.runner/u);
+  assert.match(mathRunScript, /\n    full\n/u);
 });
 
 test("participant build context excludes local dependencies and output", () => {

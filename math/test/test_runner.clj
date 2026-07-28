@@ -5,6 +5,7 @@
             [conv-man-tests]
             [conversation-test]
             [conv-edge-cases-test]
+            [export-test]
             [index-hash-test]
             [named-matrix-test]
             [pca-test]
@@ -30,6 +31,7 @@
     '[cluster-tests
       conversation-test
       conv-edge-cases-test
+      export-test
       index-hash-test
       named-matrix-test
       pca-test
