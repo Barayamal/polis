@@ -12,7 +12,6 @@ dotenv.config();
 
 import Promise from "bluebird";
 import express from "express";
-import morgan from "morgan";
 import timeout from "connect-timeout";
 
 import server from "./src/server";
@@ -239,6 +238,10 @@ const HMAC_SIGNATURE_PARAM_NAME = "signature";
 
 // Dev-only http logger
 if (devMode) {
+  // Keep the development-only request formatter out of the minimal
+  // production dependency tree and runtime module graph.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const morgan = require("morgan");
   // 'dev' format is
   // :method :url :status :response-time ms - :res[content-length]
   app.use(morgan("dev"));
