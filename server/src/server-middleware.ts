@@ -299,10 +299,18 @@ function globalErrorHandler(
   // contract now that this handler is correctly installed after the routes.
   // Do not expose arbitrary exception messages.
   if (status >= 400 && status < 500) {
+    // Legacy middleware calls next("polis_err_*") with a string, while newer
+    // handlers pass Error instances. Normalise both forms before extracting
+    // only the stable public code.
+    const errorMessage =
+      typeof err === "string"
+        ? err
+        : typeof err?.message === "string"
+          ? err.message
+          : "";
     const publicError =
-      typeof err.message === "string" &&
-      /^polis_(?:err|fail)_[a-z0-9_]+(?:\b|$)/u.test(err.message)
-        ? err.message.match(/^polis_(?:err|fail)_[a-z0-9_]+/u)?.[0]
+      /^polis_(?:err|fail)_[a-z0-9_]+(?:\b|$)/u.test(errorMessage)
+        ? errorMessage.match(/^polis_(?:err|fail)_[a-z0-9_]+/u)?.[0]
         : undefined;
 
     return res.status(status).json({

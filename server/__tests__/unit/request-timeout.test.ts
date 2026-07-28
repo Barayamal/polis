@@ -218,6 +218,32 @@ describe("globalErrorHandler timeout response", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("preserves a stable Pol.is error code forwarded as a legacy string", () => {
+    const req = makeRequest();
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const res = {
+      statusCode: 400,
+      headersSent: false,
+      status,
+    };
+    const next = jest.fn();
+
+    globalErrorHandler(
+      "polis_err_param_parse_failed_conversation_id (val='invalid')",
+      req as never,
+      res as never,
+      next
+    );
+
+    expect(status).toHaveBeenCalledWith(400);
+    expect(json).toHaveBeenCalledWith({
+      error: "polis_err_param_parse_failed_conversation_id",
+      message: "polis_err_param_parse_failed_conversation_id",
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("does not expose an arbitrary 4xx exception message", () => {
     const req = makeRequest();
     const json = jest.fn();
