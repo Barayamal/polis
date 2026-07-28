@@ -39,7 +39,8 @@ describe('Alpha Client: Visualization', function () {
     cy.visit(`/alpha/${conversationId}?xid=${encodeURIComponent(xid)}`)
 
     // Wait for voting UI + hydration to finish attaching handlers
-    cy.get('[data-testid="vote-agree"]').should('be.visible')
+    cy.get('[data-testid="vote-agree"]')
+      .should('be.visible')
       .should('be.visible')
       .and('not.be.disabled')
     cy.wait(`@nextComment_${index}`)
@@ -65,7 +66,7 @@ describe('Alpha Client: Visualization', function () {
         // So the most deterministic wait is: either nextComment exists and becomes the DOM statement,
         // or nextComment is null/absent and we reach the end-state.
         if (!next || typeof nextTid === 'undefined' || !nextTxt) {
-          cy.get('.email-subscribe-container').should('be.visible')
+          cy.get('.survey-complete').should('be.visible')
           return
         }
 
@@ -93,7 +94,8 @@ describe('Alpha Client: Visualization', function () {
     waitForNextFromVoteResponse(`@vote_${index}`, `p${index}-pass`)
 
     // After exhausting 3 seeded comments, end-state should be shown
-    cy.get('.email-subscribe-container').should('be.visible')
+    cy.get('.survey-complete').should('be.visible')
+    cy.get('.email-subscribe-container').should('not.exist')
 
     return cy.wrap(xid)
   }
@@ -127,7 +129,7 @@ describe('Alpha Client: Visualization', function () {
     })
 
     // New viewer (clean state) loads visualization
-      cy.clearAllLocalStorage()
+    cy.clearAllLocalStorage()
 
     cy.intercept({ method: 'GET', url: '**/api/v3/math/pca2*' }).as('getMath')
     cy.intercept({ method: 'GET', url: '**/api/v3/comments*' }).as('getComments')
