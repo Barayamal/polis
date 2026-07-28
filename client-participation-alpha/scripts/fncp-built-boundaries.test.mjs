@@ -9,12 +9,14 @@ const projectRoot = path.resolve(
   '..'
 )
 const clientRoot = path.join(projectRoot, 'dist', 'client')
+const serverRoot = path.join(projectRoot, 'dist', 'server')
 const textExtensions = new Set([
   '.css',
   '.html',
   '.js',
   '.json',
   '.map',
+  '.mjs',
   '.svg',
   '.txt'
 ])
@@ -68,4 +70,26 @@ test('generated JavaScript and CSS assets use the explicit _astro directory', as
       '_astro'
     )
   }
+})
+
+test('built SSR output uses Astro passthrough images without build-tool imports', async () => {
+  const files = await textFiles(serverRoot)
+  assert.ok(files.length > 0, 'Run the production alpha build before this check.')
+
+  const combined = (
+    await Promise.all(files.map((file) => readFile(file, 'utf8')))
+  ).join('\n')
+
+  assert.match(combined, /astro\/assets\/services\/noop/u)
+  assert.doesNotMatch(combined, /astro\/assets\/services\/sharp/u)
+  assert.doesNotMatch(combined, /(?:from\s+|import\()['"]sharp['"]/u)
+  assert.doesNotMatch(
+    combined,
+    /(?:from\s+|import\()['"](?:@esbuild\/[^'"]+|esbuild)['"]/u
+  )
+
+  // Astro 5.18.2 still injects this internal route for every SSR build. The
+  // outer FNCP proxy contract, rather than generated-output rewriting, denies
+  // both public spellings.
+  assert.match(combined, /"route":"\/_image"/u)
 })

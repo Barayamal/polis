@@ -131,6 +131,16 @@ test("public QA proxy exposes only alpha assets and six method-route capabilitie
 
   assert.match(proxyConfig, /location \^~ \/_astro\//);
   assert.match(proxyConfig, /location \^~ \/alpha\//);
+  for (const imagePath of ["/_image", "/alpha/_image"]) {
+    assert.ok(
+      proxyConfig.includes(
+        `location = ${imagePath} {\n` +
+          "        return 404;\n" +
+          "    }"
+      ),
+      `${imagePath} must not reach Astro's generated image endpoint`
+    );
+  }
   assert.match(proxyConfig, /location \/ \{\n {8}return 404;/);
   assert.doesNotMatch(
     proxyConfig,

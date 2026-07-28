@@ -1,5 +1,5 @@
 // @ts-check
-import { defineConfig } from 'astro/config'
+import { defineConfig, passthroughImageService } from 'astro/config'
 
 import react from '@astrojs/react'
 
@@ -9,6 +9,9 @@ import node from '@astrojs/node'
 export default defineConfig({
   base: '/',
   output: 'server',
+  image: {
+    service: passthroughImageService()
+  },
   build: {
     assets: '_astro'
   },

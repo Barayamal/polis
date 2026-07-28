@@ -87,6 +87,7 @@ for service in server client-participation-alpha oidc-simulator; do
       sentinels=jest,nodemon,prettier,supertest,ts-jest
       check_keys=1
       check_npm=1
+      check_alpha_build_tools=0
       ;;
     client-participation-alpha)
       # Astro resolves TypeScript through production dependencies (tsconfck and
@@ -94,11 +95,13 @@ for service in server client-participation-alpha oidc-simulator; do
       sentinels=eslint,jest,prettier,ts-jest,ts-node
       check_keys=1
       check_npm=1
+      check_alpha_build_tools=1
       ;;
     oidc-simulator)
       sentinels=nodemon
       check_keys=1
       check_npm=0
+      check_alpha_build_tools=0
       ;;
   esac
   image_id=$(
@@ -111,6 +114,7 @@ for service in server client-participation-alpha oidc-simulator; do
     -e "FNCP_SENTINELS=$sentinels" \
     -e "FNCP_CHECK_KEYS=$check_keys" \
     -e "FNCP_CHECK_NPM=$check_npm" \
+    -e "FNCP_CHECK_ALPHA_BUILD_TOOLS=$check_alpha_build_tools" \
     "$image_id" \
     -e '
       const fs = require("node:fs");
@@ -125,15 +129,42 @@ for service in server client-participation-alpha oidc-simulator; do
         (fs.existsSync("/usr/local/lib/node_modules/npm") ||
           fs.existsSync("/usr/local/bin/npm") ||
           fs.existsSync("/usr/local/bin/npx"));
+      const buildOnlyPackagePathsPresent = [];
+      const collectBuildOnlyPackages = (directory) => {
+        for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+          if (!entry.isDirectory()) continue;
+          const absolute = `${directory}/${entry.name}`;
+          const forbidden =
+            entry.name === "@esbuild" ||
+            entry.name === "esbuild" ||
+            entry.name === "sharp" ||
+            (directory.endsWith("/@img") && entry.name.startsWith("sharp-"));
+          if (forbidden) {
+            buildOnlyPackagePathsPresent.push(absolute);
+          } else {
+            collectBuildOnlyPackages(absolute);
+          }
+        }
+      };
+      if (
+        process.env.FNCP_CHECK_ALPHA_BUILD_TOOLS === "1" &&
+        fs.existsSync("/app/node_modules")
+      ) {
+        collectBuildOnlyPackages("/app/node_modules");
+      }
       const result = {
         status:
-          present.length === 0 && !keysPresent && !globalNpmRuntimePresent
+          present.length === 0 &&
+          !keysPresent &&
+          !globalNpmRuntimePresent &&
+          buildOnlyPackagePathsPresent.length === 0
             ? "pass"
             : "fail",
         developmentPackageSentinels: sentinels,
         developmentPackageSentinelsPresent: present,
         generatedKeysDirectoryPresent: keysPresent,
         globalNpmRuntimePresent,
+        buildOnlyPackagePathsPresent,
       };
       console.log(JSON.stringify(result, null, 2));
       if (result.status !== "pass") process.exit(1);

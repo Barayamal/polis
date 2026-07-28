@@ -140,6 +140,53 @@ test("participant image build does not submit Astro telemetry", () => {
   assert.match(alphaDockerfile, /^ENV ASTRO_TELEMETRY_DISABLED=1$/mu);
 });
 
+test("participant runtime crosses only reviewed build output into a fresh stage", () => {
+  const buildStageIndex = alphaDockerfile.indexOf(" AS build");
+  const buildIndex = alphaDockerfile.indexOf("RUN npm run build");
+  const pruneIndex = alphaDockerfile.indexOf("RUN npm prune --omit=dev");
+  const runtimeStageIndex = alphaDockerfile.indexOf(" AS runtime");
+  const copyDistIndex = alphaDockerfile.indexOf(
+    "COPY --from=build /app/dist ./dist",
+  );
+  const copyModulesIndex = alphaDockerfile.indexOf(
+    "COPY --from=build /app/node_modules ./node_modules",
+  );
+  const commandIndex = alphaDockerfile.indexOf(
+    'CMD ["node", "dist/server/entry.mjs"]',
+  );
+
+  assert.ok(buildStageIndex >= 0);
+  assert.ok(buildIndex > buildStageIndex);
+  assert.ok(pruneIndex > buildIndex);
+  assert.ok(runtimeStageIndex > pruneIndex);
+  assert.ok(copyDistIndex > runtimeStageIndex);
+  assert.ok(copyModulesIndex > copyDistIndex);
+  assert.ok(commandIndex > copyModulesIndex);
+  assert.doesNotMatch(
+    alphaDockerfile.slice(runtimeStageIndex),
+    /^COPY (?!-{2}from=build\b)/mu,
+  );
+
+  for (const buildOnlyPath of [
+    "node_modules/@esbuild",
+    "node_modules/@img",
+    "node_modules/astro/node_modules/@esbuild",
+    "node_modules/astro/node_modules/esbuild",
+    "node_modules/esbuild",
+    "node_modules/sharp",
+  ]) {
+    assert.ok(
+      alphaDockerfile.includes(buildOnlyPath),
+      `missing build-only removal: ${buildOnlyPath}`,
+    );
+  }
+  assert.match(alphaDockerfile, /find node_modules -type d/u);
+  assert.match(alphaDockerfile, /-name '@esbuild'/u);
+  assert.match(alphaDockerfile, /-name 'esbuild'/u);
+  assert.match(alphaDockerfile, /-name 'sharp'/u);
+  assert.match(alphaDockerfile, /-path '\*\/@img\/sharp-\*'/u);
+});
+
 test("other Node final runtimes prune direct development dependencies", () => {
   for (const dockerfile of [alphaDockerfile, oidcDockerfile]) {
     const buildIndex = dockerfile.indexOf("RUN npm run build");
@@ -159,6 +206,15 @@ test("participant-facing Node runtimes remove the global npm CLI", () => {
     );
   }
   assert.match(collector, /globalNpmRuntimePresent/u);
+});
+
+test("participant runtime evidence rejects Sharp and esbuild package families", () => {
+  assert.match(collector, /FNCP_CHECK_ALPHA_BUILD_TOOLS/u);
+  assert.match(collector, /buildOnlyPackagePathsPresent/u);
+  assert.match(collector, /entry\.name === "@esbuild"/u);
+  assert.match(collector, /entry\.name === "esbuild"/u);
+  assert.match(collector, /entry\.name === "sharp"/u);
+  assert.match(collector, /entry\.name\.startsWith\("sharp-"\)/u);
 });
 
 test("math worker resolves only its runtime alias", () => {

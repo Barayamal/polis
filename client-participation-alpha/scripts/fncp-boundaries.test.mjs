@@ -20,6 +20,18 @@ test('browser API and generated asset bases are fixed same-origin paths', async 
   assert.match(astroConfig, /base: '\/'/)
   assert.match(astroConfig, /assets: '_astro'/)
 })
+
+test('the alpha build uses Astro passthrough images without a Sharp runtime', async () => {
+  const astroConfig = await source('astro.config.mjs')
+
+  assert.match(
+    astroConfig,
+    /import \{ defineConfig, passthroughImageService \} from 'astro\/config'/
+  )
+  assert.match(astroConfig, /service: passthroughImageService\(\)/)
+  assert.doesNotMatch(astroConfig, /sharpImageService|services\/sharp/)
+})
+
 test('gateway identity remains in the SSR request context and out of rendered state', async () => {
   const [pageSource, participationSource] = await Promise.all([
     source('src/pages/[conversation_id].astro'),
