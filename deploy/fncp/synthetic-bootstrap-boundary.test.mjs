@@ -226,7 +226,7 @@ test("activation proves fresh dedicated containers and exact live binding", () =
   const markerRemoval = activate.indexOf('rm -f "$restart_marker"');
   const providerProof = activate.indexOf(".operationVersion == null");
   const participantProof = activate.indexOf(
-    "This conversation requires an XID"
+    "Gateway access required."
   );
   assert.ok(markerRemoval > providerProof);
   assert.ok(markerRemoval > participantProof);

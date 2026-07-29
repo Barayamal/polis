@@ -167,9 +167,9 @@ attempts=0
 while [ "$attempts" -lt 45 ]; do
   participant_status=$(request "$work_dir/participant.html" \
     "$participant_origin/alpha/$FNCP_GATEWAY_CONVERSATION_ID" || true)
-  if [ "$participant_status" = "200" ] &&
+  if [ "$participant_status" = "403" ] &&
     grep -Fq \
-      "This conversation requires an XID (external identifier) to participate." \
+      "Gateway access required." \
       "$work_dir/participant.html"
   then
     break
@@ -178,7 +178,7 @@ while [ "$attempts" -lt 45 ]; do
   sleep 1
 done
 if [ "$attempts" -ge 45 ]; then
-  echo "Dedicated participant binding did not become ready in time." >&2
+  echo "Dedicated participant direct-access denial did not become ready." >&2
   exit 1
 fi
 

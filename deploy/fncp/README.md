@@ -347,7 +347,8 @@ protected restart marker therefore blocks the trace. The second helper:
 - force-recreates the dedicated server, participant alpha and proxy locally;
 - proves the server and alpha container IDs changed;
 - reads back the exact provider binding from the guarded server;
-- verifies the missing-XID participant page through the recreated proxy; and
+- verifies a direct participant request is denied with the exact hardened
+  gateway-required `403` through the recreated proxy; and
 - removes the restart marker only after all checks pass.
 
 If activation fails, the marker remains and `smoke-test.sh` refuses to run.
