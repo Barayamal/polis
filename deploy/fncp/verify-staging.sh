@@ -50,7 +50,7 @@ grep -q '"127.0.0.1:3000:3000"' "$compose_file"
 node --test "$deploy_dir/deployment-boundary.test.mjs"
 node --test "$deploy_dir/migration-image.test.mjs"
 node --test "$deploy_dir/synthetic-bootstrap-boundary.test.mjs"
-grep -q "Modified by Barayamal on 26 July 2026" \
+grep -q "Modified by Barayamal on 26 and 29 July 2026" \
   "$repo_root/server/src/auth/ensure-participant.ts"
 grep -q "Modified by Barayamal on 26 July 2026" \
   "$repo_root/server/src/auth/jwt-utils.ts"
