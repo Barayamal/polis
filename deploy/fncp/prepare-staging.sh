@@ -19,6 +19,7 @@ auth_secret=$(openssl rand -hex 32)
 login_pepper=$(openssl rand -hex 32)
 encryption_password=$(openssl rand -hex 32)
 math_password=$(openssl rand -hex 24)
+provider_allowlist_credential=$(openssl rand -hex 32)
 server_runtime_uid=$(id -u)
 server_runtime_gid=$(id -g)
 source_revision=$(git -C "$repo_root" rev-parse HEAD)
@@ -42,6 +43,7 @@ sed \
   -e "s/LOGIN_CODE_PEPPER=REPLACE_WITH_RANDOM_VALUE/LOGIN_CODE_PEPPER=$login_pepper/" \
   -e "s/ENCRYPTION_PASSWORD_00001=REPLACE_WITH_RANDOM_VALUE/ENCRYPTION_PASSWORD_00001=$encryption_password/" \
   -e "s/WEBSERVER_PASS=REPLACE_WITH_RANDOM_VALUE/WEBSERVER_PASS=$math_password/" \
+  -e "s/FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL=REPLACE_WITH_RANDOM_VALUE/FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL=$provider_allowlist_credential/" \
   -e "s/FNCP_SOURCE_REVISION=REPLACE_WITH_SOURCE_REVISION/FNCP_SOURCE_REVISION=$source_revision/" \
   "$deploy_dir/staging.env.example" >"$env_file"
 chmod 600 "$env_file"

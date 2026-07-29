@@ -100,6 +100,15 @@ function middleware_log_request_body(
     }
 
     let b = "";
+    if (req.path.startsWith("/fncp/private/")) {
+      // Private-authority requests contain an opaque participant XID in the
+      // JSON body. Never copy that body into development logs.
+      logger.debug("middleware_log_request_body", {
+        path: req.path,
+        body: "[private authority body redacted]",
+      });
+      return next();
+    }
     if (req.body) {
       const temp = _.clone(req.body);
       if (temp.password) {

@@ -134,6 +134,10 @@ import {
   handle_GET_xidAllowList_csv,
 } from "./src/routes/xids";
 import {
+  FNCP_PROVIDER_ALLOWLIST_PATHS,
+  fncpProviderAllowlistHandlers,
+} from "./src/routes/fncp-provider-allowlist";
+import {
   handle_GET_participants,
   handle_GET_participation,
   handle_GET_participationInit,
@@ -359,6 +363,22 @@ helpersInitialized.then(
     ////////////////////////////////////////////
     ////////////////////////////////////////////
     ////////////////////////////////////////////
+
+    // Network-private, bearer-authenticated Option C provider adapter.
+    // These fixed routes are intentionally outside the public /api/v3 tree and
+    // are not exposed by the FNCP participant proxy.
+    app.post(
+      FNCP_PROVIDER_ALLOWLIST_PATHS.upsert,
+      fncpProviderAllowlistHandlers.upsert
+    );
+    app.post(
+      FNCP_PROVIDER_ALLOWLIST_PATHS.readback,
+      fncpProviderAllowlistHandlers.readback
+    );
+    app.post(
+      FNCP_PROVIDER_ALLOWLIST_PATHS.remove,
+      fncpProviderAllowlistHandlers.remove
+    );
 
     app.get("/api/v3/math/pca", handle_GET_math_pca);
 

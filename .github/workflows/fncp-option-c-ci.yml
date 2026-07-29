@@ -43,7 +43,8 @@ jobs:
             deploy/fncp/audit-production-dependencies.test.mjs \
             deploy/fncp/deployment-boundary.test.mjs \
             deploy/fncp/image-security-evidence.test.mjs \
-            deploy/fncp/migration-image.test.mjs
+            deploy/fncp/migration-image.test.mjs \
+            deploy/fncp/provider-allowlist-boundary.test.mjs
 
       - name: Reject whitespace errors
         run: |
@@ -126,13 +127,14 @@ jobs:
           --config jest.fncp.config.ts
           --runInBand
 
-      - name: Run isolated PostgreSQL query-builder integration
+      - name: Run isolated PostgreSQL integrations
         working-directory: server
         run: >-
           npm test --
           --config jest.fncp.config.ts
           --runInBand
           __tests__/integration/postgres-query-builder.test.ts
+          __tests__/integration/fncp-provider-allowlist-store.test.ts
 
   participant-alpha:
     name: Participant alpha boundaries
