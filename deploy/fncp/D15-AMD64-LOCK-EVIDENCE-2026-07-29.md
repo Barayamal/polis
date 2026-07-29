@@ -1,6 +1,6 @@
 # D15 — Native AMD64 child-manifest lock evidence
 
-Date: 29 July 2026  
+Date: 29 July 2026
 Decision: **HOLD / NO-GO**
 
 Every public image index used by the Option C source and scanner path was

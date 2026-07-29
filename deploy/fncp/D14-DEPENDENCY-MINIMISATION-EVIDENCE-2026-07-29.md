@@ -1,7 +1,7 @@
 # D14 — Option C dependency and math-runtime minimisation evidence
 
-Date: 29 July 2026  
-Decision: **HOLD / NO-GO**  
+Date: 29 July 2026
+Decision: **HOLD / NO-GO**
 Scope: local ARM64 source and image assurance only
 
 ## Outcome
