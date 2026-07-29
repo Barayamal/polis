@@ -109,6 +109,9 @@ test("minimal FNCP path ships alpha assets without full legacy bundles", () => {
     "!nginx/",
     "!nginx/Dockerfile",
     "!nginx/fncp-staging.conf",
+    "!busybox-fixed/",
+    "!busybox-fixed/CVE-2025-60876.patch",
+    "!busybox-fixed/build-fixed-busybox.sh",
   ]);
 
   const minimalPath = `${compose}\n${proxyDockerfile}\n${proxyConfig}`;

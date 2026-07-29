@@ -953,13 +953,16 @@ test("every broad-copy build context excludes generated secrets", () => {
   assert.match(oidcDockerignore, /^certs\/$/mu);
 });
 
-test("proxy build context is deny-all with two exact source allows", () => {
+test("proxy build context is deny-all with exact reviewed source allows", () => {
   const rules = proxyDockerignore.trim().split("\n");
   assert.deepEqual(rules, [
     "**",
     "!nginx/",
     "!nginx/Dockerfile",
     "!nginx/fncp-staging.conf",
+    "!busybox-fixed/",
+    "!busybox-fixed/CVE-2025-60876.patch",
+    "!busybox-fixed/build-fixed-busybox.sh",
   ]);
 });
 
