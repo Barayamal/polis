@@ -3,7 +3,6 @@
 "use strict";
 
 import akismetLib from "akismet";
-import AWS from "aws-sdk";
 import { Promise as BluebirdPromise } from "bluebird";
 import _ from "underscore";
 import { METRICS_IN_RAM } from "./utils/metered";
@@ -29,7 +28,6 @@ import {
   sendTextEmail,
 } from "./email/senders";
 
-AWS.config.update({ region: Config.awsRegion });
 const devMode = Config.isDevMode;
 
 if (devMode) {

@@ -29,3 +29,6 @@ data
 certs/
 keys/
 logs/
+!busybox-fixed/
+!busybox-fixed/CVE-2025-60876.patch
+!busybox-fixed/build-fixed-busybox.sh

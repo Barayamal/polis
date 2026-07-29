@@ -8,19 +8,21 @@ const dockerfiles = [
   "server/Dockerfile-migrate",
   "client-participation-alpha/Dockerfile",
   "deploy/fncp/nginx/Dockerfile",
+  "math/Dockerfile",
 ];
 
 const contexts = [
   "server/busybox-fixed",
   "client-participation-alpha/busybox-fixed",
   "deploy/fncp/busybox-fixed",
+  "math/busybox-fixed",
 ];
 
 const read = (path) => readFile(path, "utf8");
 const sha256 = (value) =>
   createHash("sha256").update(value).digest("hex");
 
-test("all four Alpine release Dockerfiles replace BusyBox", async () => {
+test("all five Alpine release Dockerfiles replace BusyBox", async () => {
   for (const path of dockerfiles) {
     const source = await read(path);
     assert.match(source, /AS fncp-busybox-fixed/u, path);

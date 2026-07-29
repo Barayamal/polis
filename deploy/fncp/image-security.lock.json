@@ -52,11 +52,25 @@
       "arm64Digest": "sha256:eac2596798b3ceccc7d11918ed89f533f226909f0402203fb7e31e6677aff3c2"
     },
     {
+      "component": "math-busybox-builder",
+      "dockerfile": "math/Dockerfile",
+      "tag": "docker.io/library/node:24-alpine",
+      "indexDigest": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+      "arm64Digest": "sha256:eef73a25205e27bd016ce672af71560ad6b681142ddf00ff63c7b3098eafcd4d"
+    },
+    {
+      "component": "math-runtime-builder",
+      "dockerfile": "math/Dockerfile",
+      "tag": "docker.io/library/amazoncorretto:17-alpine",
+      "indexDigest": "sha256:e1138bf0cca62e04692de650ffe8923f35c39fcb554458c7acd98efc2d135144",
+      "arm64Digest": "sha256:f9d316fbe3d31703d2ba23dcf2521f8040511b48a858dd0ea2071295b00eefc5"
+    },
+    {
       "component": "math-runtime",
       "dockerfile": "math/Dockerfile",
-      "tag": "docker.io/library/eclipse-temurin:17-jre-noble",
-      "indexDigest": "sha256:543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8",
-      "arm64Digest": "sha256:eb7754fa217849b3c84ade86f2bce71fe9d2071ea3feb2622b378fa74bb0f5dc"
+      "tag": "docker.io/library/alpine:3.24",
+      "indexDigest": "sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b",
+      "arm64Digest": "sha256:e7a1a92a5bfeee40966aea60f0796b0e7917cc35591542701834f03a68fa3d18"
     },
     {
       "component": "client-participation-alpha",

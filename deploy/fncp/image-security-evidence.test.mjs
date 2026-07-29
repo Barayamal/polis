@@ -235,7 +235,7 @@ test("all application base images and scanners are locked by digest", () => {
   const result = runTool("validate-lock");
   assert.deepEqual(result, {
     status: "pass",
-    baseImages: 11,
+    baseImages: 13,
     scannerImages: 2,
     buildPlatform: "linux/arm64",
   });
@@ -866,7 +866,11 @@ test("participant runtime evidence rejects Sharp and esbuild package families", 
 test("math worker crosses only its runtime closure into a non-root stage", () => {
   const buildStageIndex = mathDockerfile.indexOf(" AS build");
   const dependencyIndex = mathDockerfile.indexOf("clojure -P -M:run");
+  const jreStageIndex = mathDockerfile.indexOf(" AS fncp-jre-build");
   const runtimeStageIndex = mathDockerfile.indexOf(" AS runtime");
+  const javaCopyIndex = mathDockerfile.indexOf(
+    "COPY --from=fncp-jre-build /opt/fncp-jre ${JAVA_HOME}",
+  );
   const copyIndex = mathDockerfile.indexOf(
     "COPY --from=build --chown=65532:65532 /runtime/app ./",
   );
@@ -874,8 +878,10 @@ test("math worker crosses only its runtime closure into a non-root stage", () =>
 
   assert.ok(buildStageIndex >= 0);
   assert.ok(dependencyIndex > buildStageIndex);
-  assert.ok(runtimeStageIndex > dependencyIndex);
-  assert.ok(copyIndex > runtimeStageIndex);
+  assert.ok(jreStageIndex > dependencyIndex);
+  assert.ok(runtimeStageIndex > jreStageIndex);
+  assert.ok(javaCopyIndex > runtimeStageIndex);
+  assert.ok(copyIndex > javaCopyIndex);
   assert.ok(commandIndex > copyIndex);
   assert.match(mathDockerfile, /clojure -Spath -M:run/u);
   assert.match(
@@ -899,10 +905,36 @@ test("math worker crosses only its runtime closure into a non-root stage", () =>
     mathDockerfile,
     /file:\/app\/lib\/core\.matrix-0\.63\.0\.jar/u,
   );
-  assert.doesNotMatch(mathDockerfile, /sha256sum/u);
   assert.match(
     mathDockerfile,
-    /FROM docker\.io\/library\/eclipse-temurin:17-jre-noble@sha256:[a-f0-9]{64} AS runtime/u,
+    /FROM docker\.io\/library\/amazoncorretto:17-alpine@sha256:[a-f0-9]{64} AS fncp-jre-build/u,
+  );
+  assert.match(
+    mathDockerfile,
+    /apk add --no-cache binutils=2\.45\.1-r1/u,
+  );
+  assert.match(
+    mathDockerfile,
+    /FROM docker\.io\/library\/alpine:3\.24@sha256:[a-f0-9]{64} AS runtime/u,
+  );
+  assert.match(mathDockerfile, /"\$JAVA_HOME\/bin\/jlink"/u);
+  assert.match(mathDockerfile, /--no-header-files/u);
+  assert.match(mathDockerfile, /--no-man-pages/u);
+  assert.match(mathDockerfile, /--strip-debug/u);
+  assert.doesNotMatch(mathDockerfile, /--bind-services/u);
+  assert.doesNotMatch(mathDockerfile, /java\.desktop/u);
+  assert.match(
+    mathDockerfile,
+    /ca-certificates-bundle=20260611-r0/u,
+  );
+  assert.match(mathDockerfile, /zlib=1\.3\.2-r0/u);
+  assert.match(
+    mathDockerfile,
+    /COPY --from=fncp-busybox-fixed \/out\/busybox \/bin\/busybox/u,
+  );
+  assert.match(
+    mathDockerfile,
+    /org\.barayamal\.fncp\.busybox\.remediation="CVE-2025-60876-upstream-patch"/u,
   );
   assert.match(mathDockerfile, /^ENTRYPOINT \[\]$/mu);
   assert.doesNotMatch(

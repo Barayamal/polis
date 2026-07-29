@@ -16,9 +16,10 @@
         ;; Other stuff
         cheshire/cheshire {:mvn/version "6.2.0"}
         ;; Keep Cheshire's binary formats on the same patched Jackson line.
-        com.fasterxml.jackson.core/jackson-core {:mvn/version "2.21.4"}
-        com.fasterxml.jackson.dataformat/jackson-dataformat-smile {:mvn/version "2.21.4"}
-        com.fasterxml.jackson.dataformat/jackson-dataformat-cbor {:mvn/version "2.21.4"}
+        com.fasterxml.jackson.core/jackson-core {:mvn/version "2.21.5"}
+        com.fasterxml.jackson.core/jackson-databind {:mvn/version "2.21.5"}
+        com.fasterxml.jackson.dataformat/jackson-dataformat-smile {:mvn/version "2.21.5"}
+        com.fasterxml.jackson.dataformat/jackson-dataformat-cbor {:mvn/version "2.21.5"}
         com.taoensso/timbre {:mvn/version "5.2.1"}
         com.stuartsierra/component {:mvn/version "0.3.1"}
         ;; Troublesome carmine... was using this for simulation stuff
@@ -58,12 +59,18 @@
         ;; Keep the reviewed dataset API line, but replace its old Nippy
         ;; compressor graph. Nippy 3.6 uses Aircompressor and no longer brings
         ;; the unpatched org.lz4/lz4-java coordinate into the runtime.
+        ;; The worker uses in-memory dataset operations, not the spreadsheet
+        ;; import/export path. Excluding POI removes its OOXML/parser closure
+        ;; from the participant runtime without changing the used API.
         techascent/tech.ml.dataset {:mvn/version "6.104"
-                                    :exclusions [com.taoensso/nippy]}
+                                    :exclusions [com.taoensso/nippy
+                                                 org.apache.poi/poi-ooxml]}
         com.taoensso/nippy {:mvn/version "3.6.0"}
         io.airlift/aircompressor {:mvn/version "2.0.3"}
+        com.google.guava/guava {:mvn/version "32.0.0-android"}
         commons-io/commons-io {:mvn/version "2.22.0"}
-        ch.qos.logback/logback-classic {:mvn/version "1.3.16"}}
+        ch.qos.logback/logback-classic {:mvn/version "1.5.34"}
+        ch.qos.logback/logback-core {:mvn/version "1.5.34"}}
  :aliases {:dev 
            {:extra-paths ["dev" "test"]
             :extra-deps {cider/cider-nrepl {:mvn/version "0.30.0"}
