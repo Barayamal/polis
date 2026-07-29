@@ -172,7 +172,7 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
           {surveyDetails?.title}
           {!isConversationActive && <span class="closed-badge">{s.closed}</span>}
         </h1>
-        <p class="description" set:html={marked.parse(surveyDetails?.description ?? '')}></p>
+        <div class="description" set:html={marked.parse(surveyDetails?.description ?? '')}></div>
 
         {isConversationActive ? (
           <>

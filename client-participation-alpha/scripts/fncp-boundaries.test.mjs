@@ -54,3 +54,42 @@ test('FNCP completion state collects no email and calls no notification route', 
   assert.match(surveySource, /s\.completionBody/)
   assert.doesNotMatch(surveySource, /EmailSubscribeForm|notifications/)
 })
+
+test('block markdown is rendered inside a valid flow container', async () => {
+  const pageSource = await source('src/pages/[conversation_id].astro')
+
+  assert.match(
+    pageSource,
+    /<div class="description" set:html=\{marked\.parse\(surveyDetails\?\.description \?\? ''\)\}><\/div>/
+  )
+  assert.doesNotMatch(pageSource, /<p class="description" set:html=\{marked\.parse/)
+})
+
+test('hydrated participant islands have deterministic initial markup', async () => {
+  const [statementSource, translationsSource] = await Promise.all([
+    source('src/components/Statement.tsx'),
+    source('src/strings/en_us.ts')
+  ])
+
+  assert.match(
+    statementSource,
+    /useSyncExternalStore\(subscribeToLanguage, uiLanguage, serverLanguage\)/
+  )
+  assert.match(statementSource, /const serverLanguage = \(\) => null/)
+
+  for (const name of [
+    'participantHelpWelcomeText',
+    'tipCommentsRandom',
+    'writeCommentHelpText'
+  ]) {
+    const match = translationsSource.match(
+      new RegExp(`${name}:\\s*\\n?\\s*["']([^"']*)["']`)
+    )
+    assert.ok(match, `expected ${name} in English translations`)
+    assert.equal(
+      (match[1].match(/<b>/g) ?? []).length,
+      (match[1].match(/<\/b>/g) ?? []).length,
+      `${name} must contain balanced bold tags`
+    )
+  }
+})

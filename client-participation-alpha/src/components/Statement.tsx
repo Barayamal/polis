@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useSyncExternalStore } from 'react'
 import { uiLanguage } from '../lib/lang'
 import type { Translations } from '../strings/types'
 import InfoIcon from './icons/InfoIcon'
@@ -15,6 +15,9 @@ interface StatementProps {
   importanceEnabled?: boolean
 }
 
+const subscribeToLanguage = () => () => {}
+const serverLanguage = () => null
+
 export function Statement({
   statement,
   onVote,
@@ -28,8 +31,9 @@ export function Statement({
   const [showImportanceDesc, setShowImportanceDesc] = useState<boolean>(false)
   const [translationsEnabled, setTranslationsEnabled] = useState<boolean>(false)
 
-  // Get current user language
-  const currentLang = uiLanguage()
+  // Keep the server render and the client's first render identical. Browser
+  // language detection can only run after hydration.
+  const currentLang = useSyncExternalStore(subscribeToLanguage, uiLanguage, serverLanguage)
   const statementLang = statement.lang
   const langMismatch = statementLang && currentLang && statementLang !== currentLang
 

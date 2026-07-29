@@ -77,6 +77,25 @@ test("staging Compose declares a synthetic loopback-only, non-internet boundary"
   assert.match(prepare, /server_runtime_gid=\$\(id -g\)/);
 });
 
+test("SSR and browser API requests traverse the same HTTPS-shaped boundary", () => {
+  assert.match(
+    stagingEnvironment,
+    /^INTERNAL_SERVICE_URL=http:\/\/nginx-proxy:8080\/api\/v3$/m
+  );
+  assert.doesNotMatch(
+    stagingEnvironment,
+    /^INTERNAL_SERVICE_URL=http:\/\/server:5000\/api\/v3$/m
+  );
+
+  const forwardedProtoHeaders =
+    proxyConfig.match(/proxy_set_header X-Forwarded-Proto https;/g) ?? [];
+  assert.equal(forwardedProtoHeaders.length, 7);
+  assert.doesNotMatch(
+    proxyConfig,
+    /proxy_set_header X-Forwarded-Proto \$scheme;/
+  );
+});
+
 test("minimal FNCP path ships alpha assets without full legacy bundles", () => {
   assert.doesNotMatch(compose, /^\s{2}file-server:/m);
   assert.doesNotMatch(compose, /file-server\/Dockerfile/);
@@ -218,4 +237,15 @@ test("disposable smoke is readiness-bounded and models secure proxy requests", (
       `${requestName} must model the reviewed HTTPS proxy signal`
     );
   }
+
+  assert.match(
+    smoke,
+    /participant_origin="http:\/\/127\.0\.0\.1:8088"/
+  );
+  assert.match(smoke, /Allowlisted participant SSR/);
+  assert.match(smoke, /Missing-XID participant SSR/);
+  assert.match(
+    smoke,
+    /This conversation requires an XID \(external identifier\) to participate\./
+  );
 });

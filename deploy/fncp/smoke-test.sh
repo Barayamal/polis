@@ -11,6 +11,7 @@ cd "$root_dir"
 env_file="deploy/fncp/.env.staging"
 ca_file="deploy/fncp/certs/rootCA.pem"
 api_origin="http://127.0.0.1:5500"
+participant_origin="http://127.0.0.1:8088"
 oidc_origin="https://oidc-simulator:3000"
 
 if [ ! -f "$env_file" ] || [ ! -s "$ca_file" ]; then
@@ -157,6 +158,35 @@ allowed_status="$(request "$work_dir/allowed.json" \
 expect_status "$allowed_status" "200" "Allowed XID"
 seed_tid="$(jq -er '.nextComment.tid' "$work_dir/allowed.json")"
 
+participant_status="$(request "$work_dir/participant.html" \
+  --get \
+  --data-urlencode "xid=$allowed_xid" \
+  "$participant_origin/alpha/$conversation_id")"
+expect_status "$participant_status" "200" "Allowlisted participant SSR"
+for expected_text in \
+  "FNCP Option C disposable access QA" \
+  "Community-controlled decisions should include transparent follow-through." \
+  "Agree" \
+  "Disagree" \
+  "Pass / Unsure"
+do
+  if ! grep -Fq "$expected_text" "$work_dir/participant.html"; then
+    echo "Allowlisted participant SSR omitted: $expected_text" >&2
+    exit 1
+  fi
+done
+
+missing_participant_status="$(request "$work_dir/participant-missing.html" \
+  "$participant_origin/alpha/$conversation_id")"
+expect_status "$missing_participant_status" "200" "Missing-XID participant SSR"
+if ! grep -Fq \
+  "This conversation requires an XID (external identifier) to participate." \
+  "$work_dir/participant-missing.html"
+then
+  echo "Missing-XID participant SSR did not fail closed clearly." >&2
+  exit 1
+fi
+
 vote_status="$(request "$work_dir/vote.json" \
   --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
@@ -272,6 +302,8 @@ expect_status "$close_status" "200" "Close disposable conversation"
 printf '%s\n' \
   "FNCP Option C disposable smoke test: PASS" \
   "Conversation: synthetic local QA (closed)" \
+  "Allowlisted participant SSR: 200 with conversation and controls" \
+  "Missing-XID participant SSR: 200 with fail-closed notice" \
   "Allowed XID: 200" \
   "Missing XID: 403" \
   "Invalid XID: 403" \
