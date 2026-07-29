@@ -10,6 +10,7 @@ const xid = "fncp_0123456789abcdef0123456789";
 
 const enabled: FncpGatewayConfig = {
   enabled: true,
+  activationValid: true,
   conversationId,
   sharedSecret,
 };

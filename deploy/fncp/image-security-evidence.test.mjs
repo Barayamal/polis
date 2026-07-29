@@ -207,6 +207,9 @@ function createSyntheticEvidenceDirectory() {
         expectedAlpinePackages: [],
         alpinePackageMismatches: [],
       });
+      if (image.service === "server") {
+        assertion.fncpReleaseMode = "production";
+      }
     } else if (image.service === "math") {
       assertion.clojureBuildToolPresent = false;
     } else if (image.service === "nginx-proxy") {
@@ -423,9 +426,9 @@ test("production runtime assertions are required, exact and tamper-evident", () 
     [
       "server",
       (assertion) => {
-        assertion.status = "fail";
+        assertion.fncpReleaseMode = "ordinary";
       },
-      /server runtime assertion is missing or failed/u,
+      /server dedicated release mode assertion is invalid/u,
     ],
     [
       "client-participation-alpha",
@@ -585,6 +588,7 @@ test("collector is local-only, immutable-tooling and no-overwrite", () => {
   }
   assert.match(collector, /generatedKeysDirectoryPresent/u);
   assert.match(collector, /developmentPackageSentinelsPresent/u);
+  assert.match(collector, /fncpReleaseMode/u);
   assert.match(collector, /TREE_STATE[\s\S]+FNCP_ALLOW_DIRTY_SOURCE/u);
   assert.doesNotMatch(collector, /\bdocker\s+(?:push|login)\b/u);
   assert.doesNotMatch(collector, /\b(?:aws|gcloud|az)\b/u);
@@ -604,7 +608,8 @@ test("PR gate builds and inspects every runtime image without publication action
   ]) {
     assert.match(runtimeJob, new RegExp(`          - ${service}$`, "mu"));
   }
-  assert.match(runtimeJob, /--target prod/u);
+  assert.match(runtimeJob, /--target fncp-production/u);
+  assert.match(runtimeJob, /test "\$FNCP_OPTION_C_RELEASE_MODE" = production/u);
   assert.match(runtimeJob, /--no-cache/u);
   assert.equal(
     [...runtimeJob.matchAll(/--no-cache/gu)].length,

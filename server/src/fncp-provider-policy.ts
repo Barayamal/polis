@@ -26,9 +26,7 @@ export interface FncpManagedConversationPolicy {
 }
 
 export interface FncpManagedConversationStore {
-  getConfiguredConversationZid(
-    conversationId: string
-  ): Promise<number | null>;
+  getConfiguredConversationZid(conversationId: string): Promise<number | null>;
   isExactProviderAuthorized(zid: number, xid: string): Promise<boolean>;
 }
 
@@ -46,17 +44,24 @@ export function isFncpProviderPolicyUnavailable(
 }
 
 export function loadFncpProviderAllowlistConfig(
-  // Read for every decision so an emergency disable takes effect immediately.
+  // Read for every decision so a dedicated release remains fail-closed if its
+  // configuration changes unexpectedly. Do not disable this switch as an
+  // emergency action: deny ingress and revoke invitations instead.
   // eslint-disable-next-line no-restricted-properties
   env: NodeJS.ProcessEnv = process.env
 ): FncpProviderAllowlistConfig {
   const activation = env.FNCP_PROVIDER_ALLOWLIST_ENFORCEMENT;
+  const dedicatedReleaseConfigured =
+    env.FNCP_OPTION_C_RELEASE_MODE !== undefined;
+  const dedicatedProduction = env.FNCP_OPTION_C_RELEASE_MODE === "production";
   return {
-    enabled: activation === "true",
+    enabled: dedicatedReleaseConfigured || activation === "true",
     activationValid:
-      activation === undefined ||
-      activation === "false" ||
-      activation === "true",
+      (activation === undefined ||
+        activation === "false" ||
+        activation === "true") &&
+      (!dedicatedReleaseConfigured ||
+        (dedicatedProduction && activation === "true")),
     conversationId: env.FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID || "",
     bearerCredential: env.FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL || "",
   };
@@ -132,8 +137,7 @@ export async function resolveFncpManagedConversation(
   zid: number,
   dependencies: FncpProviderPolicyDependencies = {}
 ): Promise<FncpManagedConversationPolicy> {
-  const config =
-    dependencies.config ?? loadFncpProviderAllowlistConfig();
+  const config = dependencies.config ?? loadFncpProviderAllowlistConfig();
   if (!config.activationValid) {
     throw new FncpProviderPolicyUnavailableError();
   }
@@ -148,8 +152,7 @@ export async function resolveFncpManagedConversation(
     throw new FncpProviderPolicyUnavailableError();
   }
 
-  const store =
-    dependencies.store ?? postgresFncpManagedConversationStore;
+  const store = dependencies.store ?? postgresFncpManagedConversationStore;
   let configuredZid: number | null;
   try {
     configuredZid = await store.getConfiguredConversationZid(
@@ -180,8 +183,7 @@ export async function getFncpManagedXidDecision(
   if (!policy.managed) {
     return undefined;
   }
-  const store =
-    dependencies.store ?? postgresFncpManagedConversationStore;
+  const store = dependencies.store ?? postgresFncpManagedConversationStore;
   try {
     return await store.isExactProviderAuthorized(zid, xid);
   } catch {

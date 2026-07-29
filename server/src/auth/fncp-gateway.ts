@@ -77,6 +77,7 @@ const XID = /^[A-Za-z0-9_-]{16,256}$/;
 
 export interface FncpGatewayConfig {
   enabled: boolean;
+  activationValid: boolean;
   conversationId: string;
   sharedSecret: string;
 }
@@ -141,13 +142,24 @@ function sameSecret(supplied: string, expected: string): boolean {
 }
 
 export function loadFncpGatewayConfig(
-  // Deliberately read at request time so emergency disable/revocation is
-  // immediate and integration tests can prove the fail-closed transition.
+  // Read at request time so a dedicated release remains fail-closed if its
+  // configuration changes unexpectedly. Do not disable this switch as an
+  // emergency action: deny ingress and revoke invitations instead.
   // eslint-disable-next-line no-restricted-properties
   env: NodeJS.ProcessEnv = process.env
 ): FncpGatewayConfig {
+  const activation = env.FNCP_GATEWAY_ENFORCEMENT;
+  const dedicatedReleaseConfigured =
+    env.FNCP_OPTION_C_RELEASE_MODE !== undefined;
+  const dedicatedProduction = env.FNCP_OPTION_C_RELEASE_MODE === "production";
   return {
-    enabled: env.FNCP_GATEWAY_ENFORCEMENT === "true",
+    enabled: dedicatedReleaseConfigured || activation === "true",
+    activationValid:
+      (activation === undefined ||
+        activation === "false" ||
+        activation === "true") &&
+      (!dedicatedReleaseConfigured ||
+        (dedicatedProduction && activation === "true")),
     conversationId: env.FNCP_GATEWAY_CONVERSATION_ID || "",
     sharedSecret: env.FNCP_GATEWAY_SHARED_SECRET || "",
   };
@@ -161,6 +173,7 @@ export function evaluateFncpGatewayRequest(
     return { enforce: false };
   }
   if (
+    !config.activationValid ||
     !CONVERSATION_ID.test(config.conversationId) ||
     config.sharedSecret.length < 32
   ) {

@@ -436,6 +436,9 @@ function validateRuntimeAssertion(service, assertion) {
     ) {
       fail(`${service} runtime closure assertion is invalid`);
     }
+    if (service === "server" && assertion.fncpReleaseMode !== "production") {
+      fail("server dedicated release mode assertion is invalid");
+    }
   } else if (
     service === "math" &&
     assertion.clojureBuildToolPresent !== false

@@ -23,6 +23,15 @@ Latest recorded evidence:
 - [D12 local PostgreSQL query-builder evidence](./D12-LOCAL-QUERY-BUILDER-EVIDENCE-2026-07-28.md)
 - [D13 six-route XID revalidation evidence](./D13-XID-ROUTE-REVALIDATION-EVIDENCE-2026-07-29.md)
 
+The dedicated production server also has a mandatory
+[startup admission contract](../../server/docs/FNCP_PRODUCTION_ADMISSION.md).
+It requires exact dual enforcement, one matching conversation and two
+independent credentials before the process opens its listening socket. Release
+evidence and CI build the `fncp-production` Docker target, which defaults the
+dedicated mode inside the image. Disposable staging explicitly builds `prod`,
+and an ordinary upstream Pol.is deployment remains unchanged while the
+dedicated release mode is absent.
+
 Refresh the production package evidence without applying automatic fixes:
 
 ```sh

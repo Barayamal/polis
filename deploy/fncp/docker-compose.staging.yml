@@ -82,7 +82,7 @@ services:
     build:
       context: ../../server
       dockerfile: Dockerfile
-      target: prod
+      target: ${FNCP_SERVER_BUILD_TARGET:-prod}
       args:
         NODE_ENV: production
     depends_on:

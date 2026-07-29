@@ -138,7 +138,7 @@ if [ ! -e "$RUNTIME_ENV" ]; then
 fi
 
 if [ "$SKIP_BUILD" -ne 1 ]; then
-  if ! docker compose \
+  if ! FNCP_SERVER_BUILD_TARGET=fncp-production docker compose \
     --env-file "$EXAMPLE_ENV" \
     -p "$PROJECT_NAME" \
     -f "$COMPOSE_FILE" \
@@ -204,6 +204,10 @@ for service in server client-participation-alpha oidc-simulator; do
       const fs = require("node:fs");
       const service = process.env.FNCP_SERVICE;
       const effectiveUser = process.getuid() === 0 ? "root" : "non-root";
+      const fncpReleaseMode =
+        service === "server"
+          ? process.env.FNCP_OPTION_C_RELEASE_MODE || null
+          : null;
       const sentinels = process.env.FNCP_SENTINELS.split(",");
       const present = sentinels.filter((name) =>
         fs.existsSync(`/app/node_modules/${name}/package.json`),
@@ -299,11 +303,13 @@ for service in server client-participation-alpha oidc-simulator; do
           !keysPresent &&
           packageManagerRuntimePathsPresent.length === 0 &&
           buildOnlyPackagePathsPresent.length === 0 &&
-          alpinePackageMismatches.length === 0
+          alpinePackageMismatches.length === 0 &&
+          (service !== "server" || fncpReleaseMode === "production")
             ? "pass"
             : "fail",
         artifact: service,
         effectiveUser,
+        fncpReleaseMode,
         developmentPackageSentinels: sentinels,
         developmentPackageSentinelsPresent: present,
         generatedKeysDirectoryPresent: keysPresent,

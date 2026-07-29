@@ -132,3 +132,16 @@ USER node
 
 EXPOSE 5000
 CMD ["node", "--max_old_space_size=2048", "--gc_interval=100", "dist/index.js"]
+
+# Dedicated First Nations Community Pulse release artifact. The immutable image
+# default makes omission select the guarded production contract; an explicit
+# runtime override to an empty, false or malformed value is rejected by startup
+# admission rather than falling back to ordinary Pol.is.
+FROM prod AS fncp-production
+ENV FNCP_OPTION_C_RELEASE_MODE=production
+LABEL org.barayamal.fncp.release-mode="production"
+
+# Keep the Dockerfile's default and ordinary upstream `prod` target
+# non-dedicated. Option C release tooling must select `fncp-production`
+# explicitly and is checked by deployment-boundary tests.
+FROM prod AS upstream-production
