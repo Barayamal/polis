@@ -79,5 +79,8 @@ test("all build contexts carry identical patch bytes and pinned inputs", async (
     assert.match(source, /Unencoded control character found in the URL!/u);
     assert.match(source, /static-pie linked/u);
     assert.match(source, /Requesting program interpreter/u);
+    assert.match(source, /SOURCE_DATE_EPOCH=0/u);
+    assert.match(source, /--build-id=none/u);
+    assert.match(source, /non-reproducible build ID/u);
   }
 });

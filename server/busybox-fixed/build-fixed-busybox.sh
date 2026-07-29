@@ -14,9 +14,18 @@ aports_commit="c3ef5d10e6ef6528852c51f0564963e2f8c1be19"
 aports_url="https://gitlab.alpinelinux.org/api/v4/projects/alpine%2Faports/repository/archive.tar.gz?sha=${aports_commit}&path=main%2Fbusybox"
 aports_sha256="0598ff6f34d8067a4e6663548961df3f2088f83f9a45810030b9d210ae53ef97"
 
-work_dir="$(mktemp -d)"
+work_dir="/tmp/fncp-busybox-build"
+rm -rf "$work_dir"
+mkdir -p "$work_dir"
 trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 umask 022
+export LC_ALL=C
+export TZ=UTC
+export SOURCE_DATE_EPOCH=0
+export KBUILD_BUILD_TIMESTAMP="Thu Jan  1 00:00:00 UTC 1970"
+export KBUILD_BUILD_USER=fncp
+export KBUILD_BUILD_HOST=barayamal
+export KBUILD_BUILD_VERSION=1
 
 curl --fail --location --silent --show-error \
   --retry 3 --connect-timeout 20 \
@@ -83,10 +92,12 @@ make -C "$work_dir/source" \
 make -C "$work_dir/source" \
   O="$work_dir/build-static" \
   -j"${BUILD_JOBS:-2}" \
-  CONFIG_EXTRA_CFLAGS="$extra_cflags" \
-  CONFIG_EXTRA_LDLIBS="$extra_libs"
+  CONFIG_EXTRA_CFLAGS="$extra_cflags -ffile-prefix-map=$work_dir=/usr/src/busybox -fdebug-prefix-map=$work_dir=/usr/src/busybox" \
+  CONFIG_EXTRA_LDLIBS="$extra_libs" \
+  CONFIG_EXTRA_LDFLAGS="-Wl,--build-id=none"
 
 install -m 0755 "$work_dir/build-static/busybox" /out/busybox
+objcopy --remove-section .note.gnu.build-id /out/busybox
 test -x /out/busybox
 binary_description="$(file /out/busybox)"
 printf '%s\n' "$binary_description"
@@ -96,6 +107,10 @@ case "$binary_description" in
 esac
 if readelf -l /out/busybox | grep -Fq 'Requesting program interpreter'; then
   echo "rebuilt BusyBox unexpectedly requests a dynamic interpreter" >&2
+  exit 1
+fi
+if readelf -n /out/busybox | grep -Fq 'Build ID'; then
+  echo "rebuilt BusyBox unexpectedly retains a non-reproducible build ID" >&2
   exit 1
 fi
 
