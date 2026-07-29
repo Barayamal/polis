@@ -88,10 +88,22 @@ make -C "$work_dir/source" \
 
 install -m 0755 "$work_dir/build-static/busybox" /out/busybox
 test -x /out/busybox
-file /out/busybox | grep -Fq 'statically linked'
+binary_description="$(file /out/busybox)"
+printf '%s\n' "$binary_description"
+case "$binary_description" in
+  *"statically linked"*|*"static-pie linked"*) ;;
+  *) echo "rebuilt BusyBox is not statically linked" >&2; exit 1 ;;
+esac
+if readelf -l /out/busybox | grep -Fq 'Requesting program interpreter'; then
+  echo "rebuilt BusyBox unexpectedly requests a dynamic interpreter" >&2
+  exit 1
+fi
 
 for applet in ash awk chmod chown cp find grep mkdir readlink rm sed sh test tr wc wget; do
-  /out/busybox --list | grep -Fxq "$applet"
+  /out/busybox --list | grep -Fxq "$applet" || {
+    echo "rebuilt BusyBox lacks required applet: $applet" >&2
+    exit 1
+  }
 done
 
 bad_url="$(printf 'http://127.0.0.1/%b' '\rX-FNCP: injected')"
@@ -102,6 +114,10 @@ if /out/busybox wget "$bad_url" \
   exit 1
 fi
 grep -Fq 'Unencoded control character found in the URL!' \
-  "$work_dir/wget.stderr"
+  "$work_dir/wget.stderr" || {
+    echo "patched BusyBox returned an unexpected control-character error:" >&2
+    cat "$work_dir/wget.stderr" >&2
+    exit 1
+  }
 
 sha256sum /out/busybox
