@@ -5,6 +5,7 @@ import { addInRamMetric } from "./utils/metered";
 import Config from "./config";
 import logger from "./utils/logger";
 import type { ExpressRequest, ExpressResponse } from "./d";
+import { isFncpSensitiveRequest } from "./auth/fncp-log-boundary";
 
 const devMode = Config.isDevMode;
 
@@ -94,6 +95,11 @@ function middleware_log_request_body(
   next: () => void
 ) {
   if (devMode) {
+    if (isFncpSensitiveRequest(req)) {
+      logger.debug("fncp_request_body_omitted");
+      return next();
+    }
+
     // Skip logging if path includes 'pca2'
     if (req.path.includes("pca2")) {
       return next();
@@ -151,22 +157,25 @@ function middleware_http_json_logger(
     const durationMs = Number(process.hrtime.bigint() - startNs) / 1e6;
     const statusCode = res.statusCode;
 
+    const isFncpRequest = isFncpSensitiveRequest(req);
     const log: Record<string, unknown> = {
       message: "http_request",
       service: "server",
       env: Config.ddEnv || "prod",
       http: {
         method: req.method,
-        url: req.originalUrl,
+        url: isFncpRequest ? req.path : req.originalUrl,
         route: (req as unknown as { route?: { path?: string } }).route?.path,
         status_code: statusCode,
       },
-      network: { client: { ip: req.ip } },
-      useragent: (req.headers as Record<string, string | string[] | undefined>)[
-        "user-agent"
-      ],
       duration_ms: durationMs,
     };
+    if (!isFncpRequest) {
+      log.network = { client: { ip: req.ip } };
+      log.useragent = (
+        req.headers as Record<string, string | string[] | undefined>
+      )["user-agent"];
+    }
 
     // status level
     let level: "error" | "warn" | "info";
@@ -189,7 +198,11 @@ function middleware_log_middleware_errors(
   if (!err) {
     return next();
   }
-  logger.error("middleware_log_middleware_errors", err);
+  if (isFncpSensitiveRequest(req)) {
+    logger.error("fncp_middleware_error");
+  } else {
+    logger.error("middleware_log_middleware_errors", err);
+  }
   next(err);
 }
 
@@ -226,29 +239,47 @@ function globalErrorHandler(
 ) {
   //structured error log
   const status = res.statusCode >= 400 ? res.statusCode : 500;
-  logger.error("request_error", {
-    status: status >= 500 ? "error" : "warn",
-    service: "server",
-    env: Config.ddEnv || "prod",
-    http: {
-      method: req.method,
-      url: req.originalUrl,
-      status_code: status,
-    },
-    error: { kind: err.name, stack: err.stack, message: err.message },
-    code: err.code,
-    constraint: err.constraint,
-    oidcSub: (req as any).jwtPayload?.sub || (req as any).p?.oidcSub,
-  });
+  const isFncpRequest = isFncpSensitiveRequest(req);
+  if (isFncpRequest) {
+    logger.error("fncp_request_error", {
+      status: status >= 500 ? "error" : "warn",
+      service: "server",
+      env: Config.ddEnv || "prod",
+      http: {
+        method: req.method,
+        path: req.path,
+        status_code: status,
+      },
+    });
+  } else {
+    logger.error("request_error", {
+      status: status >= 500 ? "error" : "warn",
+      service: "server",
+      env: Config.ddEnv || "prod",
+      http: {
+        method: req.method,
+        url: req.originalUrl,
+        status_code: status,
+      },
+      error: { kind: err.name, stack: err.stack, message: err.message },
+      code: err.code,
+      constraint: err.constraint,
+      oidcSub: (req as any).jwtPayload?.sub || (req as any).p?.oidcSub,
+    });
+  }
 
   // Handle database constraint violations specifically
   if (err.code === "23505") {
     if (err.constraint === "oidc_user_mappings_pkey") {
-      logger.warn("Global handler: OIDC mapping constraint violation", {
-        constraint: err.constraint,
-        url: req.originalUrl,
-        oidcSub: req.jwtPayload?.sub,
-      });
+      if (isFncpRequest) {
+        logger.warn("fncp_oidc_mapping_constraint");
+      } else {
+        logger.warn("Global handler: OIDC mapping constraint violation", {
+          constraint: err.constraint,
+          url: req.originalUrl,
+          oidcSub: req.jwtPayload?.sub,
+        });
+      }
 
       return res.status(429).json({
         error: "authentication_conflict",
@@ -257,10 +288,14 @@ function globalErrorHandler(
         retry_after: 1,
       });
     } else {
-      logger.warn("Global handler: Database constraint violation", {
-        constraint: err.constraint,
-        url: req.originalUrl,
-      });
+      if (isFncpRequest) {
+        logger.warn("fncp_database_constraint");
+      } else {
+        logger.warn("Global handler: Database constraint violation", {
+          constraint: err.constraint,
+          url: req.originalUrl,
+        });
+      }
 
       return res.status(409).json({
         error: "database_constraint_violation",
@@ -315,12 +350,13 @@ function globalErrorHandler(
       typeof err === "string"
         ? err
         : typeof err?.message === "string"
-          ? err.message
-          : "";
-    const publicError =
-      /^polis_(?:err|fail)_[a-z0-9_]+(?:\b|$)/u.test(errorMessage)
-        ? errorMessage.match(/^polis_(?:err|fail)_[a-z0-9_]+/u)?.[0]
-        : undefined;
+        ? err.message
+        : "";
+    const publicError = /^polis_(?:err|fail)_[a-z0-9_]+(?:\b|$)/u.test(
+      errorMessage
+    )
+      ? errorMessage.match(/^polis_(?:err|fail)_[a-z0-9_]+/u)?.[0]
+      : undefined;
 
     return res.status(status).json({
       error: publicError || "request_error",

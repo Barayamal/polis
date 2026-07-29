@@ -21,6 +21,10 @@ import { fetchIndexForConversation } from "./src/conversation";
 import { getPidForParticipant } from "./src/user";
 import { fncpGatewayMiddleware } from "./src/auth/fncp-gateway";
 import {
+  fncpLogBoundaryMiddleware,
+  isFncpSensitiveRequest,
+} from "./src/auth/fncp-log-boundary";
+import {
   createCookieParser,
   createJsonBodyParser,
   createResponseCompression,
@@ -247,6 +251,11 @@ const staticFilesAdminPort = Config.staticFilesAdminPort;
 const staticFilesParticipationPort = Config.staticFilesParticipationPort;
 const HMAC_SIGNATURE_PARAM_NAME = "signature";
 
+// Establish the FNCP logging boundary before request formatters and body
+// parsers can retain a private gateway credential, XID, invitation/session
+// token, or participant identifier.
+app.use(fncpLogBoundaryMiddleware);
+
 // Dev-only http logger
 if (devMode) {
   // Keep the development-only request formatter out of the minimal
@@ -256,7 +265,11 @@ if (devMode) {
     const morgan = require("morgan");
     // 'dev' format is
     // :method :url :status :response-time ms - :res[content-length]
-    app.use(morgan("dev"));
+    app.use(
+      morgan("dev", {
+        skip: (req: express.Request) => isFncpSensitiveRequest(req),
+      })
+    );
   } catch (error) {
     const moduleError = error as NodeJS.ErrnoException;
     if (
@@ -624,6 +637,7 @@ helpersInitialized.then(
       ),
       want("suzinvite", getOptionalStringLimitLength(32), assignToP),
       want("answers", getArrayOfInt, assignToP, []), // {pmqid: [pmaid, pmaid], ...} where the pmaids are checked choices
+      want("xid", getStringLimitLength(1, 999), assignToP),
       want("referrer", getStringLimitLength(9999), assignToP),
       want("parent_url", getStringLimitLength(9999), assignToP),
       handle_POST_joinWithInvite

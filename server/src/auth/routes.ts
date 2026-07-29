@@ -4,6 +4,7 @@ import { deleteSuzinvite } from "./auth";
 import { failJson } from "../utils/fail";
 import { getConversationInfo } from "../conversation";
 import {
+  getFncpManagedXidDecision,
   isFncpProviderPolicyUnavailable,
   resolveFncpManagedConversation,
 } from "../fncp-provider-policy";
@@ -33,6 +34,7 @@ interface JoinRequest {
     zid: number;
     referrer: string;
     parent_url: string;
+    xid?: string;
   };
 }
 
@@ -94,6 +96,7 @@ async function handle_POST_joinWithInvite(
       zid: req.p.zid,
       referrer: req.p.referrer,
       parent_url: req.p.parent_url,
+      xid: req.p.xid,
     });
 
     const response: any = {
@@ -124,12 +127,7 @@ async function handle_POST_joinWithInvite(
       isFncpProviderPolicyUnavailable(err) ||
       err?.message?.match(/polis_err_fncp_provider_gate_unavailable/)
     ) {
-      failJson(
-        res,
-        503,
-        "polis_err_fncp_provider_policy_unavailable",
-        err
-      );
+      failJson(res, 503, "polis_err_fncp_provider_policy_unavailable", err);
     } else if (err?.message) {
       failJson(res, 500, err.message, err);
     } else {
@@ -157,6 +155,34 @@ async function _joinWithZidOrSuzinvite(params: JoinParams): Promise<any> {
     throw new Error("polis_err_fncp_provider_gate_unavailable");
   }
 
+  // Validate the complete XID policy before creating a user, joining a
+  // participant, answering metadata questions, or consuming an invitation.
+  // For the provider-managed conversation the provider operation ledger is
+  // authoritative; a legacy owner-scoped allowlist row is not sufficient.
+  if (o.conv.use_xid_whitelist) {
+    if (!o.xid) {
+      throw new Error("polis_err_xid_required");
+    }
+    let isAllowed: boolean;
+    if (providerPolicy.managed) {
+      const providerDecision = await getFncpManagedXidDecision(o.zid, o.xid);
+      if (providerDecision === undefined) {
+        // Enforcement changed or the managed target became uncertain between
+        // the policy and XID read. Never fall back to the legacy owner-scoped
+        // allowlist after the first decision identified a managed target.
+        throw new Error("polis_err_fncp_provider_gate_unavailable");
+      }
+      isAllowed = providerDecision;
+    } else {
+      isAllowed = await isXidAllowed(o.xid, o.zid, o.conv.owner);
+    }
+    if (!isAllowed) {
+      throw new Error("polis_err_xid_not_allowed");
+    }
+  } else if (o.conv.xid_required && !o.xid) {
+    throw new Error("polis_err_xid_required");
+  }
+
   // Get user info if uid exists
   if (o.uid) {
     const user = await getUserInfoForUid2(o.uid);
@@ -181,22 +207,6 @@ async function _joinWithZidOrSuzinvite(params: JoinParams): Promise<any> {
 
   const ptpt = await joinConversation(o.zid, o.uid, info, o.answers);
   o = Object.assign(o, ptpt);
-
-  // XID validation logic
-  if (o.conv.use_xid_whitelist) {
-    if (o.xid) {
-      const isAllowed = await isXidAllowed(o.xid, o.zid, o.conv.owner);
-      if (!isAllowed) {
-        throw new Error("polis_err_xid_not_allowed");
-      }
-    } else {
-      throw new Error("polis_err_xid_required");
-    }
-  } else if (o.conv.xid_required) {
-    if (!o.xid) {
-      throw new Error("polis_err_xid_required");
-    }
-  }
 
   // Handle XID if present
   if (o.xid) {

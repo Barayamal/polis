@@ -16,6 +16,7 @@ import { sql_participants_extended } from "../db/sql";
 import { userHasAnsweredZeQuestions } from "../server-helpers";
 import logger from "../utils/logger";
 import pg from "../db/pg-query";
+import { isFncpSensitiveRequest } from "../auth/fncp-log-boundary";
 import {
   doFamousQuery,
   updateLastInteractionTimeForConversation,
@@ -314,7 +315,11 @@ async function handle_GET_participationInit(
   res: ExpressResponse
 ) {
   try {
-    logger.debug(`handle_GET_participationInit ${JSON.stringify(req.p)}`);
+    if (isFncpSensitiveRequest(req)) {
+      logger.debug("handle_GET_participationInit_fncp");
+    } else {
+      logger.debug(`handle_GET_participationInit ${JSON.stringify(req.p)}`);
+    }
 
     // Handle language preference
     const acceptLanguage =
@@ -371,7 +376,11 @@ async function handle_GET_participationInit(
           effectiveUidForUser = xidRecords[0].uid;
         }
       } catch (err) {
-        logger.debug("XID not found for user resolution:", err);
+        if (isFncpSensitiveRequest(req)) {
+          logger.debug("FNCP participant user resolution failed");
+        } else {
+          logger.debug("XID not found for user resolution:", err);
+        }
       }
     }
 
@@ -449,7 +458,11 @@ async function handle_GET_participationInit(
 
     res.status(200).json(response);
   } catch (err) {
-    logger.error("Error in handle_GET_participationInit:", err);
+    if (isFncpSensitiveRequest(req)) {
+      logger.error("FNCP participationInit failed");
+    } else {
+      logger.error("Error in handle_GET_participationInit:", err);
+    }
     failJson(res, 500, "polis_err_get_participationInit", err);
   }
 }
