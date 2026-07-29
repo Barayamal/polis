@@ -12,6 +12,8 @@ on:
     branches:
       - stable
 
+permissions: {}
+
 jobs:
   # ==========================================================
   # ==      JOB 1: DEPLOY STATIC ASSETS TO PRODUCTION (US)  ==
@@ -25,12 +27,13 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Configure AWS Credentials (US)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           role-to-assume: ${{secrets.AWS_PROD_ROLE_ARN}}
           role-session-name: GitHubActionsDeployProdUS
@@ -58,7 +61,7 @@ jobs:
           docker cp ${CONTAINER_ID}:/app/build/ ./build
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -80,12 +83,13 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Configure AWS Credentials (Europe)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           role-to-assume: ${{secrets.AWS_EURO_ROLE_ARN}}
           role-session-name: GitHubActionsDeployProdEuro
@@ -114,7 +118,7 @@ jobs:
           docker cp ${CONTAINER_ID}:/app/build/ ./build-euro
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
