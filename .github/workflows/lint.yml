@@ -12,7 +12,7 @@ permissions: {}
 
 jobs:
   eslint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -40,7 +40,7 @@ jobs:
 
     - name: "Install & Build: client-admin"
       working-directory: client-admin
-      run: npm install
+      run: npm ci
 
     - name: "ESLint: client-admin"
       working-directory: client-admin
@@ -48,7 +48,7 @@ jobs:
 
     - name: "Install & Build: server"
       working-directory: server
-      run: npm install
+      run: npm ci
 
     - name: "ESLint: server"
       working-directory: server
@@ -56,7 +56,7 @@ jobs:
 
     - name: "Install & Build: client-report"
       working-directory: client-report
-      run: npm install
+      run: npm ci
 
     - name: "ESLint: client-report"
       working-directory: client-report
@@ -64,7 +64,7 @@ jobs:
 
     - name: "Install & Build: e2e"
       working-directory: e2e
-      run: npm install
+      run: npm ci
 
     - name: "ESLint: e2e"
       working-directory: e2e

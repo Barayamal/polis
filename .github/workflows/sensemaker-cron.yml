@@ -6,7 +6,7 @@ permissions: {}
 
 jobs:
   generate-summary:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     env:
@@ -75,7 +75,7 @@ jobs:
 
   use_html:
     needs: generate-summary
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions: {}
     steps:
       - name: Download HTML Artifact

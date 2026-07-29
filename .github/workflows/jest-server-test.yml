@@ -20,9 +20,14 @@ on:
 
 permissions: {}
 
+env:
+  # Reviewed against the official v1.4.4 Linux AMD64 release on 29 July 2026.
+  MKCERT_VERSION: v1.4.4
+  MKCERT_LINUX_AMD64_SHA256: 6d31c65b03972c6dc4a14ab429f2928300518b26503f58723e532d1b0a3bbb52
+
 jobs:
   server-integration-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     
@@ -34,10 +39,22 @@ jobs:
 
     - name: Install mkcert
       run: |
-        # Install mkcert for certificate generation
-        curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64"
-        chmod +x mkcert-v*-linux-amd64
-        sudo cp mkcert-v*-linux-amd64 /usr/local/bin/mkcert
+        mkcert_binary="$RUNNER_TEMP/mkcert"
+        curl \
+          --fail \
+          --location \
+          --proto '=https' \
+          --proto-redir '=https' \
+          --retry 3 \
+          --show-error \
+          --silent \
+          --output "$mkcert_binary" \
+          "https://github.com/FiloSottile/mkcert/releases/download/${MKCERT_VERSION}/mkcert-${MKCERT_VERSION}-linux-amd64"
+        printf '%s  %s\n' \
+          "$MKCERT_LINUX_AMD64_SHA256" \
+          "$mkcert_binary" \
+          | sha256sum --check -
+        sudo install -m 0755 "$mkcert_binary" /usr/local/bin/mkcert
         
         # Install CA in system trust store
         mkcert -install

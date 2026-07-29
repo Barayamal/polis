@@ -21,7 +21,7 @@ jobs:
   deploy-static-us:
     name: Deploy Static Assets (US)
     if: github.repository == 'compdemocracy/polis'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     permissions:
       contents: read
@@ -78,7 +78,7 @@ jobs:
   deploy-static-euro:
     name: Deploy Static Assets (Europe)
     if: github.repository == 'compdemocracy/polis'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write

@@ -4,6 +4,11 @@ on: workflow_dispatch
 
 permissions: {}
 
+env:
+  # Reviewed against the official v5.3.1 Linux x86_64 release on 29 July 2026.
+  DOCKER_COMPOSE_VERSION: v5.3.1
+  DOCKER_COMPOSE_LINUX_X86_64_SHA256: f9ebc6ebdb19d769b793c245a736caaeb198c62587f13b25c660c13b4987f959
+
 jobs:
   # ==========================================================
   # ==      JOB 1: BUILD & PUSH DOCKER IMAGES (US ONLY)     ==
@@ -11,7 +16,7 @@ jobs:
   build-and-push-images:
     name: Build and Push Docker Images
     if: github.repository == 'compdemocracy/polis'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     permissions:
       contents: read
@@ -35,8 +40,23 @@ jobs:
 
       - name: Install Docker Compose
         run: |
-          sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-          sudo chmod +x /usr/local/bin/docker-compose
+          compose_binary="$RUNNER_TEMP/docker-compose"
+          curl \
+            --fail \
+            --location \
+            --proto '=https' \
+            --proto-redir '=https' \
+            --retry 3 \
+            --show-error \
+            --silent \
+            --output "$compose_binary" \
+            "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64"
+          printf '%s  %s\n' \
+            "$DOCKER_COMPOSE_LINUX_X86_64_SHA256" \
+            "$compose_binary" \
+            | sha256sum --check -
+          sudo install -m 0755 "$compose_binary" /usr/local/bin/docker-compose
+          docker-compose version
 
       - name: Build and push Docker images
         env:
@@ -54,7 +74,7 @@ jobs:
   deploy-us:
     name: Deploy to Production (US)
     if: github.repository == 'compdemocracy/polis'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build-and-push-images
     environment: production
     permissions:
@@ -93,7 +113,7 @@ jobs:
   deploy-euro:
     name: Deploy to Europe
     if: github.repository == 'compdemocracy/polis'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build-and-push-images
     environment: europe
     permissions:

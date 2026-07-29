@@ -28,7 +28,7 @@ permissions: {}
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     
@@ -158,7 +158,7 @@ jobs:
     name: Post Delphi coverage comment
     needs: test
     if: github.event_name == 'pull_request' && needs.test.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       pull-requests: write
     steps:

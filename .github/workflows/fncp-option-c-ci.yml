@@ -14,7 +14,7 @@ concurrency:
 jobs:
   contracts:
     name: Deployment and evidence contracts
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -58,7 +58,7 @@ jobs:
 
   server:
     name: Server build and query safety
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -142,7 +142,7 @@ jobs:
 
   participant-alpha:
     name: Participant alpha boundaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -185,7 +185,7 @@ jobs:
 
   math:
     name: Math source tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
       contents: read
@@ -211,7 +211,7 @@ jobs:
 
   runtime-images:
     name: Runtime image (${{ matrix.service }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     permissions:
       contents: read
@@ -469,7 +469,7 @@ jobs:
     name: FNCP PR gate
     if: always()
     needs: [contracts, server, participant-alpha, math, runtime-images]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions: {}
     steps:
       - name: Require every synthetic-only check

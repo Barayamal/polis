@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -164,6 +164,22 @@ const expectedJobPermissions = {
   },
 };
 
+const reviewedDownloads = {
+  codecovCli: {
+    version: "v11.3.1",
+  },
+  dockerCompose: {
+    version: "v5.3.1",
+    sha256:
+      "f9ebc6ebdb19d769b793c245a736caaeb198c62587f13b25c660c13b4987f959",
+  },
+  mkcert: {
+    version: "v1.4.4",
+    sha256:
+      "6d31c65b03972c6dc4a14ab429f2928300518b26503f58723e532d1b0a3bbb52",
+  },
+};
+
 function normalizePermissions(value) {
   return Object.fromEntries(
     Object.entries(value).sort(([left], [right]) =>
@@ -312,6 +328,20 @@ test("every workflow and job has the minimum reviewed token permissions", () => 
   }
 });
 
+test("every job uses the explicit reviewed runner image", () => {
+  for (const [workflow, source] of Object.entries(workflows)) {
+    const runsOn = source.match(/^    runs-on: (\S+)\s*$/gmu) ?? [];
+    assert.equal(
+      runsOn.length,
+      Object.keys(expectedJobPermissions[workflow]).length,
+      `${workflow} must declare one runner for every job`,
+    );
+    for (const declaration of runsOn) {
+      assert.equal(declaration.trim(), "runs-on: ubuntu-24.04");
+    }
+  }
+});
+
 test("dangerous workflow triggers and legacy action references are absent", () => {
   const combined = Object.values(workflows).join("\n");
   assert.doesNotMatch(combined, /^\s*pull_request_target:/mu);
@@ -320,6 +350,109 @@ test("dangerous workflow triggers and legacy action references are absent", () =
   assert.doesNotMatch(combined, /::set-output\b/u);
   assert.doesNotMatch(combined, /exuanbo\/actions-deploy-gist/u);
   assert.doesNotMatch(combined, /valitydev\/action-download-file/u);
+  assert.doesNotMatch(combined, /runs-on: [^\n]*latest/u);
+  assert.doesNotMatch(combined, /releases\/latest/u);
+  assert.doesNotMatch(combined, /mkcert\/latest/u);
+  assert.doesNotMatch(combined, /\bnpm install(?:\s|$)/u);
+});
+
+test("downloaded executables are versioned and checksum-verified", () => {
+  for (const workflow of ["cypress-tests.yml", "jest-server-test.yml"]) {
+    const source = workflows[workflow];
+    assert.match(
+      source,
+      new RegExp(`MKCERT_VERSION: ${reviewedDownloads.mkcert.version}`, "u"),
+    );
+    assert.match(source, new RegExp(reviewedDownloads.mkcert.sha256, "u"));
+    assert.match(
+      source,
+      /FiloSottile\/mkcert\/releases\/download\/\$\{MKCERT_VERSION\}\/mkcert-\$\{MKCERT_VERSION\}-linux-amd64/u,
+    );
+    assert.match(source, /--proto '=https'/u);
+    assert.match(source, /--proto-redir '=https'/u);
+    assert.match(source, /sha256sum --check -/u);
+    assert.match(source, /install -m 0755/u);
+  }
+
+  const compose = workflows["deploy-alpha-aws.yml"];
+  assert.match(
+    compose,
+    new RegExp(
+      `DOCKER_COMPOSE_VERSION: ${reviewedDownloads.dockerCompose.version}`,
+      "u",
+    ),
+  );
+  assert.match(
+    compose,
+    new RegExp(reviewedDownloads.dockerCompose.sha256, "u"),
+  );
+  assert.match(
+    compose,
+    /docker\/compose\/releases\/download\/\$\{DOCKER_COMPOSE_VERSION\}\/docker-compose-linux-x86_64/u,
+  );
+  assert.match(compose, /--proto '=https'/u);
+  assert.match(compose, /--proto-redir '=https'/u);
+  assert.match(compose, /sha256sum --check -/u);
+  assert.match(compose, /install -m 0755/u);
+  assert.match(compose, /docker-compose version/u);
+});
+
+test("Node dependency installs are frozen to committed lockfiles", () => {
+  for (const directory of [
+    "client-admin",
+    "client-report",
+    "e2e",
+    "server",
+  ]) {
+    const packagePath = join(repositoryRoot, directory, "package.json");
+    const lockPath = join(repositoryRoot, directory, "package-lock.json");
+    assert.ok(
+      existsSync(lockPath),
+      `${directory} must retain the lockfile required by npm ci`,
+    );
+    const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+    const packageLock = JSON.parse(readFileSync(lockPath, "utf8"));
+    assert.equal(packageLock.lockfileVersion, 3);
+    assert.ok(packageLock.packages?.[""]);
+    for (const section of [
+      "dependencies",
+      "devDependencies",
+      "optionalDependencies",
+      "peerDependencies",
+    ]) {
+      assert.deepEqual(
+        packageLock.packages[""][section] ?? {},
+        packageJson[section] ?? {},
+        `${directory} ${section} must match its lockfile root`,
+      );
+    }
+  }
+
+  const combined = Object.values(workflows).join("\n");
+  assert.doesNotMatch(combined, /\bnpm install(?:\s|$)/u);
+  assert.match(workflows["jest-client-report-test.yml"], /run: npm ci/u);
+  assert.equal(
+    workflows["lint.yml"].match(/run: npm ci/gu)?.length,
+    4,
+  );
+  assert.match(
+    workflows["cypress-tests.yml"],
+    /name: Run auth setup test[\s\S]*?npm ci/u,
+  );
+});
+
+test("Codecov uses the fixed reviewed CLI with integrity checks enabled", () => {
+  for (const workflow of [
+    "client-participation-alpha-ci.yml",
+    "jest-client-admin-test.yml",
+  ]) {
+    const source = workflows[workflow];
+    assert.match(
+      source,
+      new RegExp(`version: ${reviewedDownloads.codecovCli.version}`, "u"),
+    );
+    assert.doesNotMatch(source, /skip_validation:\s*true/u);
+  }
 });
 
 test("deployment triggers, repository guards and environments are preserved", () => {

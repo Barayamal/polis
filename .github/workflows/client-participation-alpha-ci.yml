@@ -17,7 +17,7 @@ permissions: {}
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
@@ -61,3 +61,4 @@ jobs:
           flags: client-participation-alpha
           name: client-participation-alpha-coverage
           fail_ci_if_error: false
+          version: v11.3.1

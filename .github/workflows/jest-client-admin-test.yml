@@ -13,7 +13,7 @@ permissions: {}
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
@@ -45,3 +45,4 @@ jobs:
           flags: client-admin
           name: client-admin-coverage
           fail_ci_if_error: false
+          version: v11.3.1
