@@ -11,6 +11,7 @@ const dockerfile = readFileSync(
   join(repositoryRoot, "server", "Dockerfile-migrate"),
   "utf8",
 );
+const finalImageStage = dockerfile.slice(dockerfile.lastIndexOf("\nFROM ") + 1);
 const runnerPath = join(
   repositoryRoot,
   "server",
@@ -127,7 +128,8 @@ test("migration image is digest-pinned, source-bound and non-root by default", (
   }
   assert.match(dockerfile, /test -x \/usr\/local\/bin\/psql/u);
   assert.match(dockerfile, /rm -rf \/docker-entrypoint-initdb\.d/u);
-  assert.doesNotMatch(dockerfile, /\bapk add\b/u);
+  assert.match(dockerfile, /^FROM .+ AS fncp-busybox-fixed$/mu);
+  assert.doesNotMatch(finalImageStage, /\bapk add\b/u);
 });
 
 test("image includes only immutable top-level migrations", () => {
