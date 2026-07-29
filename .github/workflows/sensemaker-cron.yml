@@ -6,11 +6,10 @@ permissions: {}
 
 jobs:
   generate-summary:
+    if: ${{ github.repository == 'compdemocracy/polis' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,6 +73,7 @@ jobs:
           path: sensemaking-tools/summary.html
 
   use_html:
+    if: ${{ github.repository == 'compdemocracy/polis' }}
     needs: generate-summary
     runs-on: ubuntu-24.04
     permissions: {}

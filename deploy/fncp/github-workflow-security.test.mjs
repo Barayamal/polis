@@ -489,6 +489,13 @@ test("deployment triggers, repository guards and environments are preserved", ()
 test("manual sensemaker behavior is reproducible without legacy actions", () => {
   const source = workflows["sensemaker-cron.yml"];
   assert.match(source, /^on: workflow_dispatch$/mu);
+  assert.equal(
+    source.match(
+      /if: \$\{\{ github\.repository == 'compdemocracy\/polis' \}\}/gu,
+    )?.length,
+    2,
+  );
+  assert.doesNotMatch(source, /GITHUB_TOKEN/u);
   assert.match(
     source,
     /ref: 988ad3547a9b5c3fe92fa6cd2bbff9837795fb6b/u,
