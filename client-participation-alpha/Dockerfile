@@ -1,4 +1,19 @@
 # syntax=docker.io/docker/dockerfile:1.4@sha256:9ba7531bd80fb0a858632727cf7a112fbfd19b17e94c4e84ced81e24ef1a0dbc
+FROM docker.io/library/node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS fncp-busybox-fixed
+
+RUN apk add --no-cache \
+  build-base=0.5-r4 \
+  curl=8.21.0-r0 \
+  file=5.47-r2 \
+  linux-headers=7.0.0-r1 \
+  patch=2.8-r0 \
+  pkgconf=2.5.1-r0 \
+  utmps-dev=0.1.3.3-r0 \
+  utmps-static=0.1.3.3-r0
+COPY busybox-fixed /opt/fncp-busybox-fix
+RUN chmod 0555 /opt/fncp-busybox-fix/build-fixed-busybox.sh \
+  && /opt/fncp-busybox-fix/build-fixed-busybox.sh
+
 FROM docker.io/library/node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS build
 WORKDIR /app
 
@@ -76,6 +91,16 @@ RUN npm prune --omit=dev && npm cache clean --force && \
 
 FROM docker.io/library/node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS runtime
 WORKDIR /app
+
+LABEL org.barayamal.fncp.busybox.remediation="CVE-2025-60876-upstream-patch"
+COPY --from=fncp-busybox-fixed /out/busybox /bin/busybox
+RUN set -eu; \
+  test "$(readlink -f /bin/sh)" = /bin/busybox; \
+  test "$(readlink -f /usr/bin/wget)" = /bin/busybox; \
+  bad_url="$(printf 'http://127.0.0.1/%b' '\rX-FNCP: injected')"; \
+  if /usr/bin/wget "$bad_url" >/tmp/wget.stdout 2>/tmp/wget.stderr; then exit 1; fi; \
+  grep -Fq 'Unencoded control character found in the URL!' /tmp/wget.stderr; \
+  rm -f /tmp/wget.stdout /tmp/wget.stderr
 
 ARG PUBLIC_SERVICE_URL
 ARG INTERNAL_SERVICE_URL
