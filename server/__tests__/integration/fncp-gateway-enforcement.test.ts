@@ -10,6 +10,7 @@ import { getPooledTestUser } from "../setup/test-user-helpers";
 const sharedSecret = "integration-gateway-secret-0123456789abcdef";
 const allowedXid = "fncp_allowed_0123456789abcdef";
 const replacementXid = "fncp_replacement_0123456789abc";
+const neverAllowlistedXid = "fncp_never_allowed_0123456789ab";
 
 describe("FNCP minimum-route gateway enforcement integration", () => {
   let admin: Agent;
@@ -109,6 +110,20 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
     expect(response.body).not.toHaveProperty("auth");
   });
 
+  test("a fresh unallowlisted XID fails closed on all six capabilities", async () => {
+    const participant = await newAgent();
+
+    for (const request of participantCapabilityRequests(
+      participant,
+      neverAllowlistedXid
+    )) {
+      const response = await request;
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBe("polis_err_xid_not_allowed");
+      expect(response.headers["cache-control"]).toBe("no-store");
+    }
+  });
+
   test("all retained GET routes reach the exact stack", async () => {
     const routes = [
       ["/api/v3/nextComment", { conversation_id: conversationId, lang: "en" }],
@@ -183,7 +198,17 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
     }
   });
 
-  test("revocation blocks the next request while staff routes remain available", async () => {
+  test("revocation blocks all six capabilities for an already-warm participant while staff routes remain available", async () => {
+    const participant = await newAgent();
+    const established = await trusted(
+      participant.get("/api/v3/participationInit"),
+      allowedXid
+    ).query({
+      conversation_id: conversationId,
+      lang: "en",
+    });
+    expect(established.status).toBe(200);
+
     const replacement = await admin.post("/api/v3/xidAllowList").send({
       conversation_id: conversationId,
       xid_allow_list: [replacementXid],
@@ -191,12 +216,15 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
     });
     expect(replacement.status).toBe(200);
 
-    const participant = await newAgent();
-    const blocked = await trusted(
-      participant.get("/api/v3/participationInit"),
+    for (const request of participantCapabilityRequests(
+      participant,
       allowedXid
-    ).query({ conversation_id: conversationId, lang: "en" });
-    expect(blocked.status).toBe(403);
+    )) {
+      const blocked = await request;
+      expect(blocked.status).toBe(403);
+      expect(blocked.body.error).toBe("polis_err_xid_not_allowed");
+      expect(blocked.headers["cache-control"]).toBe("no-store");
+    }
 
     const staff = await admin.get("/api/v3/conversations");
     expect(staff.status).toBe(200);
@@ -218,6 +246,38 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
       .set("X-FNCP-Gateway-Key", sharedSecret)
       .set("X-FNCP-Conversation-ID", conversationId)
       .set("X-FNCP-Participant-XID", xid);
+  }
+
+  function participantCapabilityRequests(
+    participant: Agent,
+    xid: string
+  ): Test[] {
+    return [
+      trusted(participant.get("/api/v3/comments"), xid).query({
+        conversation_id: conversationId,
+      }),
+      trusted(participant.get("/api/v3/math/pca2"), xid).query({
+        conversation_id: conversationId,
+      }),
+      trusted(participant.get("/api/v3/nextComment"), xid).query({
+        conversation_id: conversationId,
+        lang: "en",
+      }),
+      trusted(participant.get("/api/v3/participationInit"), xid).query({
+        conversation_id: conversationId,
+        lang: "en",
+      }),
+      trusted(participant.post("/api/v3/comments"), xid).send({
+        conversation_id: conversationId,
+        txt: "Synthetic statement that must never reach the handler",
+      }),
+      trusted(participant.post("/api/v3/votes"), xid).send({
+        conversation_id: conversationId,
+        tid: seedTid,
+        vote: 1,
+        lang: "en",
+      }),
+    ];
   }
 });
 

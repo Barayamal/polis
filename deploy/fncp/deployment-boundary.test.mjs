@@ -28,6 +28,10 @@ const stagingEnvironment = await readFile(
   "utf8"
 );
 const smoke = await readFile(join(deployDir, "smoke-test.sh"), "utf8");
+const serverApp = await readFile(
+  join(deployDir, "..", "..", "server", "app.ts"),
+  "utf8"
+);
 
 function composeServiceBlock(serviceName) {
   const match = compose.match(
@@ -188,6 +192,41 @@ test("public QA proxy exposes only alpha assets and six method-route capabilitie
   assert.doesNotMatch(proxyConfig, /\blisten\s+443\b|\bssl_certificate\b/);
   assert.match(proxyConfig, /\blisten\s+8080\s+default_server\b/);
   assert.match(proxyDockerfile, /^USER nginx$/mu);
+});
+
+test("all six retained participant capabilities explicitly revalidate the conversation XID allowlist", () => {
+  const routeDefinitions = [
+    ["get", "/api/v3/comments", "handle_GET_comments"],
+    ["get", "/api/v3/math/pca2", "handle_GET_math_pca2"],
+    ["get", "/api/v3/nextComment", "handle_GET_nextComment"],
+    ["get", "/api/v3/participationInit", "handle_GET_participationInit"],
+    ["post", "/api/v3/comments", "handle_POST_comments"],
+    ["post", "/api/v3/votes", "handle_POST_votes"],
+  ];
+
+  for (const [method, path, handler] of routeDefinitions) {
+    const escapedPath = path.replaceAll("/", "\\/");
+    const route = serverApp.match(
+      new RegExp(
+        `app\\.${method}\\(\\s*"${escapedPath}"([\\s\\S]*?)${handler}`
+      )
+    );
+    assert.ok(route, `missing ${method.toUpperCase()} ${path}`);
+    assert.match(route[1], /hybridAuthOptional\(assignToP\)/);
+    assert.match(
+      route[1],
+      /want\("xid", getStringLimitLength\(1, 999\), assignToP\)[\s\S]*revalidateConversationXidAllowlist\(\)/
+    );
+  }
+
+  assert.equal(
+    (
+      serverApp.match(
+        /^\s+revalidateConversationXidAllowlist\(\),$/gmu
+      ) ?? []
+    ).length,
+    6
+  );
 });
 
 test("cold-start helper validates and transfers disposable participant keys", () => {

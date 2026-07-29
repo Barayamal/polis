@@ -83,6 +83,7 @@ import { handle_GET_reportExport } from "./src/routes/export";
 import {
   handle_POST_auth_deregister_jwt,
   handle_POST_joinWithInvite,
+  revalidateConversationXidAllowlist,
 } from "./src/auth";
 import {
   handle_GET_comments_translations,
@@ -364,12 +365,15 @@ helpersInitialized.then(
     app.get(
       "/api/v3/math/pca2",
       moveToBody,
+      hybridAuthOptional(assignToP),
       redirectIfHasZidButNoConversationId, // TODO remove once
       need(
         "conversation_id",
         getConversationIdFetchZid,
         assignToPCustom("zid")
       ),
+      want("xid", getStringLimitLength(1, 999), assignToP),
+      revalidateConversationXidAllowlist(),
       want("math_tick", getInt, assignToP),
       want("keys", getArrayOfString, assignToP),
       wantHeader(
@@ -787,6 +791,8 @@ helpersInitialized.then(
         getConversationIdFetchZid,
         assignToPCustom("zid")
       ),
+      want("xid", getStringLimitLength(1, 999), assignToP),
+      revalidateConversationXidAllowlist(),
       // if you want to get report-specific info
       want("report_id", getReportIdFetchRid, assignToPCustom("rid")),
       want("tids", getArrayOfInt, assignToP),
@@ -812,6 +818,7 @@ helpersInitialized.then(
       ),
       // Process XID before ensureParticipant
       want("xid", getStringLimitLength(1, 999), assignToP),
+      revalidateConversationXidAllowlist(),
       ensureParticipant({ createIfMissing: true, issueJWT: true }),
       need("txt", getStringLimitLength(1, 997), assignToP),
       want("vote", getIntInRange(-1, 1), assignToP),
@@ -900,6 +907,7 @@ helpersInitialized.then(
       // before PID resolution so the optional participant resolver can recover
       // the established participant without a browser JWT or cookie.
       want("xid", getStringLimitLength(1, 999), assignToP),
+      revalidateConversationXidAllowlist(),
       resolve_pidThing("not_voted_by_pid", assignToP, "get:nextComment"),
       want("without", getArrayOfInt, assignToP),
       // preferred language of nextComment
@@ -1218,6 +1226,7 @@ helpersInitialized.then(
       ),
       denyIfNotFromWhitelistedDomain, // this seems like the easiest place to enforce the domain whitelist. The index.html is cached on cloudflare, so that's not the right place.
       want("xid", getStringLimitLength(1, 999), assignToP),
+      revalidateConversationXidAllowlist(),
       ensureParticipantOptional({
         createIfMissing: false, // Don't create new participants
         issueJWT: true, // Issue JWT for existing participants
@@ -1249,6 +1258,7 @@ helpersInitialized.then(
       ),
       // Process XID before ensureParticipant
       want("xid", getStringLimitLength(1, 999), assignToP),
+      revalidateConversationXidAllowlist(),
       ensureParticipant({ createIfMissing: true, issueJWT: true }),
       need("tid", getInt, assignToP),
       need("vote", getIntInRange(-1, 1), assignToP),

@@ -1,9 +1,10 @@
 /**
  * Middleware for ensuring a participant exists for the current request
  *
- * Modified by Barayamal on 26 July 2026 to revalidate the conversation-scoped
- * XID allowlist on every participant middleware request and prevent warm-session
- * or non-XID authentication bypass.
+ * Modified by Barayamal on 26 and 29 July 2026 to revalidate the
+ * conversation-scoped XID allowlist on every participant middleware request,
+ * expose an explicit six-route guard and prevent warm-session or non-XID
+ * authentication bypass.
  *
  * This middleware handles the complete flow of participant identification and creation:
  * 1. Handles JWT conversation mismatches
@@ -22,7 +23,12 @@ import { Response, NextFunction } from "express";
 import { addParticipantAndMetadata } from "../participant";
 import { checkLegacyCookieAndIssueJWT } from "./legacyCookies";
 import { createAnonUser } from "./create-user";
-import { createXidRecord, getXidRecord, isXidAllowed, xidExists } from "../xids";
+import {
+  createXidRecord,
+  getXidRecord,
+  isXidAllowed,
+  xidExists,
+} from "../xids";
 import { failJson } from "../utils/fail";
 import { getConversationInfo, getZidFromConversationId } from "../conversation";
 import { getPidPromise } from "../user";
@@ -81,6 +87,9 @@ interface EnsureParticipantOptions {
   assigner?: (req: RequestWithP, key: string, value: unknown) => void;
 }
 
+const XID_ALLOWLIST_REVALIDATED_ZID =
+  "xid_allowlist_revalidated_for_zid" as const;
+
 /**
  * Revalidate XID access for every participant-middleware request.
  *
@@ -99,6 +108,7 @@ async function _revalidateXidAccess(
   const conv = await getConversationInfo(zid);
 
   if (!conv.use_xid_whitelist) {
+    req.p[XID_ALLOWLIST_REVALIDATED_ZID] = zid;
     return;
   }
 
@@ -111,9 +121,7 @@ async function _revalidateXidAccess(
     throw new Error("polis_err_xid_required");
   }
 
-  const participantXid = req.p.xid_participant
-    ? req.p.jwt_xid
-    : req.p.xid;
+  const participantXid = req.p.xid_participant ? req.p.jwt_xid : req.p.xid;
 
   if (!participantXid) {
     throw new Error("polis_err_xid_required");
@@ -123,6 +131,56 @@ async function _revalidateXidAccess(
   if (!isAllowed) {
     throw new Error("polis_err_xid_not_allowed");
   }
+
+  req.p[XID_ALLOWLIST_REVALIDATED_ZID] = zid;
+}
+
+function _respondToXidAccessError(error: unknown, res: Response): boolean {
+  if (error instanceof Error && error.message === "polis_err_xid_required") {
+    res.set("Cache-Control", "no-store");
+    failJson(res, 403, "polis_err_xid_required");
+    return true;
+  }
+
+  if (error instanceof Error && error.message === "polis_err_xid_not_allowed") {
+    res.set("Cache-Control", "no-store");
+    failJson(res, 403, "polis_err_xid_not_allowed");
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Explicit route guard for participant capabilities that can expose or mutate
+ * a conversation protected by an XID allowlist.
+ *
+ * Install this after hybrid authentication, conversation-id resolution and
+ * XID parameter parsing. It covers both a fresh request XID and the
+ * authenticated XID claim from an already-warm participant JWT. The normal
+ * ensureParticipant middleware retains the same check as defence in depth.
+ */
+export function revalidateConversationXidAllowlist() {
+  return async function revalidateConversationXidAllowlistMiddleware(
+    req: RequestWithP,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const zid = req.p.zid;
+      if (!zid) {
+        throw new Error("polis_err_missing_zid");
+      }
+
+      await _revalidateXidAccess(req, zid);
+      next();
+    } catch (error) {
+      if (_respondToXidAccessError(error, res)) {
+        return;
+      }
+      next(error);
+    }
+  };
 }
 
 /**
@@ -441,9 +499,13 @@ async function _ensureParticipantInternal(
     needsNewJWT = true;
   }
 
-  // Revalidate the current XID on every request, including warm sessions
-  // authenticated by an existing XID JWT.
-  await _revalidateXidAccess(req, zid);
+  // Retain the check here as defence in depth for callers which have not
+  // installed the explicit route guard. A guarded route can safely avoid a
+  // duplicate database read because the marker is set only after a successful
+  // check for this exact internal conversation id.
+  if (req.p[XID_ALLOWLIST_REVALIDATED_ZID] !== zid) {
+    await _revalidateXidAccess(req, zid);
+  }
 
   // Check for legacy cookie before creating new user
   if (uid === undefined && !req.p.jwt_conversation_mismatch) {
@@ -642,19 +704,9 @@ export function ensureParticipant(options: EnsureParticipantOptions = {}) {
     } catch (error) {
       logger.error("Error in ensureParticipant middleware", error);
 
-      // Handle XID authentication errors with proper status codes
-      if (
-        error instanceof Error &&
-        error.message === "polis_err_xid_required"
-      ) {
-        return failJson(res, 403, "polis_err_xid_required");
-      }
-
-      if (
-        error instanceof Error &&
-        error.message === "polis_err_xid_not_allowed"
-      ) {
-        return failJson(res, 403, "polis_err_xid_not_allowed");
+      // Handle XID authentication errors with proper status codes.
+      if (_respondToXidAccessError(error, res)) {
+        return;
       }
 
       // Handle Treevite authentication errors with proper status code
@@ -705,19 +757,9 @@ export function ensureParticipantOptional(
 
       next();
     } catch (error) {
-      // Handle XID authentication errors even in optional middleware
-      if (
-        error instanceof Error &&
-        error.message === "polis_err_xid_required"
-      ) {
-        return failJson(res, 403, "polis_err_xid_required");
-      }
-
-      if (
-        error instanceof Error &&
-        error.message === "polis_err_xid_not_allowed"
-      ) {
-        return failJson(res, 403, "polis_err_xid_not_allowed");
+      // Handle XID authentication errors even in optional middleware.
+      if (_respondToXidAccessError(error, res)) {
+        return;
       }
 
       // Handle Treevite authentication errors even in optional middleware

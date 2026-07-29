@@ -1,10 +1,4 @@
-import {
-  beforeEach,
-  describe,
-  expect,
-  it,
-  jest,
-} from "@jest/globals";
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import type { NextFunction, Response } from "express";
 
 import { getConversationInfo } from "../../src/conversation";
@@ -77,6 +71,7 @@ jest.mock("../../src/utils/logger", () => ({
 import {
   ensureParticipant,
   ensureParticipantOptional,
+  revalidateConversationXidAllowlist,
 } from "../../src/auth/ensure-participant";
 
 type Middleware = ReturnType<typeof ensureParticipant>;
@@ -84,9 +79,11 @@ type Middleware = ReturnType<typeof ensureParticipant>;
 function createResponse() {
   const json = jest.fn();
   const status = jest.fn(() => ({ json }));
+  const set = jest.fn();
 
   return {
-    response: { status } as unknown as Response,
+    response: { set, status } as unknown as Response,
+    set,
     status,
     json,
   };
@@ -100,12 +97,12 @@ async function runMiddleware(
     p: { ...p },
     headers: {},
   } as any;
-  const { response, status, json } = createResponse();
+  const { response, set, status, json } = createResponse();
   const next = jest.fn() as unknown as NextFunction;
 
   await middleware(req, response, next);
 
-  return { req, status, json, next };
+  return { req, set, status, json, next };
 }
 
 describe("ensureParticipant XID allowlist revalidation", () => {
@@ -312,5 +309,114 @@ describe("ensureParticipant XID allowlist revalidation", () => {
     expect(isXidAllowed).not.toHaveBeenCalled();
     expect(status).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledWith();
+  });
+
+  describe("explicit participant-route guard", () => {
+    it("allows a fresh allowlisted XID and records the checked conversation", async () => {
+      (isXidAllowed as jest.Mock).mockResolvedValue(true);
+
+      const { req, next, status } = await runMiddleware(
+        revalidateConversationXidAllowlist(),
+        {
+          zid: 7,
+          xid: "fresh-allowlisted-xid",
+        }
+      );
+
+      expect(isXidAllowed).toHaveBeenCalledWith("fresh-allowlisted-xid", 7, 42);
+      expect(req.p.xid_allowlist_revalidated_for_zid).toBe(7);
+      expect(status).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith();
+    });
+
+    it("rejects an already-warm participant after its JWT XID is removed", async () => {
+      (isXidAllowed as jest.Mock).mockResolvedValue(false);
+
+      const { next, set, status, json } = await runMiddleware(
+        revalidateConversationXidAllowlist(),
+        {
+          zid: 7,
+          uid: 70,
+          pid: 700,
+          xid: "request-xid-cannot-override-jwt",
+          jwt_xid: "removed-warm-xid",
+          xid_participant: true,
+        }
+      );
+
+      expect(isXidAllowed).toHaveBeenCalledWith("removed-warm-xid", 7, 42);
+      expect(set).toHaveBeenCalledWith("Cache-Control", "no-store");
+      expect(status).toHaveBeenCalledWith(403);
+      expect(json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: "polis_err_xid_not_allowed",
+          status: 403,
+        })
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("rejects a missing XID before a protected route handler", async () => {
+      const { next, status, json } = await runMiddleware(
+        revalidateConversationXidAllowlist(),
+        { zid: 7 }
+      );
+
+      expect(isXidAllowed).not.toHaveBeenCalled();
+      expect(status).toHaveBeenCalledWith(403);
+      expect(json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: "polis_err_xid_required",
+          status: 403,
+        })
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("passes unexpected lookup failures to the global error handler", async () => {
+      const lookupError = new Error("synthetic database failure");
+      (getConversationInfo as jest.Mock).mockRejectedValue(lookupError);
+
+      const { next, status } = await runMiddleware(
+        revalidateConversationXidAllowlist(),
+        {
+          zid: 7,
+          xid: "fresh-allowlisted-xid",
+        }
+      );
+
+      expect(status).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(lookupError);
+    });
+
+    it("does not repeat the database check in ensureParticipant after the route guard", async () => {
+      (isXidAllowed as jest.Mock).mockResolvedValue(true);
+      const req = {
+        p: {
+          zid: 7,
+          uid: 70,
+          pid: 700,
+          xid: "warm-allowlisted-xid",
+          jwt_xid: "warm-allowlisted-xid",
+          xid_participant: true,
+        },
+        headers: {},
+      } as any;
+      const { response, status } = createResponse();
+      const guardNext = jest.fn() as unknown as NextFunction;
+      const participantNext = jest.fn() as unknown as NextFunction;
+
+      await revalidateConversationXidAllowlist()(req, response, guardNext);
+      await ensureParticipant({
+        createIfMissing: false,
+        issueJWT: false,
+      })(req, response, participantNext);
+
+      expect(getConversationInfo).toHaveBeenCalledTimes(1);
+      expect(isXidAllowed).toHaveBeenCalledTimes(1);
+      expect(status).not.toHaveBeenCalled();
+      expect(guardNext).toHaveBeenCalledWith();
+      expect(participantNext).toHaveBeenCalledWith();
+    });
   });
 });

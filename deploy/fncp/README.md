@@ -21,6 +21,7 @@ Latest recorded evidence:
 - [D10 offline dependency-remediation evidence](./D10-OFFLINE-DEPENDENCY-REMEDIATION-EVIDENCE-2026-07-28.md)
 - [D11 server production-tree remediation evidence](./D11-SERVER-PRODUCTION-TREE-REMEDIATION-EVIDENCE-2026-07-28.md)
 - [D12 local PostgreSQL query-builder evidence](./D12-LOCAL-QUERY-BUILDER-EVIDENCE-2026-07-28.md)
+- [D13 six-route XID revalidation evidence](./D13-XID-ROUTE-REVALIDATION-EVIDENCE-2026-07-29.md)
 
 Refresh the production package evidence without applying automatic fixes:
 
@@ -233,7 +234,9 @@ The second command proves the Compose model is valid, sensitive integrations
 are disabled, the live hosted conversation is absent and every published port
 is loopback-only. Its static deployment contract also proves the selected path
 contains only the alpha participant assets and five exact URL locations with
-method guards covering the six permitted method-and-route capabilities:
+method guards covering the six permitted method-and-route capabilities. It
+also locks all six server route chains to explicit, conversation-scoped XID
+allowlist revalidation before their handlers:
 
 ```sh
 node --test deploy/fncp/deployment-boundary.test.mjs
@@ -304,6 +307,16 @@ The clean cold-start matrix observed on 28 July 2026 passed: the allowlisted
 XID returned `200`; missing, invalid, OIDC-bypass, removed and warm-session
 requests after removal each returned `403`; and the synthetic conversation was
 closed. This is synthetic local QA only, not production authorization.
+
+The 29 July source hardening makes that allowlist check explicit on each of the
+six retained capabilities, including the previously implicit
+`GET /api/v3/comments` and `GET /api/v3/math/pca2` reads. The guard selects an
+authenticated XID JWT claim over a conflicting request parameter, rejects
+missing and removed XIDs with a non-cacheable `403`, and leaves the participant
+middleware check in place as a fallback. Focused unit and static route-contract
+tests pass. The expanded disposable PostgreSQL integration matrix is authored
+but still requires an exact retained-stack run before this change can support a
+release decision; see D13.
 
 Release review subsequently corrected the Express error-handler ordering so
 the global error middleware follows every asynchronously installed route. The
