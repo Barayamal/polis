@@ -91,6 +91,7 @@ describe("FNCP provider allowlist database integration", () => {
     expect(readback.body).toEqual({
       conversationId,
       participantXid,
+      operationVersion: 1,
       present: true,
     });
   });
@@ -109,6 +110,22 @@ describe("FNCP provider allowlist database integration", () => {
     expect(readback.body).toEqual({
       conversationId,
       participantXid,
+      operationVersion: 2,
+      present: false,
+    });
+
+    const delayedUpsert = await authority(
+      FNCP_PROVIDER_ALLOWLIST_PATHS.upsert,
+      allowKey
+    );
+    expect(delayedUpsert.status).toBe(503);
+    const stillAbsent = await authority(
+      FNCP_PROVIDER_ALLOWLIST_PATHS.readback
+    );
+    expect(stillAbsent.body).toEqual({
+      conversationId,
+      participantXid,
+      operationVersion: 2,
       present: false,
     });
   });
@@ -121,6 +138,7 @@ describe("FNCP provider allowlist database integration", () => {
       .send({
         conversationId: "8different",
         participantXid,
+        operationVersion: 1,
       });
     expect(response.status).toBe(400);
     expect(response.body).toEqual({ error: "Invalid request." });
@@ -134,7 +152,16 @@ describe("FNCP provider allowlist database integration", () => {
     if (idempotencyKey) {
       result.set("Idempotency-Key", idempotencyKey);
     }
-    return result.send({ conversationId, participantXid });
+    const operationVersion = path.endsWith("/upsert")
+      ? 1
+      : path.endsWith("/remove")
+      ? 2
+      : undefined;
+    return result.send({
+      conversationId,
+      participantXid,
+      ...(operationVersion === undefined ? {} : { operationVersion }),
+    });
   }
 });
 

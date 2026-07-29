@@ -20,6 +20,10 @@ describe("FNCP provider allowlist PostgreSQL store", () => {
         "Refusing provider store integration test outside its disposable database."
       );
     }
+    await pg.queryP(
+      "DROP TABLE IF EXISTS fncp_provider_allowlist_operations;",
+      []
+    );
     await pg.queryP("DROP TABLE IF EXISTS xid_whitelist;", []);
     await pg.queryP("DROP TABLE IF EXISTS zinvites;", []);
     await pg.queryP("DROP TABLE IF EXISTS conversations;", []);
@@ -49,6 +53,22 @@ describe("FNCP provider allowlist PostgreSQL store", () => {
        );`,
       []
     );
+    await pg.queryP(
+      `CREATE TABLE fncp_provider_allowlist_operations (
+         zid INTEGER NOT NULL REFERENCES conversations(zid) ON DELETE CASCADE,
+         xid TEXT NOT NULL,
+         operation_version SMALLINT NOT NULL CHECK (
+           operation_version IN (1, 2)
+         ),
+         desired_present BOOLEAN NOT NULL,
+         PRIMARY KEY (zid, xid),
+         CHECK (
+           (operation_version = 1 AND desired_present IS TRUE)
+           OR (operation_version = 2 AND desired_present IS FALSE)
+         )
+       );`,
+      []
+    );
     await pg.queryP("INSERT INTO users (uid) VALUES ($1);", [101]);
     await pg.queryP(
       `INSERT INTO conversations (zid, owner, use_xid_whitelist)
@@ -64,6 +84,10 @@ describe("FNCP provider allowlist PostgreSQL store", () => {
 
   afterAll(async () => {
     if (safeDatabase) {
+      await pg.queryP(
+        "DROP TABLE IF EXISTS fncp_provider_allowlist_operations;",
+        []
+      );
       await pg.queryP("DROP TABLE IF EXISTS xid_whitelist;", []);
       await pg.queryP("DROP TABLE IF EXISTS zinvites;", []);
       await pg.queryP("DROP TABLE IF EXISTS conversations;", []);
@@ -75,21 +99,38 @@ describe("FNCP provider allowlist PostgreSQL store", () => {
     expect(
       await postgresProviderAllowlistStore.upsert(
         conversationId,
-        participantXid
+        participantXid,
+        1
       )
-    ).toEqual({ conversationReady: true, present: true });
+    ).toEqual({
+      conversationReady: true,
+      operationAccepted: true,
+      operationVersion: 1,
+      present: true,
+    });
     expect(
       await postgresProviderAllowlistStore.upsert(
         conversationId,
-        participantXid
+        participantXid,
+        1
       )
-    ).toEqual({ conversationReady: true, present: true });
+    ).toEqual({
+      conversationReady: true,
+      operationAccepted: true,
+      operationVersion: 1,
+      present: true,
+    });
     expect(
       await postgresProviderAllowlistStore.readback(
         conversationId,
         participantXid
       )
-    ).toEqual({ conversationReady: true, present: true });
+    ).toEqual({
+      conversationReady: true,
+      operationAccepted: true,
+      operationVersion: 1,
+      present: true,
+    });
 
     const count = await pg.queryP<{ count: string }>(
       "SELECT count(*) AS count FROM xid_whitelist WHERE xid = $1;",
@@ -102,42 +143,101 @@ describe("FNCP provider allowlist PostgreSQL store", () => {
     expect(
       await postgresProviderAllowlistStore.upsert(
         otherConversationId,
-        participantXid
+        participantXid,
+        1
       )
-    ).toEqual({ conversationReady: true, present: false });
+    ).toEqual({
+      conversationReady: true,
+      operationAccepted: true,
+      operationVersion: 1,
+      present: false,
+    });
     expect(
       await postgresProviderAllowlistStore.readback(
         otherConversationId,
         participantXid
       )
-    ).toEqual({ conversationReady: true, present: false });
+    ).toEqual({
+      conversationReady: true,
+      operationAccepted: true,
+      operationVersion: 1,
+      present: false,
+    });
     expect(
       await postgresProviderAllowlistStore.readback(
         conversationId,
         participantXid
       )
-    ).toEqual({ conversationReady: true, present: true });
+    ).toEqual({
+      conversationReady: true,
+      operationAccepted: true,
+      operationVersion: 1,
+      present: true,
+    });
   });
 
   test("remove is exact and idempotent", async () => {
     expect(
       await postgresProviderAllowlistStore.remove(
         conversationId,
-        participantXid
+        participantXid,
+        2
       )
-    ).toEqual({ conversationReady: true });
+    ).toEqual({
+      conversationReady: true,
+      operationAccepted: true,
+      operationVersion: 2,
+      present: false,
+    });
     expect(
       await postgresProviderAllowlistStore.remove(
         conversationId,
-        participantXid
+        participantXid,
+        2
       )
-    ).toEqual({ conversationReady: true });
+    ).toEqual({
+      conversationReady: true,
+      operationAccepted: true,
+      operationVersion: 2,
+      present: false,
+    });
     expect(
       await postgresProviderAllowlistStore.readback(
         conversationId,
         participantXid
       )
-    ).toEqual({ conversationReady: true, present: false });
+    ).toEqual({
+      conversationReady: true,
+      operationAccepted: true,
+      operationVersion: 2,
+      present: false,
+    });
+  });
+
+  test("a delayed version-1 upsert cannot cross a version-2 tombstone", async () => {
+    expect(
+      await postgresProviderAllowlistStore.upsert(
+        conversationId,
+        participantXid,
+        1
+      )
+    ).toEqual({
+      conversationReady: true,
+      operationAccepted: false,
+      operationVersion: 2,
+      present: false,
+    });
+    expect(
+      await postgresProviderAllowlistStore.readback(
+        conversationId,
+        participantXid
+      )
+    ).toEqual({
+      conversationReady: true,
+      operationAccepted: true,
+      operationVersion: 2,
+      present: false,
+    });
   });
 
   test("missing or disabled conversations fail closed", async () => {
@@ -146,7 +246,12 @@ describe("FNCP provider allowlist PostgreSQL store", () => {
         "7missingdbqa",
         participantXid
       )
-    ).toEqual({ conversationReady: false, present: false });
+    ).toEqual({
+      conversationReady: false,
+      operationAccepted: true,
+      operationVersion: null,
+      present: false,
+    });
     await pg.queryP(
       "UPDATE conversations SET use_xid_whitelist = FALSE WHERE zid = $1;",
       [201]
@@ -154,8 +259,14 @@ describe("FNCP provider allowlist PostgreSQL store", () => {
     expect(
       await postgresProviderAllowlistStore.upsert(
         conversationId,
-        participantXid
+        participantXid,
+        1
       )
-    ).toEqual({ conversationReady: false, present: false });
+    ).toEqual({
+      conversationReady: false,
+      operationAccepted: false,
+      operationVersion: null,
+      present: false,
+    });
   });
 });

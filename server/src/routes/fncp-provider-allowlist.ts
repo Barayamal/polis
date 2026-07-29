@@ -49,6 +49,7 @@ interface ProviderAllowlistAuthorized {
   authorized: true;
   conversationId: string;
   participantXid: string;
+  operationVersion: 1 | 2 | null;
 }
 
 interface ProviderAllowlistDenied {
@@ -62,13 +63,16 @@ export type ProviderAllowlistDecision =
 
 export interface ProviderAllowlistState {
   conversationReady: boolean;
+  operationAccepted: boolean;
+  operationVersion: number | null;
   present: boolean;
 }
 
 export interface FncpProviderAllowlistStore {
   upsert(
     conversationId: string,
-    participantXid: string
+    participantXid: string,
+    operationVersion: 1
   ): Promise<ProviderAllowlistState>;
   readback(
     conversationId: string,
@@ -76,8 +80,9 @@ export interface FncpProviderAllowlistStore {
   ): Promise<ProviderAllowlistState>;
   remove(
     conversationId: string,
-    participantXid: string
-  ): Promise<{ conversationReady: boolean }>;
+    participantXid: string,
+    operationVersion: 2
+  ): Promise<ProviderAllowlistState>;
 }
 
 interface ProviderAllowlistHandlerDependencies {
@@ -100,14 +105,25 @@ function sameCredential(supplied: string, expected: string): boolean {
 }
 
 function exactRequestBody(
-  value: unknown
-): { conversationId: string; participantXid: string } | undefined {
+  value: unknown,
+  operation: ProviderAllowlistOperation
+):
+  | {
+      conversationId: string;
+      participantXid: string;
+      operationVersion: 1 | 2 | null;
+    }
+  | undefined {
   if (!value || Array.isArray(value) || typeof value !== "object") {
     return undefined;
   }
   const body = value as Record<string, unknown>;
+  const expectedKeys =
+    operation === "readback"
+      ? "conversationId,participantXid"
+      : "conversationId,operationVersion,participantXid";
   if (
-    Object.keys(body).sort().join(",") !== "conversationId,participantXid" ||
+    Object.keys(body).sort().join(",") !== expectedKeys ||
     typeof body.conversationId !== "string" ||
     typeof body.participantXid !== "string"
   ) {
@@ -116,6 +132,16 @@ function exactRequestBody(
   return {
     conversationId: body.conversationId,
     participantXid: body.participantXid,
+    operationVersion:
+      operation === "upsert"
+        ? body.operationVersion === 1
+          ? 1
+          : null
+        : operation === "remove"
+        ? body.operationVersion === 2
+          ? 2
+          : null
+        : null,
   };
 }
 
@@ -179,9 +205,10 @@ export function evaluateFncpProviderAllowlistRequest(
     return { authorized: false, status: 400 };
   }
 
-  const body = exactRequestBody(request.body);
+  const body = exactRequestBody(request.body, operation);
   if (
     !body ||
+    (operation !== "readback" && body.operationVersion === null) ||
     body.conversationId !== config.conversationId ||
     !PARTICIPANT_XID.test(body.participantXid)
   ) {
@@ -205,13 +232,16 @@ export function evaluateFncpProviderAllowlistRequest(
     authorized: true,
     conversationId: body.conversationId,
     participantXid: body.participantXid,
+    operationVersion: body.operationVersion,
   };
 }
 
 export const postgresProviderAllowlistStore: FncpProviderAllowlistStore = {
-  async upsert(conversationId, participantXid) {
+  async upsert(conversationId, participantXid, operationVersion) {
     const rows = await pg.queryP<{
       conversation_ready: boolean;
+      operation_accepted: boolean;
+      operation_version: number | null;
       present: boolean;
     }>(
       `WITH target AS (
@@ -221,10 +251,31 @@ export const postgresProviderAllowlistStore: FncpProviderAllowlistStore = {
          WHERE z.zinvite = $1
            AND c.use_xid_whitelist IS TRUE
        ),
+       operation AS (
+         INSERT INTO fncp_provider_allowlist_operations (
+           zid, xid, operation_version, desired_present
+         )
+         SELECT target.zid, $2, $3, TRUE
+         FROM target
+         ON CONFLICT (zid, xid) DO UPDATE
+           SET operation_version = EXCLUDED.operation_version,
+               desired_present = EXCLUDED.desired_present
+           WHERE
+             fncp_provider_allowlist_operations.operation_version <
+               EXCLUDED.operation_version
+             OR (
+               fncp_provider_allowlist_operations.operation_version =
+                 EXCLUDED.operation_version
+               AND fncp_provider_allowlist_operations.desired_present =
+                 EXCLUDED.desired_present
+             )
+         RETURNING zid, operation_version
+       ),
        allowed AS (
          INSERT INTO xid_whitelist (xid, zid, owner)
          SELECT $2, target.zid, target.owner
          FROM target
+         INNER JOIN operation ON operation.zid = target.zid
          ON CONFLICT (owner, xid) DO UPDATE
            SET zid = EXCLUDED.zid
            WHERE xid_whitelist.zid = EXCLUDED.zid
@@ -232,11 +283,23 @@ export const postgresProviderAllowlistStore: FncpProviderAllowlistStore = {
        )
        SELECT
          EXISTS (SELECT 1 FROM target) AS conversation_ready,
+         EXISTS (SELECT 1 FROM operation) AS operation_accepted,
+         COALESCE(
+           (SELECT operation_version FROM operation),
+           (
+             SELECT current.operation_version
+             FROM fncp_provider_allowlist_operations current
+             INNER JOIN target ON target.zid = current.zid
+             WHERE current.xid = $2
+           )
+         ) AS operation_version,
          EXISTS (SELECT 1 FROM allowed) AS present;`,
-      [conversationId, participantXid]
+      [conversationId, participantXid, operationVersion]
     );
     return {
       conversationReady: rows[0]?.conversation_ready === true,
+      operationAccepted: rows[0]?.operation_accepted === true,
+      operationVersion: rows[0]?.operation_version ?? null,
       present: rows[0]?.present === true,
     };
   },
@@ -246,6 +309,7 @@ export const postgresProviderAllowlistStore: FncpProviderAllowlistStore = {
     // lagging replica after an upsert or removal.
     const rows = await pg.queryP<{
       conversation_ready: boolean;
+      operation_version: number | null;
       present: boolean;
     }>(
       `WITH target AS (
@@ -257,6 +321,12 @@ export const postgresProviderAllowlistStore: FncpProviderAllowlistStore = {
        )
        SELECT
          EXISTS (SELECT 1 FROM target) AS conversation_ready,
+         (
+           SELECT current.operation_version
+           FROM fncp_provider_allowlist_operations current
+           INNER JOIN target ON target.zid = current.zid
+           WHERE current.xid = $2
+         ) AS operation_version,
          EXISTS (
            SELECT 1
            FROM xid_whitelist allowed
@@ -269,14 +339,18 @@ export const postgresProviderAllowlistStore: FncpProviderAllowlistStore = {
     );
     return {
       conversationReady: rows[0]?.conversation_ready === true,
+      operationAccepted: true,
+      operationVersion: rows[0]?.operation_version ?? null,
       present: rows[0]?.present === true,
     };
   },
 
-  async remove(conversationId, participantXid) {
+  async remove(conversationId, participantXid, operationVersion) {
     const rows = await pg.queryP<{
       conversation_ready: boolean;
-      removed_count: string;
+      operation_accepted: boolean;
+      operation_version: number | null;
+      present: boolean;
     }>(
       `WITH target AS (
          SELECT c.zid, c.owner
@@ -285,20 +359,66 @@ export const postgresProviderAllowlistStore: FncpProviderAllowlistStore = {
          WHERE z.zinvite = $1
            AND c.use_xid_whitelist IS TRUE
        ),
+       operation AS (
+         INSERT INTO fncp_provider_allowlist_operations (
+           zid, xid, operation_version, desired_present
+         )
+         SELECT target.zid, $2, $3, FALSE
+         FROM target
+         ON CONFLICT (zid, xid) DO UPDATE
+           SET operation_version = EXCLUDED.operation_version,
+               desired_present = EXCLUDED.desired_present
+           WHERE
+             fncp_provider_allowlist_operations.operation_version <
+               EXCLUDED.operation_version
+             OR (
+               fncp_provider_allowlist_operations.operation_version =
+                 EXCLUDED.operation_version
+               AND fncp_provider_allowlist_operations.desired_present =
+                 EXCLUDED.desired_present
+             )
+         RETURNING zid, operation_version
+       ),
        removed AS (
          DELETE FROM xid_whitelist allowed
-         USING target
+         USING target, operation
          WHERE allowed.zid = target.zid
+           AND operation.zid = target.zid
            AND allowed.owner = target.owner
            AND allowed.xid = $2
          RETURNING allowed.xid
        )
        SELECT
          EXISTS (SELECT 1 FROM target) AS conversation_ready,
-         (SELECT count(*)::text FROM removed) AS removed_count;`,
-      [conversationId, participantXid]
+         EXISTS (SELECT 1 FROM operation) AS operation_accepted,
+         COALESCE(
+           (SELECT operation_version FROM operation),
+           (
+             SELECT current.operation_version
+             FROM fncp_provider_allowlist_operations current
+             INNER JOIN target ON target.zid = current.zid
+             WHERE current.xid = $2
+           )
+         ) AS operation_version,
+         CASE
+           WHEN EXISTS (SELECT 1 FROM operation) THEN FALSE
+           ELSE EXISTS (
+             SELECT 1
+             FROM xid_whitelist allowed
+             INNER JOIN target
+               ON target.zid = allowed.zid
+              AND target.owner = allowed.owner
+             WHERE allowed.xid = $2
+           )
+         END AS present;`,
+      [conversationId, participantXid, operationVersion]
     );
-    return { conversationReady: rows[0]?.conversation_ready === true };
+    return {
+      conversationReady: rows[0]?.conversation_ready === true,
+      operationAccepted: rows[0]?.operation_accepted === true,
+      operationVersion: rows[0]?.operation_version ?? null,
+      present: rows[0]?.present === true,
+    };
   },
 };
 
@@ -354,6 +474,7 @@ function createHandler(
         privateHeaders(res).status(200).json({
           conversationId: decision.conversationId,
           participantXid: decision.participantXid,
+          operationVersion: state.operationVersion,
           present: state.present,
         });
         return;
@@ -362,18 +483,30 @@ function createHandler(
       if (operation === "upsert") {
         const state = await dependencies.store.upsert(
           decision.conversationId,
-          decision.participantXid
+          decision.participantXid,
+          1
         );
-        if (!state.conversationReady || !state.present) {
+        if (
+          !state.conversationReady ||
+          !state.operationAccepted ||
+          state.operationVersion !== 1 ||
+          !state.present
+        ) {
           privateError(res, 503);
           return;
         }
       } else {
         const state = await dependencies.store.remove(
           decision.conversationId,
-          decision.participantXid
+          decision.participantXid,
+          2
         );
-        if (!state.conversationReady) {
+        if (
+          !state.conversationReady ||
+          !state.operationAccepted ||
+          state.operationVersion !== 2 ||
+          state.present
+        ) {
           privateError(res, 503);
           return;
         }

@@ -86,8 +86,21 @@ test("scope changes are parameterised and require an exact conversation gate", (
     adapter,
     /allowed\.zid = target\.zid[\s\S]*allowed\.owner = target\.owner[\s\S]*allowed\.xid = \$2/
   );
+  assert.match(
+    adapter,
+    /fncp_provider_allowlist_operations\.operation_version\s*<[\s\S]*EXCLUDED\.operation_version/
+  );
+  assert.match(adapter, /operationVersion: 1 \| 2 \| null/);
   assert.doesNotMatch(adapter, /escapeLiteral|queryP_readOnly/);
-  assert.equal((adapter.match(/\[conversationId, participantXid\]/g) ?? []).length, 3);
+  assert.equal(
+    (adapter.match(/\[conversationId, participantXid, operationVersion\]/g) ??
+      []).length,
+    2
+  );
+  assert.equal(
+    (adapter.match(/\[conversationId, participantXid\]/g) ?? []).length,
+    1
+  );
 });
 
 test("credentials are generated locally and never flow to participant runtime", () => {

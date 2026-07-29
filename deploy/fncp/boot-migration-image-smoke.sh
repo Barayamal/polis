@@ -340,7 +340,7 @@ already_applied_count=$(
     "$temporary_directory/migration-one.log" \
     "$temporary_directory/migration-two.log"
 )
-if [ "$applied_count" -ne 19 ] || [ "$already_applied_count" -ne 19 ]; then
+if [ "$applied_count" -ne 20 ] || [ "$already_applied_count" -ne 20 ]; then
   printf '%s\n' "Concurrent runs did not produce one apply and one replay per migration." >&2
   exit 1
 fi
@@ -351,8 +351,8 @@ receipt_state=$(
             count(*) FILTER (WHERE sha256 ~ '^[a-f0-9]{64}$')::text
        FROM fncp_deploy.schema_migrations"
 )
-if [ "$receipt_state" != "19:19" ]; then
-  printf '%s\n' "The migration image did not record 19 validated receipts." >&2
+if [ "$receipt_state" != "20:20" ]; then
+  printf '%s\n' "The migration image did not record 20 validated receipts." >&2
   exit 1
 fi
 
@@ -414,14 +414,14 @@ owner_psql -c \
 
 run_migration "$idempotent_container" \
   >"$temporary_directory/idempotent.log" 2>&1
-if [ "$(grep -c "^Already applied:" "$temporary_directory/idempotent.log")" -ne 19 ]; then
+if [ "$(grep -c "^Already applied:" "$temporary_directory/idempotent.log")" -ne 20 ]; then
   cat "$temporary_directory/idempotent.log" >&2
   printf '%s\n' "The restored migration state was not fully idempotent." >&2
   exit 1
 fi
 if [ "$(
   owner_psql -c "SELECT count(*) FROM fncp_deploy.schema_migrations"
-)" -ne 19 ]; then
+)" -ne 20 ]; then
   printf '%s\n' "The idempotent run changed the receipt count." >&2
   exit 1
 fi

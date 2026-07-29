@@ -139,7 +139,7 @@ test("image includes only immutable top-level migrations", () => {
     .filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
     .map(({ name }) => name)
     .sort();
-  assert.equal(topLevelMigrations.length, 19);
+  assert.equal(topLevelMigrations.length, 20);
   for (const filename of topLevelMigrations) {
     assert.match(filename, /^[0-9]{6}_[a-z0-9_]+[.]sql$/u);
   }
@@ -242,9 +242,9 @@ test("disposable TLS migration smoke covers failure, lock, receipt and runtime A
   );
   assert.match(migrationSmoke, /migration_pid_one=\$!/u);
   assert.match(migrationSmoke, /migration_pid_two=\$!/u);
-  assert.match(migrationSmoke, /receipt_state[\s\S]*19:19/u);
+  assert.match(migrationSmoke, /receipt_state[\s\S]*20:20/u);
   assert.match(migrationSmoke, /Migration unexpectedly accepted checksum drift/u);
-  assert.match(migrationSmoke, /Already applied:[\s\S]*-ne 19/u);
+  assert.match(migrationSmoke, /Already applied:[\s\S]*-ne 20/u);
   assert.match(migrationSmoke, /runtime_acl_state/u);
   assert.match(migrationSmoke, /runtime-tracking-access\.log/u);
   assert.match(migrationSmoke, /docker network rm/u);

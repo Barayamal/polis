@@ -64,7 +64,7 @@ describe("FNCP private provider allowlist request boundary", () => {
       evaluateFncpProviderAllowlistRequest(
         {
           headers: headers({ "idempotency-key": allowKey }),
-          body: body(),
+          body: body({ operationVersion: 1 }),
         },
         "upsert",
         config
@@ -73,31 +73,36 @@ describe("FNCP private provider allowlist request boundary", () => {
       authorized: true,
       conversationId,
       participantXid,
+      operationVersion: 1,
     });
 
     for (const invalid of [
       {
         headers: headers({ "idempotency-key": removeKey }),
-        body: body(),
+        body: body({ operationVersion: 1 }),
       },
       {
         headers: headers({ "idempotency-key": allowKey }),
-        body: body({ conversationId: "8other" }),
+        body: body({ conversationId: "8other", operationVersion: 1 }),
       },
       {
         headers: headers({ "idempotency-key": allowKey }),
-        body: body({ extra: true }),
+        body: body({ extra: true, operationVersion: 1 }),
       },
       {
         headers: headers({ "idempotency-key": allowKey }),
-        body: body({ participantXid: "short" }),
+        body: body({ participantXid: "short", operationVersion: 1 }),
+      },
+      {
+        headers: headers({ "idempotency-key": allowKey }),
+        body: body({ operationVersion: 2 }),
       },
       {
         headers: headers({
           "content-type": "application/x-www-form-urlencoded",
           "idempotency-key": allowKey,
         }),
-        body: body(),
+        body: body({ operationVersion: 1 }),
       },
     ]) {
       expect(
@@ -138,19 +143,28 @@ describe("FNCP private provider allowlist request boundary", () => {
 describe("FNCP private provider allowlist HTTP contract", () => {
   test("upsert, exact readback and removal are idempotent", async () => {
     const allowed = new Set<string>();
+    const versions = new Map<string, number>();
     const calls: string[] = [];
     const store: FncpProviderAllowlistStore = {
       async upsert(inputConversationId, inputParticipantXid) {
         calls.push("upsert");
         expect(inputConversationId).toBe(conversationId);
         allowed.add(inputParticipantXid);
-        return { conversationReady: true, present: true };
+        versions.set(inputParticipantXid, 1);
+        return {
+          conversationReady: true,
+          operationAccepted: true,
+          operationVersion: 1,
+          present: true,
+        };
       },
       async readback(inputConversationId, inputParticipantXid) {
         calls.push("readback");
         expect(inputConversationId).toBe(conversationId);
         return {
           conversationReady: true,
+          operationAccepted: true,
+          operationVersion: versions.get(inputParticipantXid) ?? null,
           present: allowed.has(inputParticipantXid),
         };
       },
@@ -158,7 +172,13 @@ describe("FNCP private provider allowlist HTTP contract", () => {
         calls.push("remove");
         expect(inputConversationId).toBe(conversationId);
         allowed.delete(inputParticipantXid);
-        return { conversationReady: true };
+        versions.set(inputParticipantXid, 2);
+        return {
+          conversationReady: true,
+          operationAccepted: true,
+          operationVersion: 2,
+          present: false,
+        };
       },
     };
     const app = testApp(store);
@@ -183,10 +203,12 @@ describe("FNCP private provider allowlist HTTP contract", () => {
     expect(present.body).toEqual({
       conversationId,
       participantXid,
+      operationVersion: 1,
       present: true,
     });
     expect(Object.keys(present.body).sort()).toEqual([
       "conversationId",
+      "operationVersion",
       "participantXid",
       "present",
     ]);
@@ -210,6 +232,7 @@ describe("FNCP private provider allowlist HTTP contract", () => {
     expect(absent.body).toEqual({
       conversationId,
       participantXid,
+      operationVersion: 2,
       present: false,
     });
     expect(calls).toEqual([
@@ -257,10 +280,20 @@ describe("FNCP private provider allowlist HTTP contract", () => {
         throw new Error(`database failure ${participantXid} ${credential}`);
       },
       async readback() {
-        return { conversationReady: false, present: false };
+        return {
+          conversationReady: false,
+          operationAccepted: true,
+          operationVersion: null,
+          present: false,
+        };
       },
       async remove() {
-        return { conversationReady: false };
+        return {
+          conversationReady: false,
+          operationAccepted: false,
+          operationVersion: null,
+          present: false,
+        };
       },
     };
     const app = testApp(store);
@@ -304,5 +337,12 @@ function authorityRequest(
   if (idempotencyKey) {
     result.set("Idempotency-Key", idempotencyKey);
   }
-  return result.send(body());
+  const operationVersion = path.endsWith("/upsert")
+    ? 1
+    : path.endsWith("/remove")
+    ? 2
+    : undefined;
+  return result.send(
+    operationVersion === undefined ? body() : body({ operationVersion })
+  );
 }
