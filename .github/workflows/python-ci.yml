@@ -27,6 +27,9 @@ on:
 permissions: {}
 
 env:
+  # Reviewed against the official v1.4.4 Linux AMD64 release on 29 July 2026.
+  MKCERT_VERSION: v1.4.4
+  MKCERT_LINUX_AMD64_SHA256: 6d31c65b03972c6dc4a14ab429f2928300518b26503f58723e532d1b0a3bbb52
   SOURCE_REVISION: ${{ github.sha }}
 
 jobs:
@@ -49,6 +52,37 @@ jobs:
         echo "Disk space after cleanup:"
         df -h
 
+    - name: Install checksum-verified mkcert
+      run: |
+        mkcert_binary="$RUNNER_TEMP/mkcert"
+        curl \
+          --fail \
+          --location \
+          --proto '=https' \
+          --proto-redir '=https' \
+          --retry 3 \
+          --show-error \
+          --silent \
+          --output "$mkcert_binary" \
+          "https://github.com/FiloSottile/mkcert/releases/download/${MKCERT_VERSION}/mkcert-${MKCERT_VERSION}-linux-amd64"
+        printf '%s  %s\n' \
+          "$MKCERT_LINUX_AMD64_SHA256" \
+          "$mkcert_binary" \
+          | sha256sum --check -
+        sudo install -m 0755 "$mkcert_binary" /usr/local/bin/mkcert
+        mkcert -install
+
+    - name: Generate disposable workspace certificates
+      run: |
+        mkdir -p ./.simulacrum/certs
+        cd ./.simulacrum/certs
+        mkcert -cert-file localhost.pem -key-file localhost-key.pem \
+          localhost 127.0.0.1 ::1 oidc-simulator host.docker.internal
+        cp "$(mkcert -CAROOT)/rootCA.pem" ./rootCA.pem
+        test -s localhost.pem
+        test -s localhost-key.pem
+        test -s rootCA.pem
+
     - name: 2. Create .env file for CI
       run: |
         if [ -f "test.env" ]; then
@@ -58,6 +92,10 @@ jobs:
           echo "::error::test.env file not found!"
           exit 1
         fi
+
+        sed -i \
+          's|AUTH_CERTS_PATH=.*|AUTH_CERTS_PATH=./.simulacrum/certs|' \
+          .env
 
         # Add hostnames for container-to-container networking
         # The 'delphi' service in 'docker-compose.test.yml' reads these
@@ -150,6 +188,8 @@ jobs:
         docker compose -f docker-compose.test.yml logs postgres || true
         echo "=== DynamoDB service logs ==="
         docker compose -f docker-compose.test.yml logs dynamodb || true
+        echo "=== OIDC simulator logs ==="
+        docker compose -f docker-compose.test.yml logs oidc-simulator || true
 
     - name: 10. Clean up services
       if: always()

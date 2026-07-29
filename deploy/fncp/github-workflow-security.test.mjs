@@ -357,7 +357,11 @@ test("dangerous workflow triggers and legacy action references are absent", () =
 });
 
 test("downloaded executables are versioned and checksum-verified", () => {
-  for (const workflow of ["cypress-tests.yml", "jest-server-test.yml"]) {
+  for (const workflow of [
+    "cypress-tests.yml",
+    "jest-server-test.yml",
+    "python-ci.yml",
+  ]) {
     const source = workflows[workflow];
     assert.match(
       source,
@@ -395,6 +399,34 @@ test("downloaded executables are versioned and checksum-verified", () => {
   assert.match(compose, /sha256sum --check -/u);
   assert.match(compose, /install -m 0755/u);
   assert.match(compose, /docker-compose version/u);
+});
+
+test("Delphi CI provisions and diagnoses its disposable OIDC boundary", () => {
+  const source = workflows["python-ci.yml"];
+  assert.match(source, /mkdir -p \.\/\.simulacrum\/certs/u);
+  assert.match(
+    source,
+    /mkcert -cert-file localhost\.pem -key-file localhost-key\.pem \\\n\s+localhost 127\.0\.0\.1 ::1 oidc-simulator host\.docker\.internal/u,
+  );
+  assert.match(
+    source,
+    /cp "\$\(mkcert -CAROOT\)\/rootCA\.pem" \.\/rootCA\.pem/u,
+  );
+  for (const certificate of [
+    "localhost.pem",
+    "localhost-key.pem",
+    "rootCA.pem",
+  ]) {
+    assert.match(source, new RegExp(`test -s ${certificate}`, "u"));
+  }
+  assert.match(
+    source,
+    /AUTH_CERTS_PATH=.*AUTH_CERTS_PATH=\.\/\.simulacrum\/certs/u,
+  );
+  assert.match(
+    source,
+    /docker compose -f docker-compose\.test\.yml logs oidc-simulator \|\| true/u,
+  );
 });
 
 test("Node dependency installs are frozen to committed lockfiles", () => {
