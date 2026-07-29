@@ -3,6 +3,10 @@ import { createXidRecord, xidExists } from "../xids";
 import { deleteSuzinvite } from "./auth";
 import { failJson } from "../utils/fail";
 import { getConversationInfo } from "../conversation";
+import {
+  isFncpProviderPolicyUnavailable,
+  resolveFncpManagedConversation,
+} from "../fncp-provider-policy";
 import { getSUZinviteInfo } from "../invites/suzinvites";
 import { getUserInfoForUid2 } from "../user";
 import { issueAnonymousJWT } from "./anonymous-jwt";
@@ -116,6 +120,16 @@ async function handle_POST_joinWithInvite(
       failJson(res, 403, err.message, err);
     } else if (err?.message?.match(/polis_err_xid_not_allowed/)) {
       failJson(res, 403, err.message, err);
+    } else if (
+      isFncpProviderPolicyUnavailable(err) ||
+      err?.message?.match(/polis_err_fncp_provider_gate_unavailable/)
+    ) {
+      failJson(
+        res,
+        503,
+        "polis_err_fncp_provider_policy_unavailable",
+        err
+      );
     } else if (err?.message) {
       failJson(res, 500, err.message, err);
     } else {
@@ -138,6 +152,10 @@ async function _joinWithZidOrSuzinvite(params: JoinParams): Promise<any> {
   // Get conversation info
   const conv = await getConversationInfo(o.zid);
   o.conv = conv;
+  const providerPolicy = await resolveFncpManagedConversation(o.zid);
+  if (providerPolicy.managed && !o.conv.use_xid_whitelist) {
+    throw new Error("polis_err_fncp_provider_gate_unavailable");
+  }
 
   // Get user info if uid exists
   if (o.uid) {

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import type { NextFunction, Response } from "express";
 
 import { getConversationInfo } from "../../src/conversation";
+import { resolveFncpManagedConversation } from "../../src/fncp-provider-policy";
 import { isXidAllowed } from "../../src/xids";
 
 jest.mock("../../src/conversation", () => ({
@@ -14,6 +15,15 @@ jest.mock("../../src/xids", () => ({
   getXidRecord: jest.fn(),
   isXidAllowed: jest.fn(),
   xidExists: jest.fn(),
+}));
+
+jest.mock("../../src/fncp-provider-policy", () => ({
+  resolveFncpManagedConversation: jest.fn(),
+  isFncpProviderPolicyUnavailable: jest.fn(
+    (error: unknown) =>
+      error instanceof Error &&
+      error.name === "FncpProviderPolicyUnavailableError"
+  ),
 }));
 
 jest.mock("../../src/participant", () => ({
@@ -111,6 +121,10 @@ describe("ensureParticipant XID allowlist revalidation", () => {
     (getConversationInfo as jest.Mock).mockResolvedValue({
       owner: 42,
       use_xid_whitelist: true,
+    });
+    (resolveFncpManagedConversation as jest.Mock).mockResolvedValue({
+      enforcementEnabled: false,
+      managed: false,
     });
   });
 
@@ -309,6 +323,65 @@ describe("ensureParticipant XID allowlist revalidation", () => {
     expect(isXidAllowed).not.toHaveBeenCalled();
     expect(status).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledWith();
+  });
+
+  it("fails closed if the managed conversation gate is disabled", async () => {
+    (resolveFncpManagedConversation as jest.Mock).mockResolvedValue({
+      enforcementEnabled: true,
+      managed: true,
+    });
+    (getConversationInfo as jest.Mock).mockResolvedValue({
+      owner: 42,
+      use_xid_whitelist: false,
+    });
+
+    const { next, set, status, json } = await runMiddleware(
+      ensureParticipantOptional({
+        createIfMissing: false,
+        issueJWT: false,
+      }),
+      {
+        zid: 7,
+        xid: "raw-readded-xid",
+      }
+    );
+
+    expect(isXidAllowed).not.toHaveBeenCalled();
+    expect(set).toHaveBeenCalledWith("Cache-Control", "no-store");
+    expect(status).toHaveBeenCalledWith(503);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: "polis_err_fncp_provider_policy_unavailable",
+        status: 503,
+      })
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("fails closed instead of continuing optional middleware on policy uncertainty", async () => {
+    const unavailable = new Error("private detail");
+    unavailable.name = "FncpProviderPolicyUnavailableError";
+    (resolveFncpManagedConversation as jest.Mock).mockRejectedValue(unavailable);
+
+    const { next, status, json } = await runMiddleware(
+      ensureParticipantOptional({
+        createIfMissing: false,
+        issueJWT: false,
+      }),
+      {
+        zid: 7,
+        xid: "uncertain-xid",
+      }
+    );
+
+    expect(status).toHaveBeenCalledWith(503);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: "polis_err_fncp_provider_policy_unavailable",
+        status: 503,
+      })
+    );
+    expect(next).not.toHaveBeenCalled();
   });
 
   describe("explicit participant-route guard", () => {

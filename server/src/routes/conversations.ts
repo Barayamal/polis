@@ -7,6 +7,10 @@ import { getUserInfoForUid2 } from "../user";
 import { getZinvite } from "../utils/zinvite";
 import { sql_conversations } from "../db/sql";
 import Config from "../config";
+import {
+  isFncpProviderPolicyUnavailable,
+  resolveFncpManagedConversation,
+} from "../fncp-provider-policy";
 import logger from "../utils/logger";
 import pg from "../db/pg-query";
 import { parsePagination, createPaginationMeta } from "../utils/pagination";
@@ -851,16 +855,29 @@ function handle_PUT_conversations(
       conversation_id: string;
       context: any;
       use_xid_whitelist?: any;
+      xid_required?: any;
       topics_enabled?: any;
     };
   },
   res: any
 ) {
   const generateShortUrl = req.p.short_url;
-  isModerator(req.p.zid, req.p.uid)
-    .then(function (ok: any) {
+  return isModerator(req.p.zid, req.p.uid)
+    .then(async function (ok: any) {
       if (!ok) {
         failJson(res, 403, "polis_err_update_conversation_permission");
+        return;
+      }
+
+      const providerPolicy = await resolveFncpManagedConversation(req.p.zid);
+      if (
+        providerPolicy.managed &&
+        (generateShortUrl === true ||
+          req.p.use_xid_whitelist === false ||
+          req.p.xid_required === false)
+      ) {
+        res.set?.({ "Cache-Control": "no-store" });
+        failJson(res, 409, "polis_err_fncp_provider_managed_conversation");
         return;
       }
 
@@ -1046,6 +1063,11 @@ function handle_PUT_conversations(
       );
     })
     .catch(function (err: any) {
+      if (isFncpProviderPolicyUnavailable(err)) {
+        res.set?.({ "Cache-Control": "no-store" });
+        failJson(res, 503, "polis_err_fncp_provider_policy_unavailable");
+        return;
+      }
       failJson(res, 500, "polis_err_update_conversation", err);
     });
 }

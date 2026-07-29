@@ -21,6 +21,7 @@ const allowKey = `allow-${"a".repeat(32)}`;
 const removeKey = `remove-${"b".repeat(32)}`;
 const config = {
   enabled: true,
+  activationValid: true,
   conversationId,
   bearerCredential: credential,
 };

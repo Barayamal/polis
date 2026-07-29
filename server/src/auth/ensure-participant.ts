@@ -30,6 +30,10 @@ import {
   xidExists,
 } from "../xids";
 import { failJson } from "../utils/fail";
+import {
+  isFncpProviderPolicyUnavailable,
+  resolveFncpManagedConversation,
+} from "../fncp-provider-policy";
 import { getConversationInfo, getZidFromConversationId } from "../conversation";
 import { getPidPromise } from "../user";
 import { getZinvite } from "../utils/zinvite";
@@ -106,8 +110,12 @@ async function _revalidateXidAccess(
   zid: number
 ): Promise<void> {
   const conv = await getConversationInfo(zid);
+  const providerPolicy = await resolveFncpManagedConversation(zid);
 
   if (!conv.use_xid_whitelist) {
+    if (providerPolicy.managed) {
+      throw new Error("polis_err_fncp_provider_gate_unavailable");
+    }
     req.p[XID_ALLOWLIST_REVALIDATED_ZID] = zid;
     return;
   }
@@ -136,6 +144,16 @@ async function _revalidateXidAccess(
 }
 
 function _respondToXidAccessError(error: unknown, res: Response): boolean {
+  if (
+    isFncpProviderPolicyUnavailable(error) ||
+    (error instanceof Error &&
+      error.message === "polis_err_fncp_provider_gate_unavailable")
+  ) {
+    res.set("Cache-Control", "no-store");
+    failJson(res, 503, "polis_err_fncp_provider_policy_unavailable");
+    return true;
+  }
+
   if (error instanceof Error && error.message === "polis_err_xid_required") {
     res.set("Cache-Control", "no-store");
     failJson(res, 403, "polis_err_xid_required");

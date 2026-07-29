@@ -19,6 +19,13 @@ import crypto from "node:crypto";
 import type { RequestHandler, Response } from "express";
 
 import pg from "../db/pg-query";
+import {
+  isFncpProviderAllowlistConfigReady,
+  loadFncpProviderAllowlistConfig,
+  type FncpProviderAllowlistConfig,
+} from "../fncp-provider-policy";
+
+export { loadFncpProviderAllowlistConfig } from "../fncp-provider-policy";
 
 export const FNCP_PROVIDER_ALLOWLIST_PATHS = {
   upsert: "/fncp/private/xid-allowlist/upsert",
@@ -28,16 +35,8 @@ export const FNCP_PROVIDER_ALLOWLIST_PATHS = {
 
 type ProviderAllowlistOperation = keyof typeof FNCP_PROVIDER_ALLOWLIST_PATHS;
 
-const CONVERSATION_ID = /^[0-9][0-9A-Za-z]{1,99}$/u;
 const PARTICIPANT_XID = /^fncp_[A-Za-z0-9_-]{16,251}$/u;
-const CREDENTIAL = /^[A-Za-z0-9_-]{32,512}$/u;
 const IDEMPOTENCY_KEY = /^(allow|remove)-[A-Za-z0-9_-]{32,512}$/u;
-
-interface FncpProviderAllowlistConfig {
-  enabled: boolean;
-  conversationId: string;
-  bearerCredential: string;
-}
 
 interface ProviderAllowlistRequestShape {
   headers: Record<string, unknown>;
@@ -153,18 +152,6 @@ function expectedIdempotencyPrefix(
   return undefined;
 }
 
-export function loadFncpProviderAllowlistConfig(
-  // Read at request time so an emergency disable takes effect immediately.
-  // eslint-disable-next-line no-restricted-properties
-  env: NodeJS.ProcessEnv = process.env
-): FncpProviderAllowlistConfig {
-  return {
-    enabled: env.FNCP_PROVIDER_ALLOWLIST_ENFORCEMENT === "true",
-    conversationId: env.FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID || "",
-    bearerCredential: env.FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL || "",
-  };
-}
-
 /**
  * Authenticate and validate one authority request without returning credentials
  * or idempotency material to the handler. Authentication failures deliberately
@@ -180,9 +167,7 @@ export function evaluateFncpProviderAllowlistRequest(
   const bearerMatch = /^Bearer ([A-Za-z0-9_-]{32,512})$/u.exec(authorization);
 
   if (
-    !config.enabled ||
-    !CONVERSATION_ID.test(config.conversationId) ||
-    !CREDENTIAL.test(config.bearerCredential) ||
+    !isFncpProviderAllowlistConfigReady(config) ||
     !bearerMatch ||
     !sameCredential(bearerMatch[1], config.bearerCredential)
   ) {

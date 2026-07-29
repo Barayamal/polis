@@ -2,16 +2,24 @@ import { afterAll, beforeAll, describe, expect, test } from "@jest/globals";
 
 import pg from "../../src/db/pg-query";
 import { postgresProviderAllowlistStore } from "../../src/routes/fncp-provider-allowlist";
+import { isXidAllowed } from "../../src/xids";
 
 const databaseUrl = process.env.DATABASE_URL || "";
 const safeDatabase =
   /(?:127\.0\.0\.1|localhost|host\.docker\.internal|fncp-provider-api-postgres)/u.test(
     databaseUrl
-  ) && /fncp_provider_api_test/u.test(databaseUrl);
+  ) &&
+  /(?:fncp_provider_api_test|fncp_query_builder_ci)/u.test(databaseUrl);
 
 const conversationId = "9providerdbqa";
 const otherConversationId = "8providerdbqa";
 const participantXid = "fncp_disposable-provider-store-001";
+const credential = "s".repeat(48);
+const previous = {
+  enabled: process.env.FNCP_PROVIDER_ALLOWLIST_ENFORCEMENT,
+  conversationId: process.env.FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID,
+  credential: process.env.FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL,
+};
 
 describe("FNCP provider allowlist PostgreSQL store", () => {
   beforeAll(async () => {
@@ -80,9 +88,21 @@ describe("FNCP provider allowlist PostgreSQL store", () => {
        VALUES ($1, $2), ($3, $4);`,
       [conversationId, 201, otherConversationId, 202]
     );
+    process.env.FNCP_PROVIDER_ALLOWLIST_ENFORCEMENT = "true";
+    process.env.FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID = conversationId;
+    process.env.FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL = credential;
   });
 
   afterAll(async () => {
+    setOrDelete("FNCP_PROVIDER_ALLOWLIST_ENFORCEMENT", previous.enabled);
+    setOrDelete(
+      "FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID",
+      previous.conversationId
+    );
+    setOrDelete(
+      "FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL",
+      previous.credential
+    );
     if (safeDatabase) {
       await pg.queryP(
         "DROP TABLE IF EXISTS fncp_provider_allowlist_operations;",
@@ -240,6 +260,43 @@ describe("FNCP provider allowlist PostgreSQL store", () => {
     });
   });
 
+  test("authorization ignores raw re-adds and legacy owner rows after provider removal", async () => {
+    await pg.queryP(
+      `INSERT INTO xid_whitelist (xid, zid, owner)
+       VALUES ($1, $2, $3);`,
+      [participantXid, 201, 101]
+    );
+    await expect(isXidAllowed(participantXid, 201, 101)).resolves.toBe(false);
+
+    const legacyXid = "fncp_legacy-owner-scope-bypass";
+    await pg.queryP(
+      `INSERT INTO xid_whitelist (xid, zid, owner)
+       VALUES ($1, NULL, $2);`,
+      [legacyXid, 101]
+    );
+    await expect(isXidAllowed(legacyXid, 201, 101)).resolves.toBe(false);
+
+    // Other conversations retain upstream legacy behaviour.
+    await expect(isXidAllowed(legacyXid, 202, 101)).resolves.toBe(true);
+  });
+
+  test("authorization accepts only an exact v1 provider-managed row", async () => {
+    const authorizedXid = "fncp_exact-provider-authorized-001";
+    expect(
+      await postgresProviderAllowlistStore.upsert(
+        conversationId,
+        authorizedXid,
+        1
+      )
+    ).toEqual({
+      conversationReady: true,
+      operationAccepted: true,
+      operationVersion: 1,
+      present: true,
+    });
+    await expect(isXidAllowed(authorizedXid, 201, 101)).resolves.toBe(true);
+  });
+
   test("missing or disabled conversations fail closed", async () => {
     expect(
       await postgresProviderAllowlistStore.readback(
@@ -270,3 +327,11 @@ describe("FNCP provider allowlist PostgreSQL store", () => {
     });
   });
 });
+
+function setOrDelete(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
