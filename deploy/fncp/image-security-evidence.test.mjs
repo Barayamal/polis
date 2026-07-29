@@ -244,6 +244,16 @@ test("all application base images and scanners are locked by digest", () => {
     /^sha256:[a-f0-9]{64}$/u,
   );
   assert.match(
+    imageSecurityLock.dockerfileFrontend.amd64Digest,
+    /^sha256:[a-f0-9]{64}$/u,
+  );
+  for (const image of [
+    ...imageSecurityLock.baseImages,
+    ...imageSecurityLock.scannerImages,
+  ]) {
+    assert.match(image.amd64Digest, /^sha256:[a-f0-9]{64}$/u);
+  }
+  assert.match(
     serverDockerfile,
     new RegExp(
       `^# syntax=${imageSecurityLock.dockerfileFrontend.tag.replace(

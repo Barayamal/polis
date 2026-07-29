@@ -134,9 +134,12 @@ function validateLock() {
   if (
     lock.dockerfileFrontend?.tag !== "docker.io/docker/dockerfile:1.4" ||
     !digestPattern.test(lock.dockerfileFrontend?.indexDigest ?? "") ||
-    !digestPattern.test(lock.dockerfileFrontend?.arm64Digest ?? "")
+    !digestPattern.test(lock.dockerfileFrontend?.arm64Digest ?? "") ||
+    !digestPattern.test(lock.dockerfileFrontend?.amd64Digest ?? "")
   ) {
-    fail("The reviewed Dockerfile frontend must be locked by digest");
+    fail(
+      "The reviewed Dockerfile frontend must be locked by index, arm64 and amd64 digest",
+    );
   }
 
   const componentNames = new Set();
@@ -151,6 +154,9 @@ function validateLock() {
     }
     if (!digestPattern.test(image.arm64Digest)) {
       fail(`Invalid arm64 digest for ${image.component}`);
+    }
+    if (!digestPattern.test(image.amd64Digest)) {
+      fail(`Invalid amd64 digest for ${image.component}`);
     }
 
     const exactReference = `${image.tag}@${image.indexDigest}`;
@@ -196,6 +202,9 @@ function validateLock() {
     }
     if (!digestPattern.test(image.arm64Digest)) {
       fail(`Invalid scanner arm64 digest for ${image.name}`);
+    }
+    if (!digestPattern.test(image.amd64Digest)) {
+      fail(`Invalid scanner amd64 digest for ${image.name}`);
     }
     if (!image.release.startsWith("https://github.com/anchore/")) {
       fail(`Unexpected scanner release source for ${image.name}`);
