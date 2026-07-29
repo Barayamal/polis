@@ -292,15 +292,19 @@ the generated certificates from that path. Use the bounded local-only helper:
 ```
 
 The helper removes only this Compose project's disposable containers, resets
-the two certificate bind mounts, validates the generated participant
-`jwt-private.pem` and `jwt-public.pem`, and copies the disposable certificates
-and keys into the newly created containers before starting the same
-loopback-only stack. The keys are not added to a built image. The helper does
-not touch Docker objects outside the `fncp-polis-staging` project. It writes an
-ignored, non-secret `.colima-staging` marker so the bootstrap and activation
-helpers reuse the same override. Those helpers create each affected server
-container in a stopped state, copy only the disposable CA/signing keys, and
-start it afterwards; they never fall back to the unusable `/tmp` bind mounts.
+the two certificate bind mounts, rebuilds the exact local source with refreshed
+pinned bases, validates the generated participant `jwt-private.pem` and
+`jwt-public.pem`, and copies the disposable certificates and keys into the
+newly created containers before starting the same loopback-only stack. Before
+writing its continuation marker, it reads back the exact source-revision label
+from server, math, participant and proxy images and the dedicated release-mode
+label from server; a mismatch stops the stack. The keys are not added to a
+built image. The helper does not touch Docker objects outside the
+`fncp-polis-staging` project. It writes an ignored, non-secret
+`.colima-staging` marker so the bootstrap and activation helpers reuse the same
+override. Those helpers create each affected server container in a stopped
+state, copy only the disposable CA/signing keys, and start it afterwards; they
+never fall back to the unusable `/tmp` bind mounts.
 
 Disposable endpoints:
 

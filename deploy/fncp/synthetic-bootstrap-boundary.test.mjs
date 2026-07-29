@@ -246,6 +246,23 @@ test("macOS tmp compatibility preserves stopped-copy-start bootstrap semantics",
     colimaStart,
     /printf '%s\\n' "compose-override=docker-compose\.colima\.yml"/u
   );
+  const exactBuild = colimaStart.indexOf("compose build --pull");
+  const containerCreate = colimaStart.indexOf("compose create");
+  const markerWrite = colimaStart.indexOf(
+    'printf \'%s\\n\' "compose-override=docker-compose.colima.yml"'
+  );
+  assert.ok(exactBuild >= 0);
+  assert.ok(containerCreate > exactBuild);
+  assert.ok(markerWrite > containerCreate);
+  assert.match(
+    colimaStart,
+    /org\.opencontainers\.image\.revision/u
+  );
+  assert.match(
+    colimaStart,
+    /org\.barayamal\.fncp\.release-mode/u
+  );
+  assert.match(colimaStart, /compose stop >\/dev\/null 2>&1 \|\| true/u);
   assert.match(ignore, /^deploy\/fncp\/\.colima-staging$/mu);
 
   for (const helper of [bootstrap, activate]) {

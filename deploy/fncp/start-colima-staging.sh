@@ -39,6 +39,7 @@ compose() {
 }
 
 compose down --remove-orphans
+compose build --pull
 compose create
 
 oidc_container="$(compose ps -aq oidc-simulator)"
@@ -54,6 +55,30 @@ docker cp -a "$cert_dir/rootCA.pem" "$server_container:/tmp/fncp-rootCA.pem"
 docker cp -a "$keys_dir" "$server_container:/app/keys"
 
 compose start
+
+expected_source_revision="$(git rev-parse HEAD)"
+for service in server math client-participation-alpha nginx-proxy; do
+  image_id="$(compose images -q "$service")"
+  if [ -z "$image_id" ] ||
+    [ "$(docker image inspect "$image_id" \
+      --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" \
+      != "$expected_source_revision" ]
+  then
+    compose stop >/dev/null 2>&1 || true
+    echo "Disposable image source verification failed for $service." >&2
+    exit 1
+  fi
+done
+server_image_id="$(compose images -q server)"
+if [ "$(docker image inspect "$server_image_id" \
+  --format '{{ index .Config.Labels "org.barayamal.fncp.release-mode" }}')" \
+  != "production" ]
+then
+  compose stop >/dev/null 2>&1 || true
+  echo "Dedicated server release-mode verification failed." >&2
+  exit 1
+fi
+
 marker_temp="$(mktemp "$colima_marker.XXXXXX")"
 trap 'rm -f "$marker_temp"' EXIT INT TERM
 chmod 600 "$marker_temp"
