@@ -26,6 +26,9 @@ on:
 
 permissions: {}
 
+env:
+  SOURCE_REVISION: ${{ github.sha }}
+
 jobs:
   test:
     runs-on: ubuntu-24.04

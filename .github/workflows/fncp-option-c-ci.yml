@@ -250,6 +250,7 @@ jobs:
                 --pull \
                 --no-cache \
                 --target fncp-production \
+                --build-arg "SOURCE_REVISION=${GITHUB_SHA}" \
                 --tag "$IMAGE" \
                 server
               ;;
@@ -258,6 +259,7 @@ jobs:
                 --pull \
                 --no-cache \
                 --target runtime \
+                --build-arg "SOURCE_REVISION=${GITHUB_SHA}" \
                 --tag "$IMAGE" \
                 math
               ;;
@@ -271,6 +273,7 @@ jobs:
                 --build-arg OIDC_CACHE_KEY_PREFIX=fncp.ci \
                 --build-arg OIDC_CACHE_KEY_ID_TOKEN_SUFFIX=@@fncp-ci@@ \
                 --build-arg PUBLIC_AUTH_NAMESPACE=https://fncp.invalid/ \
+                --build-arg "SOURCE_REVISION=${GITHUB_SHA}" \
                 --tag "$IMAGE" \
                 client-participation-alpha
               ;;
@@ -279,6 +282,7 @@ jobs:
                 --pull \
                 --no-cache \
                 --file deploy/fncp/nginx/Dockerfile \
+                --build-arg "SOURCE_REVISION=${GITHUB_SHA}" \
                 --tag "$IMAGE" \
                 deploy/fncp
               ;;

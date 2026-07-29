@@ -2,7 +2,8 @@
 # It is intended to be used for CI test workflows.
 # DO NOT USE THIS IN PRODUCTION.
 
-# Run with: `docker compose -f docker-compose.test.yml --env-file test.env up --build`.
+# Run with:
+# `SOURCE_REVISION="$(git rev-parse HEAD)" docker compose -f docker-compose.test.yml --env-file test.env up --build`.
 
 services:
   client-participation-alpha:
@@ -13,6 +14,7 @@ services:
         - OIDC_CACHE_KEY_ID_TOKEN_SUFFIX=${OIDC_CACHE_KEY_ID_TOKEN_SUFFIX}
         - OIDC_CACHE_KEY_PREFIX=${OIDC_CACHE_KEY_PREFIX}
         - PUBLIC_SERVICE_URL=${PUBLIC_SERVICE_URL}
+        - "SOURCE_REVISION=${SOURCE_REVISION:?SOURCE_REVISION is required and must be a full 40-character Git commit}"
     depends_on:
       - "server"
     environment:
@@ -61,6 +63,8 @@ services:
   math:
     build:
       context: ./math
+      args:
+        SOURCE_REVISION: "${SOURCE_REVISION:?SOURCE_REVISION is required and must be a full 40-character Git commit}"
     labels:
       polis_tag: test
     environment:

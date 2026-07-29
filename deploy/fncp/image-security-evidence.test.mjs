@@ -21,6 +21,20 @@ const ciWorkflow = readFileSync(
   join(repositoryRoot, ".github", "workflows", "fncp-option-c-ci.yml"),
   "utf8",
 );
+const composeTest = readFileSync(
+  join(repositoryRoot, "docker-compose.test.yml"),
+  "utf8",
+);
+const composeWorkflowSources = Object.fromEntries(
+  [
+    "cypress-tests.yml",
+    "jest-server-test.yml",
+    "python-ci.yml",
+  ].map((name) => [
+    name,
+    readFileSync(join(repositoryRoot, ".github", "workflows", name), "utf8"),
+  ]),
+);
 const collector = readFileSync(
   join(deployDirectory, "collect-image-security-evidence.sh"),
   "utf8",
@@ -616,6 +630,15 @@ test("PR gate builds and inspects every runtime image without publication action
     5,
     "every release artifact build must be cold",
   );
+  assert.equal(
+    [
+      ...runtimeJob.matchAll(
+        /--build-arg "SOURCE_REVISION=\$\{GITHUB_SHA\}"/gu,
+      ),
+    ].length,
+    5,
+    "every release artifact build must bind the exact workflow source",
+  );
   assert.match(runtimeJob, /configured_user/u);
   assert.match(runtimeJob, /test "\$\(id -u\)" -ne 0/u);
   assert.match(runtimeJob, /src\/prompts\/moderation\/script\.xml/u);
@@ -643,6 +666,39 @@ test("PR gate builds and inspects every runtime image without publication action
     5,
     "every checkout must keep its GitHub credential out of build contexts",
   );
+});
+
+test("test Compose builds require an explicit source revision", () => {
+  for (const service of ["client-participation-alpha", "math"]) {
+    const block = composeTest.match(
+      new RegExp(
+        `^  ${service}:\\n([\\s\\S]*?)(?=^  [a-z0-9-]+:\\n|^networks:)`,
+        "mu",
+      ),
+    )?.[0];
+    assert.ok(block, `missing test Compose service ${service}`);
+    assert.match(
+      block,
+      /SOURCE_REVISION(?:=|: ")\$\{SOURCE_REVISION:\?/u,
+      `${service} must fail closed without SOURCE_REVISION`,
+    );
+    assert.match(
+      block,
+      /SOURCE_REVISION is required and must be a full 40-character Git commit/u,
+      `${service} must explain the local source requirement`,
+    );
+  }
+  assert.match(
+    composeTest,
+    /SOURCE_REVISION="\$\(git rev-parse HEAD\)"/u,
+  );
+  for (const [name, workflow] of Object.entries(composeWorkflowSources)) {
+    assert.match(
+      workflow,
+      /^  SOURCE_REVISION: \$\{\{ github\.sha \}\}$/mu,
+      `${name} must bind test Compose builds to github.sha`,
+    );
+  }
 });
 
 test("generated participant JWT keys cannot enter the server build context", () => {
