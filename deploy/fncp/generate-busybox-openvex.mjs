@@ -316,12 +316,108 @@ function verifyPatchBytes(bytes) {
   }
 }
 
-export function verifyEvidenceBytes(input, busyboxBytes, patchBytes) {
-  validateInput(input);
-  if (!Buffer.isBuffer(busyboxBytes) || !Buffer.isBuffer(patchBytes)) {
-    fail("BusyBox and patch evidence must be supplied as byte buffers");
+function parseJsonBytes(bytes, label) {
+  let source;
+  try {
+    source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    fail(`${label} is not valid UTF-8`);
+  }
+  try {
+    return JSON.parse(source);
+  } catch {
+    fail(`${label} is not valid JSON`);
+  }
+}
+
+function verifyOciEvidence(input, manifestBytes, configBytes) {
+  const actualManifestHash = `sha256:${sha256(manifestBytes)}`;
+  if (actualManifestHash !== input.subject.manifestDigest) {
+    fail(
+      `subject.manifestDigest does not match the supplied raw OCI manifest bytes (actual ${actualManifestHash})`,
+    );
+  }
+  const manifest = parseJsonBytes(manifestBytes, "OCI manifest evidence");
+  assertPlainObject(manifest, "OCI manifest evidence");
+  if (
+    manifest.schemaVersion !== 2 ||
+    manifest.mediaType !== input.subject.mediaType ||
+    Array.isArray(manifest.manifests)
+  ) {
+    fail(
+      "the supplied OCI subject is not the declared single-platform image manifest",
+    );
+  }
+  assertPlainObject(manifest.config, "OCI manifest config descriptor");
+  assertSha256Digest(
+    manifest.config.digest,
+    "OCI manifest config descriptor digest",
+  );
+  if (
+    !Number.isSafeInteger(manifest.config.size) ||
+    manifest.config.size !== configBytes.length
+  ) {
+    fail(
+      "OCI manifest config descriptor size does not match the supplied config bytes",
+    );
+  }
+  if (!Array.isArray(manifest.layers) || manifest.layers.length === 0) {
+    fail("the supplied OCI image manifest has no layers");
   }
 
+  const actualConfigHash = `sha256:${sha256(configBytes)}`;
+  if (manifest.config.digest !== actualConfigHash) {
+    fail(
+      `OCI config digest does not match the supplied raw config bytes (actual ${actualConfigHash})`,
+    );
+  }
+  const config = parseJsonBytes(configBytes, "OCI config evidence");
+  assertPlainObject(config, "OCI config evidence");
+  if (
+    config.os !== input.subject.platform.os ||
+    config.architecture !== input.subject.platform.architecture ||
+    (input.subject.platform.variant !== undefined &&
+      config.variant !== input.subject.platform.variant) ||
+    (input.subject.platform.variant === undefined &&
+      config.variant !== undefined)
+  ) {
+    fail(
+      "OCI config platform does not exactly match subject.platform",
+    );
+  }
+  return actualConfigHash;
+}
+
+export function verifyEvidenceBytes(
+  input,
+  {
+    busyboxBytes,
+    patchBytes,
+    manifestBytes,
+    configBytes,
+  },
+) {
+  validateInput(input);
+  const byteBuffers = {
+    busyboxBytes,
+    patchBytes,
+    manifestBytes,
+    configBytes,
+  };
+  const invalid = Object.entries(byteBuffers)
+    .filter(([, value]) => !Buffer.isBuffer(value))
+    .map(([name]) => name);
+  if (invalid.length > 0) {
+    fail(
+      `evidence must be supplied as byte buffers: ${invalid.join(", ")}`,
+    );
+  }
+
+  const configDigest = verifyOciEvidence(
+    input,
+    manifestBytes,
+    configBytes,
+  );
   const actualBusyboxHash = sha256(busyboxBytes);
   if (actualBusyboxHash !== input.busybox.sha256) {
     fail(
@@ -349,6 +445,7 @@ export function verifyEvidenceBytes(input, busyboxBytes, patchBytes) {
     busyboxSha256: actualBusyboxHash,
     patchSha256: actualPatchHash,
     elfMachine: expectedMachine.label,
+    configDigest,
   });
 }
 
@@ -406,8 +503,8 @@ function platformName(platform) {
     .join("/");
 }
 
-export function generateOpenVex(input, busyboxBytes, patchBytes) {
-  const verified = verifyEvidenceBytes(input, busyboxBytes, patchBytes);
+export function generateOpenVex(input, evidence) {
+  const verified = verifyEvidenceBytes(input, evidence);
   const inputDigest = sha256(Buffer.from(stableJson(input), "utf8"));
   const manifestHex = input.subject.manifestDigest.slice("sha256:".length);
   const platform = platformName(input.subject.platform);
@@ -433,6 +530,7 @@ export function generateOpenVex(input, busyboxBytes, patchBytes) {
             "@id": productPurl(input),
             identifiers: {
               "oci-manifest": input.subject.reference,
+              "oci-config": verified.configDigest,
               "oci-platform": platform,
               "oci-media-type": input.subject.mediaType,
             },
@@ -482,6 +580,8 @@ export async function generateOpenVexFromFiles(
   input,
   busyboxFile,
   patchFile,
+  manifestFile,
+  configFile,
 ) {
   if (basename(busyboxFile) !== "busybox") {
     fail("the supplied BusyBox evidence file must be named busybox");
@@ -489,22 +589,41 @@ export async function generateOpenVexFromFiles(
   if (basename(patchFile) !== input.patch.name) {
     fail(`the supplied patch evidence file must be named ${input.patch.name}`);
   }
-  const [busyboxBytes, patchBytes] = await Promise.all([
+  const [
+    busyboxBytes,
+    patchBytes,
+    manifestBytes,
+    configBytes,
+  ] = await Promise.all([
     readRegularFile(busyboxFile, "BusyBox evidence"),
     readRegularFile(patchFile, "patch evidence"),
+    readRegularFile(manifestFile, "OCI manifest evidence"),
+    readRegularFile(configFile, "OCI config evidence"),
   ]);
-  return generateOpenVex(input, busyboxBytes, patchBytes);
+  return generateOpenVex(input, {
+    busyboxBytes,
+    patchBytes,
+    manifestBytes,
+    configBytes,
+  });
 }
 
 function parseArguments(args) {
   const options = {};
-  const allowed = new Set(["--input", "--busybox", "--patch", "--output"]);
+  const allowed = new Set([
+    "--input",
+    "--busybox",
+    "--patch",
+    "--manifest",
+    "--config",
+    "--output",
+  ]);
   for (let index = 0; index < args.length; index += 2) {
     const name = args[index];
     const value = args[index + 1];
     if (!allowed.has(name) || value === undefined || value.startsWith("--")) {
       throw new Error(
-        "Usage: generate-busybox-openvex.mjs --input INPUT.json --busybox busybox --patch CVE-2025-60876.patch [--output OUTPUT.json]",
+        "Usage: generate-busybox-openvex.mjs --input INPUT.json --busybox busybox --patch CVE-2025-60876.patch --manifest manifest.json --config config.json [--output OUTPUT.json]",
       );
     }
     if (Object.hasOwn(options, name)) {
@@ -512,7 +631,13 @@ function parseArguments(args) {
     }
     options[name] = value;
   }
-  for (const required of ["--input", "--busybox", "--patch"]) {
+  for (const required of [
+    "--input",
+    "--busybox",
+    "--patch",
+    "--manifest",
+    "--config",
+  ]) {
     if (!Object.hasOwn(options, required)) {
       throw new Error(`Missing required argument: ${required}`);
     }
@@ -534,6 +659,8 @@ async function main(args) {
     input,
     resolve(options["--busybox"]),
     resolve(options["--patch"]),
+    resolve(options["--manifest"]),
+    resolve(options["--config"]),
   );
   const output = stableJson(document);
   if (options["--output"] === undefined) {

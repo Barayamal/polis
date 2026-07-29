@@ -12,7 +12,8 @@ hash claims.
 The generator binds the statement to all of the following:
 
 - the registry-qualified OCI repository;
-- the per-architecture manifest digest and manifest media type;
+- the exact raw per-architecture manifest bytes, digest and media type;
+- the exact raw OCI config bytes and their descriptor digest;
 - `linux/amd64` or `linux/arm64`;
 - the exact extracted `/bin/busybox` SHA-256 and ELF machine;
 - the exact `CVE-2025-60876.patch` SHA-256.
@@ -43,11 +44,14 @@ production attestation.
 1. Resolve the exact index descriptor and the selected platform descriptor.
 2. Confirm the selected descriptor media type is an image manifest, not an
    image index or Docker manifest list.
-3. Pull by the per-architecture manifest digest.
-4. Create a container from that digest and copy `/bin/busybox` out unchanged.
-5. Retain the exact patch file from the reviewed source commit.
-6. Calculate SHA-256 for both files.
-7. Populate an input JSON file conforming to
+3. Save the raw image manifest and raw config JSON without reformatting either
+   file. The generator hashes the original bytes and follows the manifest's
+   config descriptor.
+4. Pull by the per-architecture manifest digest.
+5. Create a container from that digest and copy `/bin/busybox` out unchanged.
+6. Retain the exact patch file from the reviewed source commit.
+7. Calculate SHA-256 for the binary and patch.
+8. Populate an input JSON file conforming to
    `busybox-vex-input.schema.json`.
 
 Never reuse an evidence input after the image, patch, architecture, timestamp,
@@ -103,6 +107,8 @@ node deploy/fncp/generate-busybox-openvex.mjs \
   --input /absolute/path/evidence-input.json \
   --busybox /absolute/path/busybox \
   --patch /absolute/path/CVE-2025-60876.patch \
+  --manifest /absolute/path/manifest.json \
+  --config /absolute/path/config.json \
   --output /absolute/path/fncp-busybox.openvex.json
 ```
 
@@ -117,6 +123,9 @@ The generator fails closed if:
 - the repository is not registry-qualified;
 - the reference is a tag, generic name, index digest, or a different digest;
 - the subject media type is an index or manifest list;
+- the raw manifest bytes do not hash to the declared per-architecture digest;
+- the raw manifest's config descriptor does not hash to the config bytes;
+- the config OS, architecture or variant differs from the declared platform;
 - the architecture is absent or unsupported;
 - either file hash differs from the declaration;
 - the binary is not a 64-bit ELF for the declared architecture; or
@@ -125,16 +134,18 @@ The generator fails closed if:
 ## Review before release
 
 1. Run `node --test deploy/fncp/generate-busybox-openvex.test.mjs`.
-2. Recalculate both file hashes independently.
+2. Recalculate the manifest, config, binary and patch hashes independently.
 3. Confirm the product PURL contains the per-architecture manifest digest,
    `arch`, `os`, and `repository_url`.
 4. Confirm the multi-architecture index digest does not occur anywhere in the
    output.
 5. Confirm the BusyBox subcomponent hash matches the bytes copied from the
    exact manifest.
-6. Confirm the patch subcomponent hash matches the reviewed source commit.
-7. Validate the resulting document with an independent OpenVEX consumer.
-8. Sign and publish only under a separately approved immutable-image release.
+6. Confirm the `oci-config` identifier matches the config descriptor and the
+   config declares the same OS and architecture as the product PURL.
+7. Confirm the source-patch hash matches the reviewed source commit.
+8. Validate the resulting document with an independent OpenVEX consumer.
+9. Sign and publish only under a separately approved immutable-image release.
 
 Until those release checks and approvals are complete, retain the generated
 document as candidate evidence and keep Option C on HOLD.

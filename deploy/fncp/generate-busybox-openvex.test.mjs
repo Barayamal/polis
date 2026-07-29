@@ -11,6 +11,8 @@ import {
 } from "./generate-busybox-openvex.mjs";
 
 const digest = (character) => `sha256:${character.repeat(64)}`;
+const manifestMediaType =
+  "application/vnd.oci.image.manifest.v1+json";
 
 function elf(machine) {
   const bytes = Buffer.alloc(64);
@@ -35,12 +37,45 @@ const patchBytes = Buffer.from(
   "utf8",
 );
 
-function validInput({
+function validFixture({
   architecture = "arm64",
-  binary = elf(183),
+  machine = architecture === "arm64" ? 183 : 62,
 } = {}) {
-  const manifestDigest = digest("a");
-  return {
+  const busyboxBytes = elf(machine);
+  const configBytes = Buffer.from(
+    JSON.stringify({
+      architecture,
+      os: "linux",
+      rootfs: {
+        type: "layers",
+        diff_ids: [digest("d")],
+      },
+    }),
+    "utf8",
+  );
+  const configDigest = `sha256:${sha256(configBytes)}`;
+  const manifestBytes = Buffer.from(
+    JSON.stringify({
+      schemaVersion: 2,
+      mediaType: manifestMediaType,
+      config: {
+        mediaType: "application/vnd.oci.image.config.v1+json",
+        digest: configDigest,
+        size: configBytes.length,
+      },
+      layers: [
+        {
+          mediaType:
+            "application/vnd.oci.image.layer.v1.tar+gzip",
+          digest: digest("c"),
+          size: 1,
+        },
+      ],
+    }),
+    "utf8",
+  );
+  const manifestDigest = `sha256:${sha256(manifestBytes)}`;
+  const input = {
     schemaVersion: 1,
     document: {
       author: "https://barayamal.com.au/",
@@ -52,7 +87,7 @@ function validInput({
       repository: "docker.io/barayamal/fncp-polis-math",
       reference:
         `docker.io/barayamal/fncp-polis-math@${manifestDigest}`,
-      mediaType: "application/vnd.oci.image.manifest.v1+json",
+      mediaType: manifestMediaType,
       manifestDigest,
       indexDigest: digest("b"),
       platform: {
@@ -63,7 +98,7 @@ function validInput({
     busybox: {
       path: "/bin/busybox",
       version: "1.37.0",
-      sha256: sha256(binary),
+      sha256: sha256(busyboxBytes),
     },
     patch: {
       name: "CVE-2025-60876.patch",
@@ -75,7 +110,19 @@ function validInput({
       justification: "vulnerable_code_not_present",
     },
   };
+  return {
+    input,
+    evidence: {
+      busyboxBytes,
+      patchBytes,
+      manifestBytes,
+      configBytes,
+    },
+    configDigest,
+  };
 }
+
+const validInput = (options) => validFixture(options).input;
 
 // These are historical ARM64 proof values used to lock validation behaviour.
 // They are deliberately never emitted as a production attestation.
@@ -109,10 +156,9 @@ test("the known ARM64 proof fixture is schema-valid but not silently attested", 
     () =>
       generateOpenVex(
         knownArm64ProofFixture,
-        elf(183),
-        patchBytes,
+        validFixture().evidence,
       ),
-    /busybox\.sha256 does not match/u,
+    /subject\.manifestDigest does not match/u,
   );
 });
 
@@ -127,10 +173,9 @@ test("the reviewed patch fixture has the expected exact SHA-256", async () => {
 });
 
 test("generation is deterministic and binds manifest, architecture, binary and patch", () => {
-  const busyboxBytes = elf(183);
-  const input = validInput({ binary: busyboxBytes });
-  const first = generateOpenVex(input, busyboxBytes, patchBytes);
-  const second = generateOpenVex(input, busyboxBytes, patchBytes);
+  const { input, evidence, configDigest } = validFixture();
+  const first = generateOpenVex(input, evidence);
+  const second = generateOpenVex(input, evidence);
 
   assert.equal(stableJson(first), stableJson(second));
   assert.match(
@@ -154,6 +199,7 @@ test("generation is deterministic and binds manifest, architecture, binary and p
     input.subject.reference,
   );
   assert.equal(product.identifiers["oci-platform"], "linux/arm64");
+  assert.equal(product.identifiers["oci-config"], configDigest);
   assert.equal(
     product.hashes["sha-256"],
     input.subject.manifestDigest.slice(7),
@@ -179,12 +225,10 @@ test("generation is deterministic and binds manifest, architecture, binary and p
 });
 
 test("AMD64 evidence requires an AMD64 ELF and records EM_X86_64", () => {
-  const busyboxBytes = elf(62);
-  const input = validInput({
+  const { input, evidence } = validFixture({
     architecture: "amd64",
-    binary: busyboxBytes,
   });
-  const document = generateOpenVex(input, busyboxBytes, patchBytes);
+  const document = generateOpenVex(input, evidence);
   assert.equal(
     document.statements[0].products[0].subcomponents[0].identifiers[
       "elf-machine"
@@ -263,8 +307,7 @@ test("generic, tagged, index-only and inconsistent subjects fail closed", () => 
 });
 
 test("unexpected fields, malformed timestamps and mixed architectures fail closed", () => {
-  const busyboxBytes = elf(183);
-  const input = validInput({ binary: busyboxBytes });
+  const { input } = validFixture();
   assert.throws(
     () => validateInput({ ...input, fixtureOnly: true }),
     /unexpected field\(s\): fixtureOnly/u,
@@ -283,26 +326,95 @@ test("unexpected fields, malformed timestamps and mixed architectures fail close
   assert.throws(
     () =>
       verifyEvidenceBytes(
-        {
-          ...input,
-          subject: {
-            ...input.subject,
-            platform: {
-              os: "linux",
-              architecture: "amd64",
-            },
-          },
-        },
-        busyboxBytes,
-        patchBytes,
+        validFixture({
+          architecture: "amd64",
+          machine: 183,
+        }).input,
+        validFixture({
+          architecture: "amd64",
+          machine: 183,
+        }).evidence,
       ),
     /does not match amd64/u,
   );
 });
 
+test("raw OCI manifest and config bytes must match the subject and platform", () => {
+  const { input, evidence } = validFixture();
+  assert.throws(
+    () =>
+      verifyEvidenceBytes(input, {
+        ...evidence,
+        manifestBytes: Buffer.concat([
+          evidence.manifestBytes,
+          Buffer.from("\n", "utf8"),
+        ]),
+      }),
+    /subject\.manifestDigest does not match/u,
+  );
+  assert.throws(
+    () =>
+      verifyEvidenceBytes(input, {
+        ...evidence,
+        configBytes: Buffer.concat([
+          evidence.configBytes,
+          Buffer.from("\n", "utf8"),
+        ]),
+      }),
+    /config descriptor size does not match/u,
+  );
+
+  const amd64 = validFixture({ architecture: "amd64" });
+  assert.throws(
+    () =>
+      verifyEvidenceBytes(
+        {
+          ...amd64.input,
+          subject: {
+            ...amd64.input.subject,
+            platform: {
+              os: "linux",
+              architecture: "arm64",
+            },
+          },
+        },
+        amd64.evidence,
+      ),
+    /OCI config platform does not exactly match/u,
+  );
+
+  const indexBytes = Buffer.from(
+    JSON.stringify({
+      schemaVersion: 2,
+      mediaType: "application/vnd.oci.image.index.v1+json",
+      manifests: [],
+    }),
+    "utf8",
+  );
+  const indexAsManifestDigest = `sha256:${sha256(indexBytes)}`;
+  assert.throws(
+    () =>
+      verifyEvidenceBytes(
+        {
+          ...input,
+          subject: {
+            ...input.subject,
+            reference:
+              `${input.subject.repository}@${indexAsManifestDigest}`,
+            manifestDigest: indexAsManifestDigest,
+          },
+        },
+        {
+          ...evidence,
+          manifestBytes: indexBytes,
+        },
+      ),
+    /not the declared single-platform image manifest/u,
+  );
+});
+
 test("declared hashes must match the exact supplied binary and patch bytes", () => {
-  const busyboxBytes = elf(183);
-  const input = validInput({ binary: busyboxBytes });
+  const { input, evidence } = validFixture();
 
   assert.throws(
     () =>
@@ -314,8 +426,7 @@ test("declared hashes must match the exact supplied binary and patch bytes", () 
             sha256: "0".repeat(64),
           },
         },
-        busyboxBytes,
-        patchBytes,
+        evidence,
       ),
     /busybox\.sha256 does not match/u,
   );
@@ -329,8 +440,7 @@ test("declared hashes must match the exact supplied binary and patch bytes", () 
             sha256: "0".repeat(64),
           },
         },
-        busyboxBytes,
-        patchBytes,
+        evidence,
       ),
     /patch\.sha256 does not match/u,
   );
@@ -338,8 +448,10 @@ test("declared hashes must match the exact supplied binary and patch bytes", () 
     () =>
       verifyEvidenceBytes(
         input,
-        busyboxBytes,
-        Buffer.from("--- a/a\n+++ b/b\n", "utf8"),
+        {
+          ...evidence,
+          patchBytes: Buffer.from("--- a/a\n+++ b/b\n", "utf8"),
+        },
       ),
     /patch\.sha256 does not match/u,
   );
