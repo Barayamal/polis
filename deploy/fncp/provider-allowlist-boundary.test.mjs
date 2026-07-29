@@ -152,17 +152,22 @@ test("the managed conversation has one authoritative mutation and authorization 
 test("credentials are generated locally and never flow to participant runtime", () => {
   assert.match(
     stagingEnvironment,
-    /^FNCP_PROVIDER_ALLOWLIST_ENFORCEMENT=false$/m
+    /^FNCP_PROVIDER_ALLOWLIST_ENFORCEMENT=true$/m
   );
   assert.match(
     stagingEnvironment,
-    /^FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID=$/m
+    /^FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID=REPLACE_WITH_BOOTSTRAP_CONVERSATION_ID$/m
   );
   assert.match(
     stagingEnvironment,
     /^FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL=REPLACE_WITH_RANDOM_VALUE$/m
   );
   assert.match(prepare, /provider_allowlist_credential=\$\(openssl rand -hex 32\)/);
+  assert.match(prepare, /gateway_shared_secret=\$\(openssl rand -hex 32\)/);
+  assert.match(
+    prepare,
+    /while \[ "\$provider_allowlist_credential" = "\$gateway_shared_secret" \]/
+  );
 
   const alphaBlock = compose.match(
     /^  client-participation-alpha:\n([\s\S]*?)(?=^  nginx-proxy:)/m

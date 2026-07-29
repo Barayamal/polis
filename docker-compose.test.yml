@@ -49,9 +49,12 @@ services:
       - ${AUTH_CERTS_PATH:-~/.simulacrum/certs}/rootCA.pem:/tmp/polis-rootCA.pem:ro
     restart: unless-stopped
     depends_on:
-      - oidc-simulator
-      - postgres
-      - dynamodb-init
+      oidc-simulator:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      dynamodb-init:
+        condition: service_completed_successfully
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -206,13 +209,15 @@ services:
     networks:
       - "polis-test"
     depends_on:
-      - postgres
-      - dynamodb-init
+      postgres:
+        condition: service_healthy
+      dynamodb-init:
+        condition: service_completed_successfully
     command: tail -f /dev/null
     restart: unless-stopped
 
   dynamodb:
-    image: amazon/dynamodb-local:latest
+    image: amazon/dynamodb-local@sha256:d89f8fcc6b1a39cb35976c248ed42a28c66ae00dc043099210f5571e42648ab4
     ports:
       - "8000:8000"
     networks:
@@ -222,6 +227,12 @@ services:
     user: root
     labels:
       polis_tag: test
+    healthcheck:
+      test: ["CMD-SHELL", "curl --silent --output /dev/null http://localhost:8000"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # This is the new line that fixes the error
@@ -229,7 +240,11 @@ services:
 
   # One-time init container to create DynamoDB tables
   dynamodb-init:
-    image: python:3.11-slim
+    build:
+      context: ./delphi
+      target: final
+      args:
+        USE_CPU_TORCH: "true"
     networks:
       - polis-test
     environment:
@@ -237,18 +252,19 @@ services:
       - AWS_SECRET_ACCESS_KEY=DUMMYEXAMPLEKEY
       - AWS_REGION=us-east-1
       - DYNAMODB_ENDPOINT=http://dynamodb:8000
-    volumes:
-      - ./delphi/create_dynamodb_tables.py:/create_dynamodb_tables.py:ro
     depends_on:
-      - dynamodb
-    command: >
-      sh -c "
-        pip install boto3 --quiet &&
-        echo 'Waiting for DynamoDB to be ready...' &&
-        sleep 5 &&
-        python /create_dynamodb_tables.py --endpoint-url http://dynamodb:8000 --region us-east-1 &&
-        echo 'DynamoDB tables created successfully'
-      "
+      dynamodb:
+        condition: service_healthy
+    restart: "no"
+    command:
+      - /bin/sh
+      - -eu
+      - -c
+      - |
+        python /app/create_dynamodb_tables.py \
+          --endpoint-url "$${DYNAMODB_ENDPOINT}" \
+          --region "$${AWS_REGION}"
+        python -c 'import boto3, os; table = "Delphi_CommentClustersLLMTopicNames"; client = boto3.client("dynamodb", endpoint_url=os.environ["DYNAMODB_ENDPOINT"], region_name=os.environ["AWS_REGION"]); client.get_waiter("table_exists").wait(TableName=table); status = client.describe_table(TableName=table)["Table"]["TableStatus"]; assert status == "ACTIVE", f"{table} status is {status}"; print(f"Verified required DynamoDB table: {table} ({status})")'
     labels:
       polis_tag: test
 

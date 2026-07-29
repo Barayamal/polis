@@ -22,6 +22,18 @@ fi
 # shellcheck disable=SC1090
 . "$env_file"
 
+restart_marker="deploy/fncp/.synthetic-bootstrap-restart"
+if [ "$FNCP_SYNTHETIC_BOOTSTRAP_COMPLETE" != "true" ] ||
+  [ "$FNCP_GATEWAY_ENFORCEMENT" != "true" ] ||
+  [ "$FNCP_PROVIDER_ALLOWLIST_ENFORCEMENT" != "true" ] ||
+  [ "$FNCP_GATEWAY_CONVERSATION_ID" != \
+    "$FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID" ] ||
+  [ -e "$restart_marker" ]
+then
+  echo "Bootstrap and activate the synthetic binding before the trace." >&2
+  exit 1
+fi
+
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/fncp-polis-smoke.XXXXXX")"
 trap 'rm -rf "$work_dir"' EXIT INT TERM
 
@@ -83,72 +95,54 @@ token_status="$(request "$work_dir/token.json" \
 expect_status "$token_status" "200" "OIDC fixture login"
 admin_token="$(jq -er '.access_token' "$work_dir/token.json")"
 
-conversation_status="$(request "$work_dir/conversation.json" \
-  --header "Authorization: Bearer $admin_token" \
-  --header "X-Forwarded-Proto: https" \
-  --header "Content-Type: application/json" \
-  --data '{
-    "topic": "FNCP Option C disposable access QA",
-    "description": "Synthetic local staging only. No genuine participant data.",
-    "is_active": true,
-    "is_anon": true,
-    "is_draft": false,
-    "strict_moderation": true,
-    "profanity_filter": false
-  }' \
-  "$api_origin/api/v3/conversations")"
-expect_status "$conversation_status" "200" "Create disposable conversation"
-conversation_id="$(jq -er '.conversation_id' "$work_dir/conversation.json")"
-
-comment_status="$(request "$work_dir/comment.json" \
-  --header "Authorization: Bearer $admin_token" \
-  --header "X-Forwarded-Proto: https" \
-  --header "Content-Type: application/json" \
-  --data "$(jq -nc \
-    --arg conversation_id "$conversation_id" \
-    '{
-      conversation_id: $conversation_id,
-      txt: "Community-controlled decisions should include transparent follow-through.",
-      is_seed: true
-    }')" \
-  "$api_origin/api/v3/comments")"
-expect_status "$comment_status" "200" "Create synthetic seed statement"
-
+conversation_id="$FNCP_GATEWAY_CONVERSATION_ID"
 allowed_xid="fncp_$(openssl rand -hex 24)"
 replacement_xid="fncp_$(openssl rand -hex 24)"
-allowlist_status="$(request "$work_dir/allowlist.json" \
-  --header "Authorization: Bearer $admin_token" \
-  --header "X-Forwarded-Proto: https" \
-  --header "Content-Type: application/json" \
-  --data "$(jq -nc \
-    --arg conversation_id "$conversation_id" \
-    --arg allowed_xid "$allowed_xid" \
-    --arg replacement_xid "$replacement_xid" \
-    '{
-      conversation_id: $conversation_id,
-      xid_allow_list: [$allowed_xid, $replacement_xid],
-      replace_all: true
-    }')" \
-  "$api_origin/api/v3/xidAllowList")"
-expect_status "$allowlist_status" "200" "Create synthetic XID allowlist"
+allow_key="allow-$(openssl rand -hex 32)"
+remove_key="remove-$(openssl rand -hex 32)"
 
-gate_status="$(request "$work_dir/gate.json" \
-  --request PUT \
-  --header "Authorization: Bearer $admin_token" \
-  --header "X-Forwarded-Proto: https" \
+allowlist_status="$(request "$work_dir/allowlist.json" \
+  --header "Authorization: Bearer $FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL" \
+  --header "Content-Type: application/json" \
+  --header "Idempotency-Key: $allow_key" \
+  --data "$(jq -nc \
+    --arg conversation_id "$conversation_id" \
+    --arg participant_xid "$allowed_xid" \
+    '{
+      conversationId: $conversation_id,
+      participantXid: $participant_xid,
+      operationVersion: 1
+    }')" \
+  "$api_origin/fncp/private/xid-allowlist/upsert")"
+expect_status "$allowlist_status" "204" "Provider XID upsert"
+
+readback_status="$(request "$work_dir/readback.json" \
+  --header "Authorization: Bearer $FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL" \
   --header "Content-Type: application/json" \
   --data "$(jq -nc \
     --arg conversation_id "$conversation_id" \
+    --arg participant_xid "$allowed_xid" \
     '{
-      conversation_id: $conversation_id,
-      use_xid_whitelist: true
+      conversationId: $conversation_id,
+      participantXid: $participant_xid
     }')" \
-  "$api_origin/api/v3/conversations")"
-expect_status "$gate_status" "200" "Enable synthetic XID gate"
+  "$api_origin/fncp/private/xid-allowlist/readback")"
+expect_status "$readback_status" "200" "Provider XID readback"
+jq -e \
+  --arg conversation_id "$conversation_id" \
+  --arg participant_xid "$allowed_xid" \
+  '.conversationId == $conversation_id and
+   .participantXid == $participant_xid and
+   .operationVersion == 1 and
+   .present == true' \
+  "$work_dir/readback.json" >/dev/null
 
 allowed_status="$(request "$work_dir/allowed.json" \
   --get \
   --header "X-Forwarded-Proto: https" \
+  --header "X-FNCP-Gateway-Key: $FNCP_GATEWAY_SHARED_SECRET" \
+  --header "X-FNCP-Conversation-ID: $conversation_id" \
+  --header "X-FNCP-Participant-XID: $allowed_xid" \
   --data-urlencode "conversation_id=$conversation_id" \
   --data-urlencode "xid=$allowed_xid" \
   --data-urlencode "pid=-1" \
@@ -189,6 +183,9 @@ fi
 
 vote_status="$(request "$work_dir/vote.json" \
   --header "X-Forwarded-Proto: https" \
+  --header "X-FNCP-Gateway-Key: $FNCP_GATEWAY_SHARED_SECRET" \
+  --header "X-FNCP-Conversation-ID: $conversation_id" \
+  --header "X-FNCP-Participant-XID: $allowed_xid" \
   --header "Content-Type: application/json" \
   --data "$(jq -nc \
     --arg conversation_id "$conversation_id" \
@@ -206,6 +203,9 @@ expect_status "$vote_status" "200" "Establish synthetic XID participant"
 warm_status="$(request "$work_dir/warm.json" \
   --get \
   --header "X-Forwarded-Proto: https" \
+  --header "X-FNCP-Gateway-Key: $FNCP_GATEWAY_SHARED_SECRET" \
+  --header "X-FNCP-Conversation-ID: $conversation_id" \
+  --header "X-FNCP-Participant-XID: $allowed_xid" \
   --data-urlencode "conversation_id=$conversation_id" \
   --data-urlencode "xid=$allowed_xid" \
   --data-urlencode "pid=-1" \
@@ -234,8 +234,11 @@ expect_status "$missing_status" "403" "Missing XID"
 invalid_status="$(request "$work_dir/invalid.json" \
   --get \
   --header "X-Forwarded-Proto: https" \
+  --header "X-FNCP-Gateway-Key: $FNCP_GATEWAY_SHARED_SECRET" \
+  --header "X-FNCP-Conversation-ID: $conversation_id" \
+  --header "X-FNCP-Participant-XID: $replacement_xid" \
   --data-urlencode "conversation_id=$conversation_id" \
-  --data-urlencode "xid=fncp_not_allowlisted_0000000000000000" \
+  --data-urlencode "xid=$replacement_xid" \
   --data-urlencode "pid=-1" \
   --data-urlencode "lang=en" \
   "$api_origin/api/v3/participationInit")"
@@ -252,23 +255,47 @@ oidc_bypass_status="$(request "$work_dir/oidc-bypass.json" \
 expect_status "$oidc_bypass_status" "403" "OIDC participant bypass"
 
 revoke_status="$(request "$work_dir/revoke.json" \
-  --header "Authorization: Bearer $admin_token" \
-  --header "X-Forwarded-Proto: https" \
+  --header "Authorization: Bearer $FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL" \
+  --header "Content-Type: application/json" \
+  --header "Idempotency-Key: $remove_key" \
+  --data "$(jq -nc \
+    --arg conversation_id "$conversation_id" \
+    --arg participant_xid "$allowed_xid" \
+    '{
+      conversationId: $conversation_id,
+      participantXid: $participant_xid,
+      operationVersion: 2
+    }')" \
+  "$api_origin/fncp/private/xid-allowlist/remove")"
+expect_status "$revoke_status" "204" "Provider XID removal"
+
+removed_readback_status="$(request "$work_dir/removed-readback.json" \
+  --header "Authorization: Bearer $FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL" \
   --header "Content-Type: application/json" \
   --data "$(jq -nc \
     --arg conversation_id "$conversation_id" \
-    --arg replacement_xid "$replacement_xid" \
+    --arg participant_xid "$allowed_xid" \
     '{
-      conversation_id: $conversation_id,
-      xid_allow_list: [$replacement_xid],
-      replace_all: true
+      conversationId: $conversation_id,
+      participantXid: $participant_xid
     }')" \
-  "$api_origin/api/v3/xidAllowList")"
-expect_status "$revoke_status" "200" "Revoke synthetic XID"
+  "$api_origin/fncp/private/xid-allowlist/readback")"
+expect_status "$removed_readback_status" "200" "Removed XID readback"
+jq -e \
+  --arg conversation_id "$conversation_id" \
+  --arg participant_xid "$allowed_xid" \
+  '.conversationId == $conversation_id and
+   .participantXid == $participant_xid and
+   .operationVersion == 2 and
+   .present == false' \
+  "$work_dir/removed-readback.json" >/dev/null
 
 revoked_status="$(request "$work_dir/revoked.json" \
   --get \
   --header "X-Forwarded-Proto: https" \
+  --header "X-FNCP-Gateway-Key: $FNCP_GATEWAY_SHARED_SECRET" \
+  --header "X-FNCP-Conversation-ID: $conversation_id" \
+  --header "X-FNCP-Participant-XID: $allowed_xid" \
   --data-urlencode "conversation_id=$conversation_id" \
   --data-urlencode "xid=$allowed_xid" \
   --data-urlencode "pid=-1" \
@@ -281,6 +308,9 @@ warm_revoked_status="$(request "$work_dir/warm-revoked.json" \
   --get \
   --header "Authorization: Bearer $participant_token" \
   --header "X-Forwarded-Proto: https" \
+  --header "X-FNCP-Gateway-Key: $FNCP_GATEWAY_SHARED_SECRET" \
+  --header "X-FNCP-Conversation-ID: $conversation_id" \
+  --header "X-FNCP-Participant-XID: $allowed_xid" \
   --data-urlencode "conversation_id=$conversation_id" \
   --data-urlencode "xid=$allowed_xid" \
   --data-urlencode "pid=-1" \

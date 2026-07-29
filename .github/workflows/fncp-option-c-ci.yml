@@ -32,10 +32,13 @@ jobs:
 
       - name: Validate shell entrypoints
         run: |
+          sh -n deploy/fncp/activate-synthetic-binding.sh
+          sh -n deploy/fncp/bootstrap-synthetic-conversation.sh
           sh -n deploy/fncp/collect-image-security-evidence.sh
           sh -n deploy/fncp/prepare-staging.sh
           sh -n deploy/fncp/smoke-test.sh
           sh -n deploy/fncp/verify-staging.sh
+          node --check deploy/fncp/rewrite-synthetic-bootstrap-binding.mjs
           sh -n server/bin/fncp-run-migrations.sh
 
       - name: Run synthetic deployment and evidence tests
@@ -47,7 +50,8 @@ jobs:
             deploy/fncp/image-security-evidence.test.mjs \
             deploy/fncp/migration-image.test.mjs \
             deploy/fncp/production-admission-boundary.test.mjs \
-            deploy/fncp/provider-allowlist-boundary.test.mjs
+            deploy/fncp/provider-allowlist-boundary.test.mjs \
+            deploy/fncp/synthetic-bootstrap-boundary.test.mjs
 
       - name: Reject whitespace errors
         run: |

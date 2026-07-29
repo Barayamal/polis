@@ -15,7 +15,14 @@ RUN chmod 0555 /opt/fncp-busybox-fix/build-fixed-busybox.sh \
 
 FROM docker.io/library/nginx:1.30.4-alpine3.24-slim@sha256:ddde39c6e51f02fde7410c2e9c234cf2d0a4c7bdbbe176aeb37d8ad7ab4eb58c
 
-LABEL org.barayamal.fncp.busybox.remediation="CVE-2025-60876-upstream-patch"
+ARG SOURCE_REVISION
+RUN case "$SOURCE_REVISION" in \
+      ""|*[!0-9a-f]*) exit 1 ;; \
+    esac \
+    && test "${#SOURCE_REVISION}" -eq 40
+LABEL org.barayamal.fncp.busybox.remediation="CVE-2025-60876-upstream-patch" \
+      org.opencontainers.image.source="https://github.com/Barayamal/polis" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}"
 COPY --from=fncp-busybox-fixed /out/busybox /bin/busybox
 RUN set -eu; \
   test "$(readlink -f /bin/sh)" = /bin/busybox; \

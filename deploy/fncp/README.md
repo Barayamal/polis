@@ -28,9 +28,13 @@ The dedicated production server also has a mandatory
 It requires exact dual enforcement, one matching conversation and two
 independent credentials before the process opens its listening socket. Release
 evidence and CI build the `fncp-production` Docker target, which defaults the
-dedicated mode inside the image. Disposable staging explicitly builds `prod`,
-and an ordinary upstream Pol.is deployment remains unchanged while the
-dedicated release mode is absent.
+dedicated mode inside the image. Disposable staging now builds that same
+guarded target. Its initial generated configuration uses two independent
+credentials, exact dual enforcement and one matching high-entropy bootstrap
+conversation ID that is not yet present in the disposable database. This lets
+the dedicated process start while every participant request for that binding
+fails closed. An ordinary upstream Pol.is deployment remains unchanged while
+the dedicated release mode is absent.
 
 Refresh the production package evidence without applying automatic fixes:
 
@@ -236,8 +240,10 @@ From the repository root:
 ```
 
 The first command creates git-ignored local secrets, seven-day test
-certificates and participant JWT keys. It refuses to overwrite an existing
-staging environment.
+certificates and participant JWT keys. It also creates distinct gateway and
+provider credentials plus one random, valid but absent bootstrap conversation
+binding with both enforcement switches set to `true`. It refuses to overwrite
+an existing staging environment and does not create a conversation.
 
 The second command proves the Compose model is valid, sensitive integrations
 are disabled, the live hosted conversation is absent and every published port
@@ -290,7 +296,11 @@ the two certificate bind mounts, validates the generated participant
 `jwt-private.pem` and `jwt-public.pem`, and copies the disposable certificates
 and keys into the newly created containers before starting the same
 loopback-only stack. The keys are not added to a built image. The helper does
-not touch Docker objects outside the `fncp-polis-staging` project.
+not touch Docker objects outside the `fncp-polis-staging` project. It writes an
+ignored, non-secret `.colima-staging` marker so the bootstrap and activation
+helpers reuse the same override. Those helpers create each affected server
+container in a stopped state, copy only the disposable CA/signing keys, and
+start it afterwards; they never fall back to the unusable `/tmp` bind mounts.
 
 Disposable endpoints:
 
@@ -301,16 +311,54 @@ Disposable endpoints:
 Run the disposable API access matrix after the stack is healthy:
 
 ```sh
+./deploy/fncp/bootstrap-synthetic-conversation.sh
+./deploy/fncp/activate-synthetic-binding.sh
 ./deploy/fncp/smoke-test.sh
 ```
 
-It waits for API readiness for at most 45 seconds, creates and closes one
-synthetic local conversation, exercises allowed, missing, invalid, OIDC-bypass,
-removed-XID and removed-warm-session paths, prints statuses only and deletes
-its temporary token and response files on exit. Its Pol.is API requests supply
-`X-Forwarded-Proto: https` because this loopback check stands in for the
-reviewed TLS reverse-proxy boundary. A request without that secure-proxy signal
-is rejected. Purge the disposable database volume after evidence is recorded.
+The first helper is one-shot and bounded. It starts only the profile-gated
+`server-bootstrap` on `127.0.0.1:5501`, authenticates only as the documented
+local OIDC fixture administrator, creates exactly one synthetic conversation,
+adds exactly one synthetic seed statement and enables its XID whitelist. It
+then atomically replaces both conversation IDs in `.env.staging` with the
+exact created ID without printing an ID or credential. The ordinary bootstrap
+container is removed on exit. It does not restart a service, contact a public
+origin, deploy or run the participant trace. The protected restart marker is
+installed before the first mutating request, so an interrupted or uncertain
+transition stays fail-closed and cannot create a second conversation on
+retry. Do not remove that marker and replay bootstrap; inspect or purge the
+entire disposable stack and prepare a fresh one.
+
+When `.colima-staging` is present, the same helper verifies the marker, applies
+`docker-compose.colima.yml`, creates the bootstrap container stopped, copies
+the ignored disposable CA/signing keys and starts it. The activation helper
+uses the identical create-copy-start boundary for the dedicated server. An
+invalid marker fails closed.
+
+The generated environment has changed at that point but the running dedicated
+server and participant alpha still hold the absent bootstrap binding. The
+protected restart marker therefore blocks the trace. The second helper:
+
+- removes any leftover ordinary bootstrap container;
+- force-recreates the dedicated server, participant alpha and proxy locally;
+- proves the server and alpha container IDs changed;
+- reads back the exact provider binding from the guarded server;
+- verifies the missing-XID participant page through the recreated proxy; and
+- removes the restart marker only after all checks pass.
+
+If activation fails, the marker remains and `smoke-test.sh` refuses to run.
+`docker compose restart` is insufficient because it does not reload the
+changed environment; use the activation helper.
+
+The smoke script then uses the already-created configured conversation. It
+adds and removes generated QA XIDs only through the private provider adapter,
+verifies exact readbacks, and exercises allowed, missing, invalid,
+OIDC-bypass, removed-XID and removed-warm-session paths. It prints statuses
+only and deletes its temporary token and response files on exit. Its Pol.is
+API requests supply `X-Forwarded-Proto: https` because this loopback check
+stands in for the reviewed TLS reverse-proxy boundary. A request without that
+secure-proxy signal is rejected. The synthetic conversation is closed at the
+end. Purge the disposable database volume after evidence is recorded.
 
 The clean cold-start matrix observed on 28 July 2026 passed: the allowlisted
 XID returned `200`; missing, invalid, OIDC-bypass, removed and warm-session
@@ -360,7 +408,8 @@ docker compose \
   down --volumes
 ```
 
-Then delete the ignored `.env.staging`, `certs/` and any raw QA logs.
+Then delete the ignored `.env.staging`, `.colima-staging`,
+`.synthetic-bootstrap-restart`, `certs/` and any raw QA logs.
 
 ## Production is a separate decision
 

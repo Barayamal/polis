@@ -138,8 +138,15 @@ CMD ["node", "--max_old_space_size=2048", "--gc_interval=100", "dist/index.js"]
 # runtime override to an empty, false or malformed value is rejected by startup
 # admission rather than falling back to ordinary Pol.is.
 FROM prod AS fncp-production
+ARG SOURCE_REVISION
+RUN case "$SOURCE_REVISION" in \
+      ""|*[!0-9a-f]*) exit 1 ;; \
+    esac \
+    && test "${#SOURCE_REVISION}" -eq 40
 ENV FNCP_OPTION_C_RELEASE_MODE=production
-LABEL org.barayamal.fncp.release-mode="production"
+LABEL org.barayamal.fncp.release-mode="production" \
+      org.opencontainers.image.source="https://github.com/Barayamal/polis" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}"
 
 # Keep the Dockerfile's default and ordinary upstream `prod` target
 # non-dedicated. Option C release tooling must select `fncp-production`

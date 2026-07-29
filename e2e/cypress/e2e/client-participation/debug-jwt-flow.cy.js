@@ -3,20 +3,39 @@
  * This test includes extensive logging to identify why JWT isn't being received
  */
 
-import { setupTestConversation } from '../../support/conversation-helpers.js'
+import {
+  addCommentsToConversationNoAuth,
+  createTestConversationAPI,
+} from '../../support/conversation-helpers.js'
+import { loginStandardUserAPI, logout } from '../../support/auth-helpers.js'
 
 describe('Debug Anonymous JWT Flow', function () {
   let conversationId
 
   before(function () {
-    setupTestConversation({
-      topic: 'Debug JWT Flow',
-      description: 'Debug test for JWT',
-      comments: ['Test comment 1', 'Test comment 2'],
-    }).then((result) => {
-      conversationId = result.conversationId
-      cy.log(`✅ Test conversation created: ${conversationId}`)
-    })
+    // This spec exercises participant JWT issuance, not the administrator UI login flow.
+    // Pin setup to the application origin and use the API so spec order cannot leave the
+    // browser at the OIDC origin before the participant assertions begin.
+    cy.visit(Cypress.config('baseUrl'))
+
+    loginStandardUserAPI('moderator@polis.test', 'Te$tP@ssw0rd*')
+      .then(() =>
+        createTestConversationAPI({
+          topic: `Debug JWT Flow ${Date.now()}`,
+          description: 'Debug test for JWT',
+        }),
+      )
+      .then((createdConversationId) => {
+        conversationId = createdConversationId
+        return addCommentsToConversationNoAuth(conversationId, [
+          'Test comment 1',
+          'Test comment 2',
+        ])
+      })
+      .then(() => {
+        logout()
+        cy.log(`✅ Test conversation created: ${conversationId}`)
+      })
   })
 
   it('debug JWT flow step by step', function () {

@@ -73,6 +73,12 @@ java.base,java.compiler,java.desktop,java.instrument,java.logging,java.managemen
 
 FROM docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS runtime
 
+ARG SOURCE_REVISION
+RUN case "$SOURCE_REVISION" in \
+      ""|*[!0-9a-f]*) exit 1 ;; \
+    esac \
+    && test "${#SOURCE_REVISION}" -eq 40
+
 ENV JAVA_HOME=/opt/java/openjdk
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
@@ -82,7 +88,9 @@ RUN apk add --no-cache \
       ca-certificates-bundle=20260611-r0 \
       zlib=1.3.2-r0
 
-LABEL org.barayamal.fncp.busybox.remediation="CVE-2025-60876-upstream-patch"
+LABEL org.barayamal.fncp.busybox.remediation="CVE-2025-60876-upstream-patch" \
+      org.opencontainers.image.source="https://github.com/Barayamal/polis" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}"
 COPY --from=fncp-busybox-fixed /out/busybox /bin/busybox
 RUN set -eu; \
   test "$(readlink -f /bin/sh)" = /bin/busybox; \

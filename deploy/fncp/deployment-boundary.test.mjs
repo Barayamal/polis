@@ -32,6 +32,25 @@ const serverApp = await readFile(
   join(deployDir, "..", "..", "server", "app.ts"),
   "utf8"
 );
+const sourceBoundDockerfiles = new Map(
+  await Promise.all(
+    [
+      ["server", join(deployDir, "..", "..", "server", "Dockerfile")],
+      ["math", join(deployDir, "..", "..", "math", "Dockerfile")],
+      [
+        "client-participation-alpha",
+        join(
+          deployDir,
+          "..",
+          "..",
+          "client-participation-alpha",
+          "Dockerfile"
+        )
+      ],
+      ["nginx-proxy", join(deployDir, "nginx", "Dockerfile")]
+    ].map(async ([service, path]) => [service, await readFile(path, "utf8")])
+  )
+);
 
 function composeServiceBlock(serviceName) {
   const match = compose.match(
@@ -57,6 +76,7 @@ test("staging Compose declares a synthetic loopback-only, non-internet boundary"
   assert.deepEqual(publishedPorts.sort(), [
     "127.0.0.1:3000:3000",
     "127.0.0.1:5500:5000",
+    "127.0.0.1:5501:5000",
     "127.0.0.1:8088:8080",
   ]);
 
@@ -79,6 +99,41 @@ test("staging Compose declares a synthetic loopback-only, non-internet boundary"
   assert.match(stagingEnvironment, /SERVER_RUNTIME_GID=REPLACE_WITH_LOCAL_GID/);
   assert.match(prepare, /server_runtime_uid=\$\(id -u\)/);
   assert.match(prepare, /server_runtime_gid=\$\(id -g\)/);
+});
+
+test("every participant-path image is bound to the exact Pol.is source", () => {
+  assert.match(
+    stagingEnvironment,
+    /^FNCP_SERVER_BUILD_TARGET=fncp-production$/m
+  );
+  for (const [service, dockerfile] of sourceBoundDockerfiles) {
+    const block = composeServiceBlock(service);
+    assert.match(
+      block,
+      /SOURCE_REVISION: \$\{FNCP_SOURCE_REVISION\}/,
+      `${service} must receive the exact source revision`
+    );
+    assert.match(dockerfile, /^ARG SOURCE_REVISION$/mu, service);
+    assert.match(
+      dockerfile,
+      /org\.opencontainers\.image\.source="https:\/\/github\.com\/Barayamal\/polis"/u,
+      service
+    );
+    assert.match(
+      dockerfile,
+      /org\.opencontainers\.image\.revision="\$\{SOURCE_REVISION\}"/u,
+      service
+    );
+    assert.match(
+      dockerfile,
+      /test "\$\{#SOURCE_REVISION\}" -eq 40/u,
+      service
+    );
+  }
+  assert.match(
+    sourceBoundDockerfiles.get("server"),
+    /FROM prod AS fncp-production[\s\S]*org\.barayamal\.fncp\.release-mode="production"/u
+  );
 });
 
 test("SSR and browser API requests traverse the same HTTPS-shaped boundary", () => {
@@ -250,17 +305,12 @@ test("disposable smoke is readiness-bounded and models secure proxy requests", (
   assert.match(smoke, /did not become ready within 45 seconds/);
 
   const apiRequests = [
-    "conversation",
-    "comment",
-    "allowlist",
-    "gate",
     "allowed",
     "vote",
     "warm",
     "missing",
     "invalid",
     "oidc_bypass",
-    "revoke",
     "revoked",
     "warm_revoked",
     "close",

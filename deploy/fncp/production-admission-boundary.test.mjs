@@ -12,6 +12,9 @@ const [
   gateway,
   provider,
   staging,
+  prepare,
+  bootstrap,
+  activate,
   compose,
   collector,
   docs,
@@ -26,6 +29,12 @@ const [
   readFile(join(repoRoot, "server", "src", "auth", "fncp-gateway.ts"), "utf8"),
   readFile(join(repoRoot, "server", "src", "fncp-provider-policy.ts"), "utf8"),
   readFile(join(deployDir, "staging.env.example"), "utf8"),
+  readFile(join(deployDir, "prepare-staging.sh"), "utf8"),
+  readFile(
+    join(deployDir, "bootstrap-synthetic-conversation.sh"),
+    "utf8",
+  ),
+  readFile(join(deployDir, "activate-synthetic-binding.sh"), "utf8"),
   readFile(join(deployDir, "docker-compose.staging.yml"), "utf8"),
   readFile(join(deployDir, "collect-image-security-evidence.sh"), "utf8"),
   readFile(
@@ -47,7 +56,7 @@ test("the production entrypoint admits before opening a socket", () => {
 test("the dedicated image cannot omit the release mode into ordinary Pol.is", () => {
   assert.match(
     dockerfile,
-    /FROM prod AS fncp-production\nENV FNCP_OPTION_C_RELEASE_MODE=production/u,
+    /FROM prod AS fncp-production[\s\S]*?ENV FNCP_OPTION_C_RELEASE_MODE=production/u,
   );
   assert.match(
     dockerfile,
@@ -98,11 +107,33 @@ test("dedicated request-time loaders fail closed instead of disabling policy", (
   assert.match(provider, /if \(!config\.activationValid\)/u);
 });
 
-test("synthetic staging does not opt into the dedicated production contract", () => {
-  assert.match(staging, /^FNCP_SERVER_BUILD_TARGET=prod$/mu);
+test("synthetic staging starts the dedicated contract on an absent generated binding", () => {
+  assert.match(staging, /^FNCP_SERVER_BUILD_TARGET=fncp-production$/mu);
   assert.doesNotMatch(staging, /^FNCP_OPTION_C_RELEASE_MODE=/mu);
-  assert.match(staging, /^FNCP_GATEWAY_ENFORCEMENT=false$/mu);
-  assert.match(staging, /^FNCP_PROVIDER_ALLOWLIST_ENFORCEMENT=false$/mu);
+  assert.match(staging, /^FNCP_GATEWAY_ENFORCEMENT=true$/mu);
+  assert.match(staging, /^FNCP_PROVIDER_ALLOWLIST_ENFORCEMENT=true$/mu);
+  assert.match(
+    staging,
+    /^FNCP_GATEWAY_CONVERSATION_ID=REPLACE_WITH_BOOTSTRAP_CONVERSATION_ID$/mu,
+  );
+  assert.match(
+    staging,
+    /^FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID=REPLACE_WITH_BOOTSTRAP_CONVERSATION_ID$/mu,
+  );
+  assert.match(
+    prepare,
+    /bootstrap_conversation_id="9fncpBootstrap\$\(openssl rand -hex 24\)"/u,
+  );
+  assert.match(
+    prepare,
+    /while \[ "\$provider_allowlist_credential" = "\$gateway_shared_secret" \]/u,
+  );
+  assert.match(
+    bootstrap,
+    /profiles?: synthetic-bootstrap-only|--profile synthetic-bootstrap-only/u,
+  );
+  assert.match(activate, /--force-recreate server/u);
+  assert.match(activate, /--force-recreate client-participation-alpha/u);
 });
 
 test("the operator guidance forbids enforcement-disable emergency handling", () => {

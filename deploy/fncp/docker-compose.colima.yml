@@ -11,3 +11,8 @@ services:
     environment:
       NODE_EXTRA_CA_CERTS: /tmp/fncp-rootCA.pem
     volumes: !reset []
+
+  server-bootstrap:
+    environment:
+      NODE_EXTRA_CA_CERTS: /tmp/fncp-rootCA.pem
+    volumes: !reset []

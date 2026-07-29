@@ -85,6 +85,7 @@ services:
       target: ${FNCP_SERVER_BUILD_TARGET:-prod}
       args:
         NODE_ENV: production
+        SOURCE_REVISION: ${FNCP_SOURCE_REVISION}
     depends_on:
       oidc-simulator:
         condition: service_healthy
@@ -112,9 +113,56 @@ services:
       - ./certs:/run/fncp-ca:ro
       - ../../server/keys:/app/keys:ro
 
+  # One-shot synthetic bootstrap API. This service deliberately uses the
+  # ordinary upstream production target with both FNCP policies disabled so
+  # the local OIDC fixture can create and configure exactly one disposable
+  # conversation while the dedicated server remains fail-closed on its absent
+  # bootstrap binding. It is profile-gated, loopback-only and removed by the
+  # helper; it is not a release artifact or deployment topology.
+  server-bootstrap:
+    profiles: [synthetic-bootstrap-only]
+    build:
+      context: ../../server
+      dockerfile: Dockerfile
+      target: prod
+      args:
+        NODE_ENV: production
+    depends_on:
+      oidc-simulator:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file: .env.staging
+    environment:
+      DATABASE_SSL: "false"
+      DATABASE_URL: ${DATABASE_URL}
+      DEV_MODE: "false"
+      ENABLE_TELEMETRY: "false"
+      FNCP_GATEWAY_CONVERSATION_ID: ""
+      FNCP_GATEWAY_ENFORCEMENT: "false"
+      FNCP_GATEWAY_SHARED_SECRET: ""
+      FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL: ""
+      FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID: ""
+      FNCP_PROVIDER_ALLOWLIST_ENFORCEMENT: "false"
+      NODE_ENV: production
+      NODE_EXTRA_CA_CERTS: /run/fncp-ca/rootCA.pem
+      STATIC_FILES_ADMIN_PORT: "4321"
+      STATIC_FILES_HOST: client-participation-alpha
+      STATIC_FILES_PARTICIPATION_PORT: "4321"
+    networks: [fncp-internal, fncp-loopback]
+    ports:
+      - "127.0.0.1:5501:5000"
+    restart: "no"
+    user: "${SERVER_RUNTIME_UID}:${SERVER_RUNTIME_GID}"
+    volumes:
+      - ./certs:/run/fncp-ca:ro
+      - ../../server/keys:/app/keys:ro
+
   math:
     build:
       context: ../../math
+      args:
+        SOURCE_REVISION: ${FNCP_SOURCE_REVISION}
     depends_on:
       postgres:
         condition: service_healthy
@@ -136,6 +184,7 @@ services:
         OIDC_CACHE_KEY_PREFIX: ${OIDC_CACHE_KEY_PREFIX}
         PUBLIC_AUTH_NAMESPACE: ${AUTH_NAMESPACE}
         PUBLIC_SERVICE_URL: ${PUBLIC_SERVICE_URL}
+        SOURCE_REVISION: ${FNCP_SOURCE_REVISION}
     depends_on: [server]
     environment:
       FNCP_GATEWAY_CONVERSATION_ID: ${FNCP_GATEWAY_CONVERSATION_ID}
@@ -154,6 +203,8 @@ services:
     build:
       context: .
       dockerfile: nginx/Dockerfile
+      args:
+        SOURCE_REVISION: ${FNCP_SOURCE_REVISION}
     depends_on:
       - client-participation-alpha
       - server

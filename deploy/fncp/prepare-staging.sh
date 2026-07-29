@@ -19,7 +19,12 @@ auth_secret=$(openssl rand -hex 32)
 login_pepper=$(openssl rand -hex 32)
 encryption_password=$(openssl rand -hex 32)
 math_password=$(openssl rand -hex 24)
+gateway_shared_secret=$(openssl rand -hex 32)
 provider_allowlist_credential=$(openssl rand -hex 32)
+while [ "$provider_allowlist_credential" = "$gateway_shared_secret" ]; do
+  provider_allowlist_credential=$(openssl rand -hex 32)
+done
+bootstrap_conversation_id="9fncpBootstrap$(openssl rand -hex 24)"
 server_runtime_uid=$(id -u)
 server_runtime_gid=$(id -g)
 source_revision=$(git -C "$repo_root" rev-parse HEAD)
@@ -43,6 +48,9 @@ sed \
   -e "s/LOGIN_CODE_PEPPER=REPLACE_WITH_RANDOM_VALUE/LOGIN_CODE_PEPPER=$login_pepper/" \
   -e "s/ENCRYPTION_PASSWORD_00001=REPLACE_WITH_RANDOM_VALUE/ENCRYPTION_PASSWORD_00001=$encryption_password/" \
   -e "s/WEBSERVER_PASS=REPLACE_WITH_RANDOM_VALUE/WEBSERVER_PASS=$math_password/" \
+  -e "s/FNCP_GATEWAY_CONVERSATION_ID=REPLACE_WITH_BOOTSTRAP_CONVERSATION_ID/FNCP_GATEWAY_CONVERSATION_ID=$bootstrap_conversation_id/" \
+  -e "s/FNCP_GATEWAY_SHARED_SECRET=REPLACE_WITH_RANDOM_VALUE/FNCP_GATEWAY_SHARED_SECRET=$gateway_shared_secret/" \
+  -e "s/FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID=REPLACE_WITH_BOOTSTRAP_CONVERSATION_ID/FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID=$bootstrap_conversation_id/" \
   -e "s/FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL=REPLACE_WITH_RANDOM_VALUE/FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL=$provider_allowlist_credential/" \
   -e "s/FNCP_SOURCE_REVISION=REPLACE_WITH_SOURCE_REVISION/FNCP_SOURCE_REVISION=$source_revision/" \
   "$deploy_dir/staging.env.example" >"$env_file"
@@ -79,4 +87,5 @@ fi
 chmod 644 "$keys_dir/jwt-public.pem" "$cert_dir/rootCA.pem"
 
 echo "Prepared disposable staging configuration."
+echo "The dedicated server is bound to an absent synthetic bootstrap ID."
 echo "Secrets and certificates are git-ignored and expire after seven days."

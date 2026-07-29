@@ -9,6 +9,7 @@ override="deploy/fncp/docker-compose.colima.yml"
 env_file="deploy/fncp/.env.staging"
 cert_dir="deploy/fncp/certs"
 keys_dir="server/keys"
+colima_marker="deploy/fncp/.colima-staging"
 
 if [ ! -f "$env_file" ]; then
   echo "Missing $env_file. Run deploy/fncp/prepare-staging.sh first." >&2
@@ -53,4 +54,10 @@ docker cp -a "$cert_dir/rootCA.pem" "$server_container:/tmp/fncp-rootCA.pem"
 docker cp -a "$keys_dir" "$server_container:/app/keys"
 
 compose start
+marker_temp="$(mktemp "$colima_marker.XXXXXX")"
+trap 'rm -f "$marker_temp"' EXIT INT TERM
+chmod 600 "$marker_temp"
+printf '%s\n' "compose-override=docker-compose.colima.yml" >"$marker_temp"
+mv "$marker_temp" "$colima_marker"
+trap - EXIT INT TERM
 compose ps
