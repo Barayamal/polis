@@ -163,7 +163,8 @@ if [ "$use_colima" = "true" ]; then
   # A clone below macOS /tmp cannot bind-mount these ignored files into Colima.
   # Create the stopped container with the reviewed override, copy only the
   # disposable CA/signing keys, then start it.
-  bootstrap_compose create --no-deps --force-recreate server-bootstrap \
+  bootstrap_compose up --no-start --no-deps --force-recreate \
+    server-bootstrap \
     >/dev/null
   bootstrap_container=$(bootstrap_compose ps -aq server-bootstrap)
   if [ -z "$bootstrap_container" ]; then

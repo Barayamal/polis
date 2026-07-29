@@ -119,7 +119,7 @@ bootstrap_compose rm -sf server-bootstrap >/dev/null 2>&1 || true
 if [ "$use_colima" = "true" ]; then
   # Recreate the stopped server under the same /tmp compatibility override,
   # then copy only the disposable CA and signing keys before it can start.
-  compose create --no-deps --force-recreate server >/dev/null
+  compose up --no-start --no-deps --force-recreate server >/dev/null
   server_container=$(compose ps -aq server)
   if [ -z "$server_container" ]; then
     echo "The dedicated local server container was not recreated." >&2

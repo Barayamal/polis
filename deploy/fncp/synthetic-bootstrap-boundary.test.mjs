@@ -274,7 +274,7 @@ test("macOS tmp compatibility preserves stopped-copy-start bootstrap semantics",
   }
 
   const bootstrapCreate = bootstrap.indexOf(
-    "bootstrap_compose create --no-deps --force-recreate server-bootstrap"
+    "bootstrap_compose up --no-start --no-deps --force-recreate"
   );
   const bootstrapCopyCa = bootstrap.indexOf(
     'docker cp -a "$ca_file" "$bootstrap_container:/tmp/fncp-rootCA.pem"'
@@ -291,7 +291,7 @@ test("macOS tmp compatibility preserves stopped-copy-start bootstrap semantics",
   assert.ok(bootstrapStart > bootstrapCopyKeys);
 
   const serverCreate = activate.indexOf(
-    "compose create --no-deps --force-recreate server"
+    "compose up --no-start --no-deps --force-recreate server"
   );
   const serverCopyCa = activate.indexOf(
     'docker cp -a "$ca_file" "$server_container:/tmp/fncp-rootCA.pem"'
