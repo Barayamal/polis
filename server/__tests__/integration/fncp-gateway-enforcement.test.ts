@@ -113,11 +113,11 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
   test("a fresh unallowlisted XID fails closed on all six capabilities", async () => {
     const participant = await newAgent();
 
-    for (const request of participantCapabilityRequests(
+    for (const createRequest of participantCapabilityRequests(
       participant,
       neverAllowlistedXid
     )) {
-      const response = await request;
+      const response = await createRequest();
       expect(response.status).toBe(403);
       expect(response.body.error).toBe("polis_err_xid_not_allowed");
       expect(response.headers["cache-control"]).toBe("no-store");
@@ -216,11 +216,11 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
     });
     expect(replacement.status).toBe(200);
 
-    for (const request of participantCapabilityRequests(
+    for (const createRequest of participantCapabilityRequests(
       participant,
       allowedXid
     )) {
-      const blocked = await request;
+      const blocked = await createRequest();
       expect(blocked.status).toBe(403);
       expect(blocked.body.error).toBe("polis_err_xid_not_allowed");
       expect(blocked.headers["cache-control"]).toBe("no-store");
@@ -251,32 +251,38 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
   function participantCapabilityRequests(
     participant: Agent,
     xid: string
-  ): Test[] {
+  ): Array<() => Test> {
     return [
-      trusted(participant.get("/api/v3/comments"), xid).query({
-        conversation_id: conversationId,
-      }),
-      trusted(participant.get("/api/v3/math/pca2"), xid).query({
-        conversation_id: conversationId,
-      }),
-      trusted(participant.get("/api/v3/nextComment"), xid).query({
-        conversation_id: conversationId,
-        lang: "en",
-      }),
-      trusted(participant.get("/api/v3/participationInit"), xid).query({
-        conversation_id: conversationId,
-        lang: "en",
-      }),
-      trusted(participant.post("/api/v3/comments"), xid).send({
-        conversation_id: conversationId,
-        txt: "Synthetic statement that must never reach the handler",
-      }),
-      trusted(participant.post("/api/v3/votes"), xid).send({
-        conversation_id: conversationId,
-        tid: seedTid,
-        vote: 1,
-        lang: "en",
-      }),
+      () =>
+        trusted(participant.get("/api/v3/comments"), xid).query({
+          conversation_id: conversationId,
+        }),
+      () =>
+        trusted(participant.get("/api/v3/math/pca2"), xid).query({
+          conversation_id: conversationId,
+        }),
+      () =>
+        trusted(participant.get("/api/v3/nextComment"), xid).query({
+          conversation_id: conversationId,
+          lang: "en",
+        }),
+      () =>
+        trusted(participant.get("/api/v3/participationInit"), xid).query({
+          conversation_id: conversationId,
+          lang: "en",
+        }),
+      () =>
+        trusted(participant.post("/api/v3/comments"), xid).send({
+          conversation_id: conversationId,
+          txt: "Synthetic statement that must never reach the handler",
+        }),
+      () =>
+        trusted(participant.post("/api/v3/votes"), xid).send({
+          conversation_id: conversationId,
+          tid: seedTid,
+          vote: 1,
+          lang: "en",
+        }),
     ];
   }
 });

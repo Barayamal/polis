@@ -51,15 +51,17 @@ RUN clojure -P -M:run \
     && cp system.properties /runtime/app/
 
 # Build a deliberately bounded Java 17 runtime. The selected modules cover the
-# worker's Clojure compiler, JDBC, XML, crypto and management paths while
-# excluding JDK build tools, desktop/audio libraries and package managers.
+# worker's Clojure compiler, JDBC, XML, crypto and management paths.
+# java.desktop is retained because the matrix/data runtime links
+# java.beans.PropertyChangeEvent while booting; the worker does not invoke GUI
+# or audio paths. JDK build tools and package managers remain excluded.
 FROM docker.io/library/amazoncorretto:17-alpine@sha256:e1138bf0cca62e04692de650ffe8923f35c39fcb554458c7acd98efc2d135144 AS fncp-jre-build
 
 RUN apk add --no-cache binutils=2.45.1-r1
 
 RUN "$JAVA_HOME/bin/jlink" \
       --add-modules \
-java.base,java.compiler,java.instrument,java.logging,java.management,java.naming,java.net.http,java.security.jgss,java.security.sasl,java.sql,java.transaction.xa,java.xml,jdk.crypto.ec,jdk.management,jdk.unsupported,jdk.zipfs \
+java.base,java.compiler,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.security.jgss,java.security.sasl,java.sql,java.transaction.xa,java.xml,jdk.crypto.ec,jdk.management,jdk.unsupported,jdk.zipfs \
       --compress=2 \
       --no-header-files \
       --no-man-pages \
@@ -100,6 +102,21 @@ RUN classpath=$(cat /app/classpath) \
       clojure.main \
       -e '(print (-> (Class/forName "clojure.core.matrix.random.RandomSeq") .getProtectionDomain .getCodeSource .getLocation str))') \
     && test "$origin" = 'file:/app/lib/core.matrix-0.63.0.jar' \
+    && if ! ${JAVA_HOME}/bin/java \
+      -cp "$classpath" \
+      clojure.main \
+      -e '(require (quote polismath.runner) (quote polismath.components.core-matrix-boot) (quote com.stuartsierra.component)) (let [probe (polismath.components.core-matrix-boot/create-core-matrix-booter {:config {:math {:matrix-implementation :vectorz}}})] (com.stuartsierra.component/start probe)) (println "FNCP math runtime boot probe passed")' \
+      >/tmp/fncp-math-boot.log 2>&1; then \
+        cat /tmp/fncp-math-boot.log >&2; \
+        exit 1; \
+      fi \
+    && if grep -Eq 'ClassNotFoundException|NoClassDefFoundError|Math worker exited.*restarting' \
+      /tmp/fncp-math-boot.log; then \
+        cat /tmp/fncp-math-boot.log >&2; \
+        exit 1; \
+      fi \
+    && grep -Fxq 'FNCP math runtime boot probe passed' /tmp/fncp-math-boot.log \
+    && rm -f /tmp/fncp-math-boot.log \
     && test "$(${JAVA_HOME}/bin/java --list-modules | wc -l)" -lt 40 \
     && test ! -e ${JAVA_HOME}/bin/javac
 

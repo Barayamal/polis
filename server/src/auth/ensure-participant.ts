@@ -187,7 +187,12 @@ export function revalidateConversationXidAllowlist() {
     try {
       const zid = req.p.zid;
       if (!zid) {
-        throw new Error("polis_err_missing_zid");
+        // participationInit deliberately accepts an empty conversation lookup
+        // and returns a null conversation. A trusted FNCP request has its exact
+        // configured conversation injected by the gateway before this guard;
+        // the other protected routes require a conversation before reaching it.
+        next();
+        return;
       }
 
       await _revalidateXidAccess(req, zid);

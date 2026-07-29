@@ -5,11 +5,12 @@ import { postgresProviderAllowlistStore } from "../../src/routes/fncp-provider-a
 import { isXidAllowed } from "../../src/xids";
 
 const databaseUrl = process.env.DATABASE_URL || "";
+const providerStoreIntegrationRequested =
+  process.env.FNCP_PROVIDER_STORE_INTEGRATION === "true";
 const safeDatabase =
   /(?:127\.0\.0\.1|localhost|host\.docker\.internal|fncp-provider-api-postgres)/u.test(
     databaseUrl
-  ) &&
-  /(?:fncp_provider_api_test|fncp_query_builder_ci)/u.test(databaseUrl);
+  ) && /(?:fncp_provider_api_test|fncp_query_builder_ci)/u.test(databaseUrl);
 
 const conversationId = "9providerdbqa";
 const otherConversationId = "8providerdbqa";
@@ -21,7 +22,11 @@ const previous = {
   credential: process.env.FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL,
 };
 
-describe("FNCP provider allowlist PostgreSQL store", () => {
+const describeProviderStore = providerStoreIntegrationRequested
+  ? describe
+  : describe.skip;
+
+describeProviderStore("FNCP provider allowlist PostgreSQL store", () => {
   beforeAll(async () => {
     if (!safeDatabase) {
       throw new Error(

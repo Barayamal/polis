@@ -361,7 +361,9 @@ describe("ensureParticipant XID allowlist revalidation", () => {
   it("fails closed instead of continuing optional middleware on policy uncertainty", async () => {
     const unavailable = new Error("private detail");
     unavailable.name = "FncpProviderPolicyUnavailableError";
-    (resolveFncpManagedConversation as jest.Mock).mockRejectedValue(unavailable);
+    (resolveFncpManagedConversation as jest.Mock).mockRejectedValue(
+      unavailable
+    );
 
     const { next, status, json } = await runMiddleware(
       ensureParticipantOptional({
@@ -385,6 +387,18 @@ describe("ensureParticipant XID allowlist revalidation", () => {
   });
 
   describe("explicit participant-route guard", () => {
+    it("passes through an optional route without conversation context", async () => {
+      const { next, status } = await runMiddleware(
+        revalidateConversationXidAllowlist(),
+        {}
+      );
+
+      expect(getConversationInfo).not.toHaveBeenCalled();
+      expect(isXidAllowed).not.toHaveBeenCalled();
+      expect(status).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith();
+    });
+
     it("allows a fresh allowlisted XID and records the checked conversation", async () => {
       (isXidAllowed as jest.Mock).mockResolvedValue(true);
 

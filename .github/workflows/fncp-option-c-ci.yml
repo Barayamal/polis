@@ -134,6 +134,8 @@ jobs:
 
       - name: Run isolated PostgreSQL integrations
         working-directory: server
+        env:
+          FNCP_PROVIDER_STORE_INTEGRATION: "true"
         run: >-
           npm test --
           --config jest.fncp.config.ts

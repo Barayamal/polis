@@ -937,7 +937,14 @@ test("math worker crosses only its runtime closure into a non-root stage", () =>
   assert.match(mathDockerfile, /--no-man-pages/u);
   assert.match(mathDockerfile, /--strip-debug/u);
   assert.doesNotMatch(mathDockerfile, /--bind-services/u);
-  assert.doesNotMatch(mathDockerfile, /java\.desktop/u);
+  assert.match(
+    mathDockerfile,
+    /java\.base,java\.compiler,java\.desktop,java\.instrument/u,
+  );
+  assert.match(
+    mathDockerfile,
+    /java\.desktop is retained because the matrix\/data runtime links[\s\S]*java\.beans\.PropertyChangeEvent/u,
+  );
   assert.match(
     mathDockerfile,
     /ca-certificates-bundle=20260611-r0/u,
@@ -978,6 +985,18 @@ test("math runtime bypasses the removed Clojure CLI and preserves restart bounds
   assert.match(mathRunScript, /\n    full &\n/u);
   assert.match(mathRunScript, /worker_pid=\$!/u);
   assert.match(mathRunScript, /worker_status=\$\?/u);
+  assert.match(
+    mathDockerfile,
+    /require \(quote polismath\.runner\)[\s\S]*create-core-matrix-booter/u,
+  );
+  assert.match(
+    mathDockerfile,
+    /FNCP math runtime boot probe passed/u,
+  );
+  assert.match(
+    mathDockerfile,
+    /ClassNotFoundException\|NoClassDefFoundError\|Math worker exited\.\*restarting/u,
+  );
 });
 
 test("participant build context excludes local dependencies and output", () => {
