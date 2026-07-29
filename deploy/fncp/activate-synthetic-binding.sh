@@ -136,6 +136,7 @@ wait_for_origin "$api_origin"
 probe_xid="fncp_probe_$(openssl rand -hex 24)"
 readback_status=$(request "$work_dir/readback.json" \
   --header "Authorization: Bearer $FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL" \
+  --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
   --data "$(jq -nc \
     --arg conversation_id "$FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID" \

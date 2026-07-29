@@ -103,6 +103,7 @@ remove_key="remove-$(openssl rand -hex 32)"
 
 allowlist_status="$(request "$work_dir/allowlist.json" \
   --header "Authorization: Bearer $FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL" \
+  --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
   --header "Idempotency-Key: $allow_key" \
   --data "$(jq -nc \
@@ -118,6 +119,7 @@ expect_status "$allowlist_status" "204" "Provider XID upsert"
 
 readback_status="$(request "$work_dir/readback.json" \
   --header "Authorization: Bearer $FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL" \
+  --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
   --data "$(jq -nc \
     --arg conversation_id "$conversation_id" \
@@ -256,6 +258,7 @@ expect_status "$oidc_bypass_status" "403" "OIDC participant bypass"
 
 revoke_status="$(request "$work_dir/revoke.json" \
   --header "Authorization: Bearer $FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL" \
+  --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
   --header "Idempotency-Key: $remove_key" \
   --data "$(jq -nc \
@@ -271,6 +274,7 @@ expect_status "$revoke_status" "204" "Provider XID removal"
 
 removed_readback_status="$(request "$work_dir/removed-readback.json" \
   --header "Authorization: Bearer $FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL" \
+  --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
   --data "$(jq -nc \
     --arg conversation_id "$conversation_id" \

@@ -218,6 +218,7 @@ test("activation proves fresh dedicated containers and exact live binding", () =
     activate,
     /fncp\/private\/xid-allowlist\/readback/u
   );
+  assert.match(activate, /X-Forwarded-Proto: https/u);
   assert.match(activate, /\.operationVersion == null/u);
   assert.match(activate, /\.present == false/u);
   assert.match(activate, /bootstrap_compose rm -sf server-bootstrap/u);
@@ -318,6 +319,9 @@ test("trace consumes only the activated conversation and provider API", () => {
       new RegExp(`fncp/private/xid-allowlist/${operation}`)
     );
   }
+  assert.ok(
+    (smoke.match(/X-Forwarded-Proto: https/gu) ?? []).length >= 4
+  );
   assert.match(smoke, /conversation_id="\$FNCP_GATEWAY_CONVERSATION_ID"/u);
   assert.match(smoke, /X-FNCP-Gateway-Key/u);
   assert.match(smoke, /X-FNCP-Conversation-ID/u);
