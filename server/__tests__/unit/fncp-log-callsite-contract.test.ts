@@ -52,4 +52,18 @@ describe("FNCP logging call-site contract", () => {
       /if \(isFncpSensitiveRequest\(req\)\) \{\s+logger\.error\("FNCP participationInit failed"\);\s+\} else \{/u
     );
   });
+
+  test("records the intentional POST diagnostic suppression trade-off", () => {
+    const documentation = source("docs/FNCP_LOGGING_BOUNDARY.md");
+
+    expect(documentation).toMatch(
+      /suppresses\s+request diagnostics for \*\*every\*\* `POST`/u
+    );
+    expect(documentation).toContain("/api/v3/comments");
+    expect(documentation).toContain("/api/v3/votes");
+    expect(documentation).toContain("/api/v3/joinWithInvite");
+    expect(documentation).toContain(
+      "Ordinary upstream behaviour is unchanged when enforcement is off."
+    );
+  });
 });

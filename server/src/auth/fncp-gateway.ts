@@ -47,6 +47,13 @@ const HEAD_ALIAS_PARTICIPANT_PATHS = new Set(
   )
 );
 
+// The dedicated Option C participant capability manifest contains only the
+// six routes above. joinWithInvite runs hybridAuthOptional and may create an
+// OIDC/anonymous user before its route handler executes, so an FNCP instance
+// must reject it in this earlier middleware regardless of supplied identity,
+// invitation, or provider allowlist state.
+const FNCP_DISABLED_ROUTE_KEYS = new Set(["POST /api/v3/joinwithinvite"]);
+
 const IDENTITY_KEYS = new Set([
   "access_token",
   "authorization",
@@ -167,6 +174,11 @@ export function evaluateFncpGatewayRequest(
   const requestMethod = request.method.toUpperCase();
   const requestPath = normalizePath(request.path);
   const routeKey = `${requestMethod} ${requestPath}`;
+
+  if (FNCP_DISABLED_ROUTE_KEYS.has(routeKey)) {
+    return { enforce: true, status: 404, error: "Not found." };
+  }
+
   const canonicalPath = PARTICIPANT_ROUTES.get(routeKey);
   const routeIsParticipant = canonicalPath !== undefined;
   const pathIsCanonical = request.path === canonicalPath;

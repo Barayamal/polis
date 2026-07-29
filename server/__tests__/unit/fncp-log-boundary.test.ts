@@ -144,6 +144,31 @@ describe("FNCP request logging boundary", () => {
     ).toBe(false);
   });
 
+  test("documents the conservative P2 suppression for every protected POST only while enforcement is on", () => {
+    const enabled = {
+      FNCP_GATEWAY_ENFORCEMENT: "true",
+      FNCP_GATEWAY_CONVERSATION_ID: conversationId,
+    };
+    const disabled = {
+      ...enabled,
+      FNCP_GATEWAY_ENFORCEMENT: "false",
+    };
+
+    for (const path of [
+      "/api/v3/comments",
+      "/api/v3/votes",
+      "/api/v3/joinWithInvite",
+    ]) {
+      const ordinaryPost = request({
+        method: "POST",
+        path,
+        query: { conversation_id: "4ordinary" },
+      });
+      expect(shouldEnterFncpLogBoundary(ordinaryPost, enabled)).toBe(true);
+      expect(shouldEnterFncpLogBoundary(ordinaryPost, disabled)).toBe(false);
+    }
+  });
+
   test("marks the request and establishes an async-safe scope before next", () => {
     const req = request({
       path: "/fncp/private/xid-allowlist/readback",

@@ -100,6 +100,30 @@ describe("FNCP private-origin gateway enforcement", () => {
     }
   });
 
+  test("globally disables joinWithInvite while FNCP enforcement is enabled", () => {
+    for (const body of [
+      {},
+      { xid: "fncp_provider_authorized_0123456789" },
+      { xid: "fncp_removed_0123456789abcdef" },
+      { suzinvite: "synthetic-single-use-invitation" },
+    ]) {
+      expect(
+        evaluateFncpGatewayRequest(
+          request({
+            method: "POST",
+            path: "/api/v3/joinWithInvite",
+            body,
+          }),
+          enabled
+        )
+      ).toEqual({
+        enforce: true,
+        status: 404,
+        error: "Not found.",
+      });
+    }
+  });
+
   test("rejects a wrong or missing gateway secret", () => {
     const headers = gatewayHeaders({
       "x-fncp-gateway-key": "wrong-secret-0123456789abcdefghij",

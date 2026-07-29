@@ -14,6 +14,7 @@ import type { NextFunction, Request, Response } from "express";
 
 const FNCP_PARTICIPANT_PATHS = new Set([
   "/api/v3/comments",
+  "/api/v3/joinwithinvite",
   "/api/v3/math/pca2",
   "/api/v3/nextcomment",
   "/api/v3/participationinit",
@@ -86,10 +87,14 @@ export function shouldEnterFncpLogBoundary(
     return true;
   }
 
-  // POST comments/votes can carry the configured conversation, XID, session,
-  // or invitation token exclusively in a JSON body which has not been parsed
-  // yet. Suppress those request logs rather than risk body-parser error text
-  // or a development URL formatter retaining participant material.
+  // POST comments/votes (and the globally disabled joinWithInvite route) can
+  // carry the configured conversation, XID, session, or invitation token
+  // exclusively in a JSON body which has not been parsed yet. Enforcement
+  // therefore conservatively suppresses diagnostics for every POST to these
+  // paths, including an ordinary non-FNCP comments/votes request. This known
+  // P2 observability trade-off prevents body-parser or parameter-error logs
+  // from retaining FNCP participant material before routing can distinguish
+  // the target conversation.
   return request.method.toUpperCase() === "POST";
 }
 
