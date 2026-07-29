@@ -128,8 +128,8 @@ function validateLock() {
   if (lock.buildPlatform !== "linux/arm64") {
     fail("The recorded local evidence platform must be linux/arm64");
   }
-  if (lock.baseImages.length !== 8 || lock.scannerImages.length !== 2) {
-    fail("The lock must contain eight base images and two scanner images");
+  if (lock.baseImages.length !== 11 || lock.scannerImages.length !== 2) {
+    fail("The lock must contain eleven base-image uses and two scanner images");
   }
   if (
     lock.dockerfileFrontend?.tag !== "docker.io/docker/dockerfile:1.4" ||

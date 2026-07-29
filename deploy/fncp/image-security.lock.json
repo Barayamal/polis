@@ -17,6 +17,13 @@
       "arm64Digest": "sha256:d51cff3fa44ab8a368ae8708ae974480165be1b699b19527b7c0d2523433b271"
     },
     {
+      "component": "server-busybox-builder",
+      "dockerfile": "server/Dockerfile",
+      "tag": "docker.io/library/node:24-alpine",
+      "indexDigest": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+      "arm64Digest": "sha256:eef73a25205e27bd016ce672af71560ad6b681142ddf00ff63c7b3098eafcd4d"
+    },
+    {
       "component": "postgres",
       "dockerfile": "server/Dockerfile-db",
       "tag": "docker.io/library/postgres:17-alpine",
@@ -29,6 +36,13 @@
       "tag": "docker.io/library/postgres:17-alpine",
       "indexDigest": "sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193",
       "arm64Digest": "sha256:b797483593b82cbea9a7ee41c88f324a90d10d9c2504d40e755d91c75456366d"
+    },
+    {
+      "component": "polis-migration-busybox-builder",
+      "dockerfile": "server/Dockerfile-migrate",
+      "tag": "docker.io/library/node:24-alpine",
+      "indexDigest": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+      "arm64Digest": "sha256:eef73a25205e27bd016ce672af71560ad6b681142ddf00ff63c7b3098eafcd4d"
     },
     {
       "component": "math",
@@ -64,6 +78,13 @@
       "tag": "docker.io/library/nginx:1.30.4-alpine3.24-slim",
       "indexDigest": "sha256:ddde39c6e51f02fde7410c2e9c234cf2d0a4c7bdbbe176aeb37d8ad7ab4eb58c",
       "arm64Digest": "sha256:c41cf343e2b3980e69d9890f9a8ec7120a54aa84232796414e251a1b387e4fc9"
+    },
+    {
+      "component": "nginx-proxy-busybox-builder",
+      "dockerfile": "deploy/fncp/nginx/Dockerfile",
+      "tag": "docker.io/library/node:24-alpine",
+      "indexDigest": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+      "arm64Digest": "sha256:eef73a25205e27bd016ce672af71560ad6b681142ddf00ff63c7b3098eafcd4d"
     }
   ],
   "scannerImages": [

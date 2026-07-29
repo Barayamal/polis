@@ -235,7 +235,7 @@ test("all application base images and scanners are locked by digest", () => {
   const result = runTool("validate-lock");
   assert.deepEqual(result, {
     status: "pass",
-    baseImages: 8,
+    baseImages: 11,
     scannerImages: 2,
     buildPlatform: "linux/arm64",
   });
@@ -666,7 +666,7 @@ test("server final runtime prunes direct development dependencies", () => {
   assert.ok(commandIndex > userIndex);
   assert.doesNotMatch(
     serverDockerfile.slice(runtimeStageIndex),
-    /^COPY (?!-{2}from=build\b)/mu,
+    /^COPY (?!-{2}from=(?:build|fncp-busybox-fixed)\b)/mu,
   );
   assert.doesNotMatch(serverDockerfile.slice(runtimeStageIndex), /COPY \. \./u);
   assert.doesNotMatch(
@@ -758,7 +758,7 @@ test("participant runtime crosses only reviewed build output into a fresh stage"
   assert.ok(commandIndex > copyModulesIndex);
   assert.doesNotMatch(
     alphaDockerfile.slice(runtimeStageIndex),
-    /^COPY (?!-{2}from=build\b)/mu,
+    /^COPY (?!-{2}from=(?:build|fncp-busybox-fixed)\b)/mu,
   );
 
   for (const buildOnlyPath of [
