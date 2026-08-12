@@ -19,6 +19,13 @@ import { makeFileFetcher } from "./src/utils/file-fetcher";
 import logger from "./src/utils/logger";
 import { fetchIndexForConversation } from "./src/conversation";
 import { getPidForParticipant } from "./src/user";
+import {
+  createCookieParser,
+  createJsonBodyParser,
+  createResponseCompression,
+  createUrlencodedBodyParser,
+  rejectUnsupportedMultipart,
+} from "./src/http-middleware";
 
 import {
   middleware_check_if_options,
@@ -303,11 +310,13 @@ helpersInitialized.then(
     app.use(middleware_responseTime_start);
 
     app.use(redirectIfNotHttps);
-    app.use(express.bodyParser({ limit: "50mb" }));
-    app.use(express.cookieParser()); // Add cookie parser to access req.cookies
+    app.use(rejectUnsupportedMultipart);
+    app.use(createJsonBodyParser());
+    app.use(createUrlencodedBodyParser());
+    app.use(createCookieParser()); // Add cookie parser to access req.cookies
     app.use(writeDefaultHead);
 
-    app.use(express.compress());
+    app.use(createResponseCompression());
     app.use(middleware_log_request_body);
     app.use(middleware_log_middleware_errors);
 
@@ -2206,6 +2215,11 @@ helpersInitialized.then(
       app.get(/^\/[^(api\/)]?.*/, proxy);
     }
 
+    // Routes are installed asynchronously once the legacy helper bundle is
+    // ready. Keep error middleware after those routes so Express 4 can route
+    // late handler errors through the established JSON error contract.
+    app.use(globalErrorHandler);
+
     // move app.listen to index.ts
   },
 
@@ -2213,9 +2227,6 @@ helpersInitialized.then(
     logger.error("failed to init server", err);
   }
 );
-
-// Setup global error handling
-app.use(globalErrorHandler);
 
 // Initialize global process-level error handlers
 setupGlobalProcessHandlers();
