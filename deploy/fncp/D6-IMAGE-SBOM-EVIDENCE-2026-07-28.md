@@ -33,7 +33,7 @@ eligibility evidence, vote or statement was used.
 | Source aggregate SHA-256 | `f568e1918e14f7a284ddc3fe4cc89be74f3178773ea30b5dea8993447d4c7788` |
 | Build platform | `linux/arm64` |
 | Evidence generated | `2026-07-28T05:29:10.231Z` |
-| Evidence directory | `/Users/deansosupremo/Documents/Codex/2026-07-10/rev/outputs/option-c-image-security-wip-20260728-0550` |
+| Local evidence bundle (not committed) | `outputs/option-c-image-security-wip-20260728-0550` |
 | Evidence checksum-file SHA-256 | `d024e966798dc208130d90adf4a7f2897d23fec28232f72c5d854ba34a08e81b` |
 
 The evidence is deliberately labelled `wip`: the source tree contained the
@@ -163,7 +163,7 @@ FNCP_SKIP_SCAN_BUILD=1 \
 FNCP_KEEP_SCAN_IMAGES=1 \
 FNCP_ALLOW_DIRTY_SOURCE=1 \
 ./deploy/fncp/collect-image-security-evidence.sh \
-  /Users/deansosupremo/Documents/Codex/2026-07-10/rev/outputs/option-c-image-security-wip-20260728-0550
+  "$FNCP_EVIDENCE_ROOT/option-c-image-security-wip-20260728-0550"
 ```
 
 ## Limitations

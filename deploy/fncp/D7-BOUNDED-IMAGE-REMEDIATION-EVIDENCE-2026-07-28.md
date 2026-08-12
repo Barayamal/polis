@@ -31,9 +31,9 @@ schema `v6.1.9`, built `2026-07-27T07:24:06Z`, declared database SHA-256
 `9d32360e16bb29e7895e7ae2bcc73bd0e7b3a9fcfe63941af8a7122e097b4ee6`.
 This makes the before/after vulnerability-match comparison like-for-like.
 
-Raw D7 evidence is preserved at:
+Raw D7 evidence is preserved locally under this uncommitted bundle identifier:
 
-`/Users/deansosupremo/Documents/Codex/2026-07-10/rev/outputs/option-c-image-security-remediation-wip-20260728`
+`outputs/option-c-image-security-remediation-wip-20260728`
 
 ## Exact image results
 
