@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "resolvedAt": "2026-07-28",
+  "registry": "docker.io",
+  "buildPlatform": "linux/arm64",
+  "dockerfileFrontend": {
+    "tag": "docker.io/docker/dockerfile:1.4",
+    "indexDigest": "sha256:9ba7531bd80fb0a858632727cf7a112fbfd19b17e94c4e84ced81e24ef1a0dbc",
+    "arm64Digest": "sha256:f259fd86ee23d7b4a2944432e3a09f45fa288bb84bfbd222b19b2abc7ddffbb9",
+    "amd64Digest": "sha256:ad87fb03593d1b71f9a1cfc1406c4aafcb253b1dabebf569768d6e6166836f34"
+  },
+  "baseImages": [
+    {
+      "component": "server",
+      "dockerfile": "server/Dockerfile",
+      "tag": "docker.io/library/node:22-alpine",
+      "indexDigest": "sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2",
+      "arm64Digest": "sha256:d51cff3fa44ab8a368ae8708ae974480165be1b699b19527b7c0d2523433b271",
+      "amd64Digest": "sha256:b74031e546d7f4faf561d797ac1b76beccac856a042815ca77db4fd047581605"
+    },
+    {
+      "component": "server-busybox-builder",
+      "dockerfile": "server/Dockerfile",
+      "tag": "docker.io/library/node:24-alpine",
+      "indexDigest": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+      "arm64Digest": "sha256:eef73a25205e27bd016ce672af71560ad6b681142ddf00ff63c7b3098eafcd4d",
+      "amd64Digest": "sha256:4ba75f835bb8802193e4c114572113d4b26f95f6f094f4b5229d2a77773e0afc"
+    },
+    {
+      "component": "postgres",
+      "dockerfile": "server/Dockerfile-db",
+      "tag": "docker.io/library/postgres:17-alpine",
+      "indexDigest": "sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193",
+      "arm64Digest": "sha256:b797483593b82cbea9a7ee41c88f324a90d10d9c2504d40e755d91c75456366d",
+      "amd64Digest": "sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a"
+    },
+    {
+      "component": "polis-migration",
+      "dockerfile": "server/Dockerfile-migrate",
+      "tag": "docker.io/library/postgres:17-alpine",
+      "indexDigest": "sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193",
+      "arm64Digest": "sha256:b797483593b82cbea9a7ee41c88f324a90d10d9c2504d40e755d91c75456366d",
+      "amd64Digest": "sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a"
+    },
+    {
+      "component": "polis-migration-busybox-builder",
+      "dockerfile": "server/Dockerfile-migrate",
+      "tag": "docker.io/library/node:24-alpine",
+      "indexDigest": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+      "arm64Digest": "sha256:eef73a25205e27bd016ce672af71560ad6b681142ddf00ff63c7b3098eafcd4d",
+      "amd64Digest": "sha256:4ba75f835bb8802193e4c114572113d4b26f95f6f094f4b5229d2a77773e0afc"
+    },
+    {
+      "component": "math",
+      "dockerfile": "math/Dockerfile",
+      "tag": "docker.io/library/clojure:temurin-17-tools-deps",
+      "indexDigest": "sha256:8250a7e6b20954680c2e3bf2e84ad4caab1c5ea68c56c28bca41fb9ac5a2e96e",
+      "arm64Digest": "sha256:eac2596798b3ceccc7d11918ed89f533f226909f0402203fb7e31e6677aff3c2",
+      "amd64Digest": "sha256:fc9298c9e6625f26529490c14a52d14727f0383545a40e97382506bac4becf18"
+    },
+    {
+      "component": "math-busybox-builder",
+      "dockerfile": "math/Dockerfile",
+      "tag": "docker.io/library/node:24-alpine",
+      "indexDigest": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+      "arm64Digest": "sha256:eef73a25205e27bd016ce672af71560ad6b681142ddf00ff63c7b3098eafcd4d",
+      "amd64Digest": "sha256:4ba75f835bb8802193e4c114572113d4b26f95f6f094f4b5229d2a77773e0afc"
+    },
+    {
+      "component": "math-runtime-builder",
+      "dockerfile": "math/Dockerfile",
+      "tag": "docker.io/library/amazoncorretto:17-alpine",
+      "indexDigest": "sha256:e1138bf0cca62e04692de650ffe8923f35c39fcb554458c7acd98efc2d135144",
+      "arm64Digest": "sha256:f9d316fbe3d31703d2ba23dcf2521f8040511b48a858dd0ea2071295b00eefc5",
+      "amd64Digest": "sha256:67546ab389ec51aa479112c861f995b23e88cdffb84708c1f739859eb7c8c5ce"
+    },
+    {
+      "component": "math-runtime",
+      "dockerfile": "math/Dockerfile",
+      "tag": "docker.io/library/alpine:3.24",
+      "indexDigest": "sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b",
+      "arm64Digest": "sha256:e7a1a92a5bfeee40966aea60f0796b0e7917cc35591542701834f03a68fa3d18",
+      "amd64Digest": "sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e848e56d95f"
+    },
+    {
+      "component": "client-participation-alpha",
+      "dockerfile": "client-participation-alpha/Dockerfile",
+      "tag": "docker.io/library/node:24-alpine",
+      "indexDigest": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+      "arm64Digest": "sha256:eef73a25205e27bd016ce672af71560ad6b681142ddf00ff63c7b3098eafcd4d",
+      "amd64Digest": "sha256:4ba75f835bb8802193e4c114572113d4b26f95f6f094f4b5229d2a77773e0afc"
+    },
+    {
+      "component": "oidc-simulator",
+      "dockerfile": "oidc-simulator/Dockerfile",
+      "tag": "docker.io/library/node:24-slim",
+      "indexDigest": "sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d",
+      "arm64Digest": "sha256:af01d58b748ec92b1d6e8e11429aad424fd1e68c848185399dca0596a1ab8f5c",
+      "amd64Digest": "sha256:d45d78e7929b46875bbd4e29bea672d5bc48186c6c3588306521c815e78352d6"
+    },
+    {
+      "component": "nginx-proxy",
+      "dockerfile": "deploy/fncp/nginx/Dockerfile",
+      "tag": "docker.io/library/nginx:1.30.4-alpine3.24-slim",
+      "indexDigest": "sha256:ddde39c6e51f02fde7410c2e9c234cf2d0a4c7bdbbe176aeb37d8ad7ab4eb58c",
+      "arm64Digest": "sha256:c41cf343e2b3980e69d9890f9a8ec7120a54aa84232796414e251a1b387e4fc9",
+      "amd64Digest": "sha256:45c3810793fe3e982fb614c67e1b696816aff3ec742620e1ef7cd9d3184185ef"
+    },
+    {
+      "component": "nginx-proxy-busybox-builder",
+      "dockerfile": "deploy/fncp/nginx/Dockerfile",
+      "tag": "docker.io/library/node:24-alpine",
+      "indexDigest": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+      "arm64Digest": "sha256:eef73a25205e27bd016ce672af71560ad6b681142ddf00ff63c7b3098eafcd4d",
+      "amd64Digest": "sha256:4ba75f835bb8802193e4c114572113d4b26f95f6f094f4b5229d2a77773e0afc"
+    }
+  ],
+  "scannerImages": [
+    {
+      "name": "syft",
+      "version": "1.49.0",
+      "release": "https://github.com/anchore/syft/releases/tag/v1.49.0",
+      "tag": "docker.io/anchore/syft:v1.49.0",
+      "indexDigest": "sha256:13b53ebabe3d215268c90cf8fb9b875f0183908245f376fd4b3a2cb69d21d484",
+      "arm64Digest": "sha256:99ba1223ceabba63c6ebcaf339b83f2a2f8a307df11740c3d996d262f13b81a5",
+      "amd64Digest": "sha256:9a9f85314017f1ea798fb012edfa7fe9259923910f82c8d4bc983ab5c765e60b"
+    },
+    {
+      "name": "grype",
+      "version": "0.116.0",
+      "release": "https://github.com/anchore/grype/releases/tag/v0.116.0",
+      "tag": "docker.io/anchore/grype:v0.116.0",
+      "indexDigest": "sha256:fd4ab4d1042b522c896e73bdf09ab8bf384fa417df99d6dd0d6e1008c7e7c821",
+      "arm64Digest": "sha256:1219f4e3da38bd258d3e18b8444ecbb913c13808743bd327fccc4aa48fcf8ff7",
+      "amd64Digest": "sha256:3d08845e24eba657b8ea9bd28344a5a4e9dcd772818062a6522bf30137928616"
+    }
+  ]
+}

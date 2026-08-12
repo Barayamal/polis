@@ -1,5 +1,5 @@
 import Config from "../config";
-import sql from "sql"; // see here for useful syntax: https://github.com/brianc/node-sql/blob/bbd6ed15a02d4ab8fbc5058ee2aff1ad67acd5dc/lib/node/valueExpression.js
+import sql from "./postgres-query-builder";
 
 const sql_conversations: any = sql.define({
   name: "conversations",

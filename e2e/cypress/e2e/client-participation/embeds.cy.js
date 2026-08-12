@@ -1,29 +1,39 @@
 import {
-  createTestConversation,
-  addCommentToConversation,
+  addCommentsToConversationNoAuth,
+  createTestConversationAPI,
 } from '../../support/conversation-helpers.js'
+import { loginStandardUserAPI, logout } from '../../support/auth-helpers.js'
 
-const topic = 'Embedded Conversation Topic'
+const topic = `Embedded Conversation Topic ${Date.now()}`
 const description = 'Embedded Conversation Description'
 
 describe('Embedded Conversations', function () {
   before(function () {
     cy.log('🚀 Setting up embedded conversation test suite')
 
-    createTestConversation({
-      topic,
-      description,
-      userEmail: 'admin@polis.test',
-      userPassword: 'Te$tP@ssw0rd*',
-    }).then((conversationId) => {
-      cy.wrap(conversationId).as('convoId')
+    // The embed suite tests participant rendering, not autosave in the admin UI.
+    // Use an API-created fixture and read it back before continuing so an incomplete
+    // debounced description save cannot leak into these assertions.
+    cy.visit(Cypress.config('baseUrl'))
 
-      // Add a seed comment to make the conversation more realistic
-      addCommentToConversation(
-        conversationId,
-        'This is a test comment for the embedded conversation.',
+    loginStandardUserAPI('admin@polis.test', 'Te$tP@ssw0rd*')
+      .then(() => createTestConversationAPI({ topic, description }))
+      .then((conversationId) => {
+        cy.wrap(conversationId).as('convoId')
+        return addCommentsToConversationNoAuth(conversationId, [
+          'This is a test comment for the embedded conversation.',
+        ]).then(() => conversationId)
+      })
+      .then((conversationId) =>
+        cy
+          .request(`/api/v3/conversations?conversation_id=${conversationId}`)
+          .its('body')
+          .should((conversation) => {
+            expect(conversation.topic).to.equal(topic)
+            expect(conversation.description).to.equal(description)
+          }),
       )
-    })
+      .then(() => logout())
   })
 
   beforeEach(function () {

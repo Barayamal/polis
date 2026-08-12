@@ -3,10 +3,11 @@
  * This file is responsible for starting the server after the app is configured
  */
 import app from "./app";
+import { assertFncpProductionAdmission } from "./src/auth/fncp-production-admission";
 import Config from "./src/config";
 import logger from "./src/utils/logger";
 
-if (Config.nodeEnv === "production") {
+if (Config.nodeEnv === "production" && Config.enableTelemetry) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-var-requires
   const tracer = require("dd-trace").init();
 }
@@ -17,6 +18,10 @@ if (Config.nodeEnv === "production") {
  * @returns {Object} The server instance
  */
 function startServer(port = Config.serverPort) {
+  // Admission must complete before this process opens a listening socket.
+  // Ordinary upstream Pol.is remains unchanged while the dedicated release
+  // mode variable is absent.
+  assertFncpProductionAdmission();
   const server = app.listen(port);
   logger.info(`Server started on port ${port}`);
   return server;

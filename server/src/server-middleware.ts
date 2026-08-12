@@ -5,8 +5,89 @@ import { addInRamMetric } from "./utils/metered";
 import Config from "./config";
 import logger from "./utils/logger";
 import type { ExpressRequest, ExpressResponse } from "./d";
+import { isFncpSensitiveRequest } from "./auth/fncp-log-boundary";
 
 const devMode = Config.isDevMode;
+
+type TimeoutRequest = ExpressRequest & {
+  timedout?: boolean;
+  clearTimeout?: () => void;
+  emit: (eventName: string, ...args: unknown[]) => boolean;
+};
+
+type TimeoutResponse = ExpressResponse & {
+  headersSent?: boolean;
+  writableEnded?: boolean;
+  once: (eventName: string, listener: () => void) => unknown;
+  removeListener: (eventName: string, listener: () => void) => unknown;
+};
+
+type TimeoutError = Error & {
+  code: "ETIMEDOUT";
+  timeout: number;
+  status: 503;
+  statusCode: 503;
+};
+
+/**
+ * Bound a request without retaining the vulnerable direct connect-timeout
+ * dependency. This intentionally preserves the subset of connect-timeout's
+ * contract used by Pol.is:
+ * - req.timedout starts false and becomes true after the configured delay;
+ * - a request "timeout" event is emitted with that delay;
+ * - next receives an ETIMEDOUT error, which globalErrorHandler maps to 408;
+ * - req.clearTimeout remains available; and
+ * - the timer is cancelled when response headers are sent or the response
+ *   finishes/closes.
+ */
+function requestTimeout(delayMs: number) {
+  if (!Number.isFinite(delayMs) || delayMs <= 0) {
+    throw new TypeError("requestTimeout delay must be a positive number");
+  }
+
+  return function (
+    req: TimeoutRequest,
+    res: TimeoutResponse,
+    next: (error?: TimeoutError) => void
+  ) {
+    let active = true;
+
+    const clear = () => {
+      if (!active) return;
+      active = false;
+      clearTimeout(timer);
+      res.removeListener("finish", clear);
+      res.removeListener("close", clear);
+    };
+
+    const timer = setTimeout(() => {
+      // connect-timeout clears its timer as soon as headers are written.
+      // Checking here as well avoids a late timeout if a non-standard response
+      // implementation does not emit finish/close promptly.
+      if (res.headersSent || res.writableEnded) {
+        clear();
+        return;
+      }
+
+      clear();
+      req.timedout = true;
+      req.emit("timeout", delayMs);
+
+      const error = new Error("Response timeout") as TimeoutError;
+      error.code = "ETIMEDOUT";
+      error.timeout = delayMs;
+      error.status = 503;
+      error.statusCode = 503;
+      next(error);
+    }, delayMs);
+
+    req.clearTimeout = clear;
+    req.timedout = false;
+    res.once("finish", clear);
+    res.once("close", clear);
+    next();
+  };
+}
 
 function middleware_log_request_body(
   req: ExpressRequest,
@@ -14,12 +95,26 @@ function middleware_log_request_body(
   next: () => void
 ) {
   if (devMode) {
+    if (isFncpSensitiveRequest(req)) {
+      logger.debug("fncp_request_body_omitted");
+      return next();
+    }
+
     // Skip logging if path includes 'pca2'
     if (req.path.includes("pca2")) {
       return next();
     }
 
     let b = "";
+    if (req.path.startsWith("/fncp/private/")) {
+      // Private-authority requests contain an opaque participant XID in the
+      // JSON body. Never copy that body into development logs.
+      logger.debug("middleware_log_request_body", {
+        path: req.path,
+        body: "[private authority body redacted]",
+      });
+      return next();
+    }
     if (req.body) {
       const temp = _.clone(req.body);
       if (temp.password) {
@@ -62,22 +157,25 @@ function middleware_http_json_logger(
     const durationMs = Number(process.hrtime.bigint() - startNs) / 1e6;
     const statusCode = res.statusCode;
 
+    const isFncpRequest = isFncpSensitiveRequest(req);
     const log: Record<string, unknown> = {
       message: "http_request",
       service: "server",
       env: Config.ddEnv || "prod",
       http: {
         method: req.method,
-        url: req.originalUrl,
+        url: isFncpRequest ? req.path : req.originalUrl,
         route: (req as unknown as { route?: { path?: string } }).route?.path,
         status_code: statusCode,
       },
-      network: { client: { ip: req.ip } },
-      useragent: (req.headers as Record<string, string | string[] | undefined>)[
-        "user-agent"
-      ],
       duration_ms: durationMs,
     };
+    if (!isFncpRequest) {
+      log.network = { client: { ip: req.ip } };
+      log.useragent = (
+        req.headers as Record<string, string | string[] | undefined>
+      )["user-agent"];
+    }
 
     // status level
     let level: "error" | "warn" | "info";
@@ -100,7 +198,11 @@ function middleware_log_middleware_errors(
   if (!err) {
     return next();
   }
-  logger.error("middleware_log_middleware_errors", err);
+  if (isFncpSensitiveRequest(req)) {
+    logger.error("fncp_middleware_error");
+  } else {
+    logger.error("middleware_log_middleware_errors", err);
+  }
   next(err);
 }
 
@@ -137,29 +239,47 @@ function globalErrorHandler(
 ) {
   //structured error log
   const status = res.statusCode >= 400 ? res.statusCode : 500;
-  logger.error("request_error", {
-    status: status >= 500 ? "error" : "warn",
-    service: "server",
-    env: Config.ddEnv || "prod",
-    http: {
-      method: req.method,
-      url: req.originalUrl,
-      status_code: status,
-    },
-    error: { kind: err.name, stack: err.stack, message: err.message },
-    code: err.code,
-    constraint: err.constraint,
-    oidcSub: (req as any).jwtPayload?.sub || (req as any).p?.oidcSub,
-  });
+  const isFncpRequest = isFncpSensitiveRequest(req);
+  if (isFncpRequest) {
+    logger.error("fncp_request_error", {
+      status: status >= 500 ? "error" : "warn",
+      service: "server",
+      env: Config.ddEnv || "prod",
+      http: {
+        method: req.method,
+        path: req.path,
+        status_code: status,
+      },
+    });
+  } else {
+    logger.error("request_error", {
+      status: status >= 500 ? "error" : "warn",
+      service: "server",
+      env: Config.ddEnv || "prod",
+      http: {
+        method: req.method,
+        url: req.originalUrl,
+        status_code: status,
+      },
+      error: { kind: err.name, stack: err.stack, message: err.message },
+      code: err.code,
+      constraint: err.constraint,
+      oidcSub: (req as any).jwtPayload?.sub || (req as any).p?.oidcSub,
+    });
+  }
 
   // Handle database constraint violations specifically
   if (err.code === "23505") {
     if (err.constraint === "oidc_user_mappings_pkey") {
-      logger.warn("Global handler: OIDC mapping constraint violation", {
-        constraint: err.constraint,
-        url: req.originalUrl,
-        oidcSub: req.jwtPayload?.sub,
-      });
+      if (isFncpRequest) {
+        logger.warn("fncp_oidc_mapping_constraint");
+      } else {
+        logger.warn("Global handler: OIDC mapping constraint violation", {
+          constraint: err.constraint,
+          url: req.originalUrl,
+          oidcSub: req.jwtPayload?.sub,
+        });
+      }
 
       return res.status(429).json({
         error: "authentication_conflict",
@@ -168,10 +288,14 @@ function globalErrorHandler(
         retry_after: 1,
       });
     } else {
-      logger.warn("Global handler: Database constraint violation", {
-        constraint: err.constraint,
-        url: req.originalUrl,
-      });
+      if (isFncpRequest) {
+        logger.warn("fncp_database_constraint");
+      } else {
+        logger.warn("Global handler: Database constraint violation", {
+          constraint: err.constraint,
+          url: req.originalUrl,
+        });
+      }
 
       return res.status(409).json({
         error: "database_constraint_violation",
@@ -212,6 +336,33 @@ function globalErrorHandler(
       "Global error handler: Response already sent, forwarding to default handler"
     );
     return next(err);
+  }
+
+  // Legacy parameter and route middleware sets an intentional 4xx status
+  // before forwarding a stable polis_err_* code. Preserve that public
+  // contract now that this handler is correctly installed after the routes.
+  // Do not expose arbitrary exception messages.
+  if (status >= 400 && status < 500) {
+    // Legacy middleware calls next("polis_err_*") with a string, while newer
+    // handlers pass Error instances. Normalise both forms before extracting
+    // only the stable public code.
+    const errorMessage =
+      typeof err === "string"
+        ? err
+        : typeof err?.message === "string"
+        ? err.message
+        : "";
+    const publicError = /^polis_(?:err|fail)_[a-z0-9_]+(?:\b|$)/u.test(
+      errorMessage
+    )
+      ? errorMessage.match(/^polis_(?:err|fail)_[a-z0-9_]+/u)?.[0]
+      : undefined;
+
+    return res.status(status).json({
+      error: publicError || "request_error",
+      message:
+        publicError || "The request could not be processed. Please try again.",
+    });
   }
 
   // Generic error response for everything else
@@ -280,6 +431,7 @@ export {
   middleware_check_if_options,
   middleware_responseTime_start,
   middleware_http_json_logger,
+  requestTimeout,
   globalErrorHandler,
   setupGlobalProcessHandlers,
 };

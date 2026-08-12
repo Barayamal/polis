@@ -35,6 +35,7 @@ import {
   updateVoteCount,
 } from "../server-helpers";
 import { parsePagination, createPaginationMeta } from "../utils/pagination";
+import { fncpParticipantProcessingPolicy } from "../auth/fncp-participant-policy";
 
 /* this is a concept and can be generalized to other handlers */
 interface PolisRequestParams {
@@ -357,6 +358,7 @@ async function moderateComment(
 async function handle_POST_comments(req: RequestWithP, res: any) {
   const { zid, uid, txt, vote, is_seed } = req.p;
   let { pid } = req.p; // pid may be reassigned if it's -1
+  const processingPolicy = fncpParticipantProcessingPolicy(req);
 
   try {
     // 1. Validate input
@@ -467,7 +469,10 @@ async function handle_POST_comments(req: RequestWithP, res: any) {
     if (is_seed || is_moderator) {
       mod = polisTypes.mod.ok;
       active = true;
-    } else if (await isProConvo(conversation.owner)) {
+    } else if (
+      processingPolicy.allowExternalModeration &&
+      (await isProConvo(conversation.owner))
+    ) {
       // Only apply pro moderation features to non-seed comments
       const moderationResult = await moderateComment(txt, conversation, ip);
       active = moderationResult.active;
@@ -475,7 +480,9 @@ async function handle_POST_comments(req: RequestWithP, res: any) {
     }
 
     // 5. Detect language
-    const detections = await detectLanguage(txt);
+    const detections = processingPolicy.allowExternalLanguageDetection
+      ? await detectLanguage(txt)
+      : [{ confidence: null, language: null }];
     const detection = Array.isArray(detections) ? detections[0] : detections;
     const lang = detection.language;
     const lang_confidence = detection.confidence;
@@ -515,7 +522,11 @@ async function handle_POST_comments(req: RequestWithP, res: any) {
     // 8. Handle moderation notifications
     const needsModeration = !active || conversation.strict_moderation;
 
-    if (needsModeration || conversation.strict_moderation) {
+    if (!processingPolicy.allowOutboundNotifications) {
+      logger.info("FNCP participant notification processing is disabled", {
+        conversation: "configured-fncp-conversation",
+      });
+    } else if (needsModeration || conversation.strict_moderation) {
       try {
         const n = await getNumberOfCommentsWithModerationStatus(
           zid,

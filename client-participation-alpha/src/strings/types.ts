@@ -11,6 +11,8 @@ export interface Translations {
   comments_remaining: string
   commentSendFailed: string
   commentSent: string
+  completionBody: string
+  completionTitle: string
   consensus: string
   convIsClosed: string
   copied: string

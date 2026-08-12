@@ -1,4 +1,3 @@
-import request from "request-promise";
 import { GoogleGenAI } from "@google/genai";
 import config from "../config";
 import { convertXML } from "simple-xml-to-json";
@@ -11,6 +10,8 @@ const internal_config = {
   fileContents: "",
   system_lore: "",
 };
+const DEFAULT_REGION = "US or Europe (EU)";
+const IP_LOOKUP_TIMEOUT_MS = 5_000;
 
 async function loadFiles() {
   internal_config.fileContents = await fs.readFile(
@@ -25,6 +26,38 @@ async function loadFiles() {
 
 loadFiles();
 
+export async function getRegionFromIP(ip: string): Promise<string> {
+  if (!ip) {
+    return DEFAULT_REGION;
+  }
+  try {
+    const response = await fetch(
+      `http://ip-api.com/json/${encodeURIComponent(ip)}`,
+      {
+        redirect: "follow",
+        signal: AbortSignal.timeout(IP_LOOKUP_TIMEOUT_MS),
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`IP lookup returned HTTP ${response.status}.`);
+    }
+    const data = JSON.parse(await response.text()) as {
+      status?: string;
+      city?: string;
+      regionName?: string;
+      country?: string;
+    };
+    if (data.status === "success" && data.country) {
+      return [data.city, data.regionName, data.country]
+        .filter(Boolean)
+        .join(", ");
+    }
+  } catch (error) {
+    logger.error("Error fetching region from IP:", { error });
+  }
+  return DEFAULT_REGION;
+}
+
 async function analyzeComment(
   txt: string,
   convo_topic: string,
@@ -32,32 +65,9 @@ async function analyzeComment(
 ) {
   try {
     const json = await convertXML(internal_config.fileContents);
-    const getRegionFromIP = async (ip: string): Promise<string> => {
-      if (!ip) {
-        return "US or Europe (EU)";
-      }
-      try {
-        // Using a free IP geolocation service.
-        // Consider replacing with a more robust, authenticated service for production.
-        const response = await request.get(`http://ip-api.com/json/${ip}`);
-        const data = JSON.parse(response);
-        if (data.status === "success" && data.country) {
-          const locationParts = [
-            data.city,
-            data.regionName,
-            data.country,
-          ].filter(Boolean);
-          return locationParts.join(", ");
-        }
-        return "US or Europe (EU)"; // fallback
-      } catch (error) {
-        logger.error("Error fetching region from IP:", { ip, error });
-        return "US or Europe (EU)"; // fallback on any error
-      }
-    };
     const finalGeographicalContext = geographical_context
       ? await getRegionFromIP(geographical_context)
-      : "US or Europe (EU)";
+      : DEFAULT_REGION;
     json.polis_moderation_rubric.children[11].task.children[1].input = {
       comment_text: txt,
       conversation_topic: convo_topic,

@@ -59,9 +59,23 @@ describe('Client Admin: Routes', () => {
       // Should be logged out and redirected
       cy.url().should('include', '/home')
 
-      // Verify we're actually logged out by trying to access admin page
-      cy.visit(`/m/${testConversationId}`, { failOnStatusCode: false })
-      cy.url().should('not.include', `/m/${testConversationId}`)
+      // Verify the signout removed the OIDC browser session and that an
+      // authenticated API endpoint rejects the now-unauthenticated browser.
+      // This directly checks the security boundary without depending on a
+      // second full admin-page navigation.
+      cy.window().should((win) => {
+        const oidcKeys = Object.keys(win.localStorage).filter((key) =>
+          key.startsWith('oidc.user:'),
+        )
+        expect(oidcKeys).to.have.length(0)
+      })
+      cy.request({
+        method: 'GET',
+        url: '/api/v3/users',
+        failOnStatusCode: false,
+      })
+        .its('status')
+        .should('eq', 401)
 
       cy.log('✅ Signout route successfully logs out user')
     })

@@ -392,8 +392,10 @@ function handle_GET_metadata_answers(
     if (pmqid) {
       query = query.where(sql_participant_metadata_answers.pmqid.equals(pmqid));
     }
+    const parameterizedQuery = query.toQuery();
     pg.query_readOnly(
-      query.toString(),
+      parameterizedQuery.text,
+      parameterizedQuery.values,
       function (err: any, result: { rows: any[] }) {
         if (err) {
           failJson(res, 500, "polis_err_get_participant_metadata_answers", err);

@@ -71,12 +71,10 @@ describe('Alpha Client: Comments (statements)', function () {
     // We seeded exactly 3 statements; participant should be exhausted after 3 votes.
     // If their newly submitted statement is incorrectly included in the feed, vote buttons will remain.
     cy.get('body').should(($body) => {
-      const hasEmailSubscribe = $body.find('.email-subscribe-container').length > 0
+      const hasCompletion = $body.find('.survey-complete').length > 0
 
-      if (!hasEmailSubscribe) {
-        expect(hasEmailSubscribe, 'Expected EmailSubscribeForm after 3 votes (seeded 3).').to.eq(
-          true,
-        )
+      if (!hasCompletion) {
+        expect(hasCompletion, 'Expected the completion state after 3 votes (seeded 3).').to.eq(true)
       }
 
       expect(
@@ -87,6 +85,7 @@ describe('Alpha Client: Comments (statements)', function () {
       ).to.eq(0)
     })
 
-    cy.get('.email-subscribe-container input[type="email"]').should('be.visible')
+    cy.get('.survey-complete').should('be.visible')
+    cy.get('.email-subscribe-container').should('not.exist')
   })
 })

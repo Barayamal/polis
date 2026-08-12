@@ -1,6 +1,11 @@
 /**
  * Middleware for ensuring a participant exists for the current request
  *
+ * Modified by Barayamal on 26 and 29 July 2026 to revalidate the
+ * conversation-scoped XID allowlist on every participant middleware request,
+ * expose an explicit six-route guard and prevent warm-session or non-XID
+ * authentication bypass.
+ *
  * This middleware handles the complete flow of participant identification and creation:
  * 1. Handles JWT conversation mismatches
  * 2. Checks legacy cookies
@@ -18,8 +23,17 @@ import { Response, NextFunction } from "express";
 import { addParticipantAndMetadata } from "../participant";
 import { checkLegacyCookieAndIssueJWT } from "./legacyCookies";
 import { createAnonUser } from "./create-user";
-import { createXidRecord, getXidRecord, isXidAllowed, xidExists } from "../xids";
+import {
+  createXidRecord,
+  getXidRecord,
+  isXidAllowed,
+  xidExists,
+} from "../xids";
 import { failJson } from "../utils/fail";
+import {
+  isFncpProviderPolicyUnavailable,
+  resolveFncpManagedConversation,
+} from "../fncp-provider-policy";
 import { getConversationInfo, getZidFromConversationId } from "../conversation";
 import { getPidPromise } from "../user";
 import { getZinvite } from "../utils/zinvite";
@@ -75,6 +89,121 @@ interface EnsureParticipantOptions {
    * Custom assigner function for setting values on the request
    */
   assigner?: (req: RequestWithP, key: string, value: unknown) => void;
+}
+
+const XID_ALLOWLIST_REVALIDATED_ZID =
+  "xid_allowlist_revalidated_for_zid" as const;
+
+/**
+ * Revalidate XID access for every participant-middleware request.
+ *
+ * XID JWTs are intentionally long-lived, so successful token validation does
+ * not prove that the XID is still allowed for this conversation. Always use
+ * the authenticated JWT claim when present, rather than a request parameter
+ * that could have been parsed later.
+ *
+ * A conversation-scoped XID allowlist is an exclusive access boundary:
+ * anonymous and OIDC/standard-user participant JWTs must not bypass it.
+ */
+async function _revalidateXidAccess(
+  req: RequestWithP,
+  zid: number
+): Promise<void> {
+  const conv = await getConversationInfo(zid);
+  const providerPolicy = await resolveFncpManagedConversation(zid);
+
+  if (!conv.use_xid_whitelist) {
+    if (providerPolicy.managed) {
+      throw new Error("polis_err_fncp_provider_gate_unavailable");
+    }
+    req.p[XID_ALLOWLIST_REVALIDATED_ZID] = zid;
+    return;
+  }
+
+  const isNonXidAuthenticatedParticipant =
+    !!req.p.anonymous_participant ||
+    !!req.p.oidc_sub ||
+    !!req.p.standard_user_participant;
+
+  if (isNonXidAuthenticatedParticipant) {
+    throw new Error("polis_err_xid_required");
+  }
+
+  const participantXid = req.p.xid_participant ? req.p.jwt_xid : req.p.xid;
+
+  if (!participantXid) {
+    throw new Error("polis_err_xid_required");
+  }
+
+  const isAllowed = await isXidAllowed(participantXid, zid, conv.owner);
+  if (!isAllowed) {
+    throw new Error("polis_err_xid_not_allowed");
+  }
+
+  req.p[XID_ALLOWLIST_REVALIDATED_ZID] = zid;
+}
+
+function _respondToXidAccessError(error: unknown, res: Response): boolean {
+  if (
+    isFncpProviderPolicyUnavailable(error) ||
+    (error instanceof Error &&
+      error.message === "polis_err_fncp_provider_gate_unavailable")
+  ) {
+    res.set("Cache-Control", "no-store");
+    failJson(res, 503, "polis_err_fncp_provider_policy_unavailable");
+    return true;
+  }
+
+  if (error instanceof Error && error.message === "polis_err_xid_required") {
+    res.set("Cache-Control", "no-store");
+    failJson(res, 403, "polis_err_xid_required");
+    return true;
+  }
+
+  if (error instanceof Error && error.message === "polis_err_xid_not_allowed") {
+    res.set("Cache-Control", "no-store");
+    failJson(res, 403, "polis_err_xid_not_allowed");
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Explicit route guard for participant capabilities that can expose or mutate
+ * a conversation protected by an XID allowlist.
+ *
+ * Install this after hybrid authentication, conversation-id resolution and
+ * XID parameter parsing. It covers both a fresh request XID and the
+ * authenticated XID claim from an already-warm participant JWT. The normal
+ * ensureParticipant middleware retains the same check as defence in depth.
+ */
+export function revalidateConversationXidAllowlist() {
+  return async function revalidateConversationXidAllowlistMiddleware(
+    req: RequestWithP,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const zid = req.p.zid;
+      if (!zid) {
+        // participationInit deliberately accepts an empty conversation lookup
+        // and returns a null conversation. A trusted FNCP request has its exact
+        // configured conversation injected by the gateway before this guard;
+        // the other protected routes require a conversation before reaching it.
+        next();
+        return;
+      }
+
+      await _revalidateXidAccess(req, zid);
+      next();
+    } catch (error) {
+      if (_respondToXidAccessError(error, res)) {
+        return;
+      }
+      next(error);
+    }
+  };
 }
 
 /**
@@ -393,6 +522,14 @@ async function _ensureParticipantInternal(
     needsNewJWT = true;
   }
 
+  // Retain the check here as defence in depth for callers which have not
+  // installed the explicit route guard. A guarded route can safely avoid a
+  // duplicate database read because the marker is set only after a successful
+  // check for this exact internal conversation id.
+  if (req.p[XID_ALLOWLIST_REVALIDATED_ZID] !== zid) {
+    await _revalidateXidAccess(req, zid);
+  }
+
   // Check for legacy cookie before creating new user
   if (uid === undefined && !req.p.jwt_conversation_mismatch) {
     const conversationId = req.p.conversation_id || (await getZinvite(zid));
@@ -590,19 +727,9 @@ export function ensureParticipant(options: EnsureParticipantOptions = {}) {
     } catch (error) {
       logger.error("Error in ensureParticipant middleware", error);
 
-      // Handle XID authentication errors with proper status codes
-      if (
-        error instanceof Error &&
-        error.message === "polis_err_xid_required"
-      ) {
-        return failJson(res, 403, "polis_err_xid_required");
-      }
-
-      if (
-        error instanceof Error &&
-        error.message === "polis_err_xid_not_allowed"
-      ) {
-        return failJson(res, 403, "polis_err_xid_not_allowed");
+      // Handle XID authentication errors with proper status codes.
+      if (_respondToXidAccessError(error, res)) {
+        return;
       }
 
       // Handle Treevite authentication errors with proper status code
@@ -653,19 +780,9 @@ export function ensureParticipantOptional(
 
       next();
     } catch (error) {
-      // Handle XID authentication errors even in optional middleware
-      if (
-        error instanceof Error &&
-        error.message === "polis_err_xid_required"
-      ) {
-        return failJson(res, 403, "polis_err_xid_required");
-      }
-
-      if (
-        error instanceof Error &&
-        error.message === "polis_err_xid_not_allowed"
-      ) {
-        return failJson(res, 403, "polis_err_xid_not_allowed");
+      // Handle XID authentication errors even in optional middleware.
+      if (_respondToXidAccessError(error, res)) {
+        return;
       }
 
       // Handle Treevite authentication errors even in optional middleware

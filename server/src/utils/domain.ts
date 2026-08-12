@@ -48,7 +48,12 @@ function redirectIfNotHttps(
   const isHttps = req.headers["x-forwarded-proto"] === "https";
 
   if (!isHttps) {
-    logger.debug("redirecting to https", { headers: req.headers });
+    // Header collections can contain bearer credentials, private gateway
+    // assertions and opaque participant identifiers. Never log them.
+    logger.debug("redirecting to https", {
+      method: req.method,
+      path: req.path,
+    });
     // Only redirect GET requests; otherwise, send a 400 error for non-GET methods
     if (req.method === "GET") {
       res.writeHead(302, {
@@ -56,7 +61,7 @@ function redirectIfNotHttps(
       });
       return res.end();
     } else {
-      res.status(400).send("Please use HTTPS when submitting data.");
+      return res.status(400).send("Please use HTTPS when submitting data.");
     }
   }
   return next();
@@ -128,7 +133,6 @@ function addCorsHeader(
       logger.info("CORS: domain not whitelisted", {
         origin,
         path: req.path,
-        headers: req.headers,
       });
       return next("unauthorized domain: " + origin);
     }
