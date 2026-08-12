@@ -24,7 +24,10 @@ grep -q "^GA_TRACKING_ID=$" "$env_file"
 grep -q "^ANTHROPIC_API_KEY=$" "$env_file"
 grep -q "^GEMINI_API_KEY=$" "$env_file"
 grep -q "^OPENAI_API_KEY=$" "$env_file"
-! grep -q "4bumwmv4zf" "$env_file"
+grep -Eq '^FNCP_GATEWAY_CONVERSATION_ID=9fncpBootstrap[0-9a-f]{48}$' \
+  "$env_file"
+grep -Eq '^FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID=9fncpBootstrap[0-9a-f]{48}$' \
+  "$env_file"
 ! grep -Eq '(^|[[:space:]-])"[0-9]+:[0-9]+"' "$compose_file"
 gateway_conversation_id=$(
   sed -n 's/^FNCP_GATEWAY_CONVERSATION_ID=//p' "$env_file"

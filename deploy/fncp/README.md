@@ -226,7 +226,7 @@ preserves the exact before/after boundary and residual blockers.
 - Production mode does not initialize telemetry unless
   `ENABLE_TELEMETRY=true`; this disposable profile pins it to `false`.
 - The local OIDC simulator and its fixture users are for disposable QA only.
-- The current hosted conversation `4bumwmv4zf` and its data are not imported.
+- No hosted conversation or hosted conversation data is imported.
 - WordPress registration and First Nations eligibility evidence remain outside
   Pol.is.
 

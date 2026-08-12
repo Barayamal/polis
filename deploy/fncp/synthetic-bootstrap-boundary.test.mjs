@@ -78,7 +78,6 @@ test("prepare creates a guarded absent binding and two distinct credentials", ()
     prepare,
     /bootstrap_conversation_id="9fncpBootstrap\$\(openssl rand -hex 24\)"/u
   );
-  assert.doesNotMatch(prepare, /4bumwmv4zf/u);
 });
 
 test("bootstrap API is profile-gated, ordinary, loopback-only and synthetic", () => {
