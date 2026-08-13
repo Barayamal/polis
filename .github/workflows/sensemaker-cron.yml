@@ -9,17 +9,18 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: "tevko/sensemaking-tools"
+          ref: 988ad3547a9b5c3fe92fa6cd2bbff9837795fb6b
           path: sensemaking-tools
 
-      - uses: 'google-github-actions/auth@v2'
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           credentials_json: '${{ secrets.GOOGLE_CREDENTIALS }}'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610 # v3
         with:
           cache-dependency-path: sensemaking-tools/package-lock.json
           node-version: "18"
@@ -30,7 +31,7 @@ jobs:
         working-directory: sensemaking-tools
 
       - name: Get CSV
-        uses: valitydev/action-download-file@v1
+        uses: valitydev/action-download-file@9563a0636fce0f567283bb3167729fccb96a1fae # v1
         with:
           url: https://preprod.pol.is/api/v3/reportExport/r7kfpvrhdpyykbhnirtcd/comment-groups.csv
           target-path: sensemaking-tools/data/
@@ -56,7 +57,7 @@ jobs:
         working-directory: sensemaking-tools
 
       - name: Upload HTML as Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3
         with:
           name: sensemaking-summary-html
           path: sensemaking-tools/summary.html
@@ -66,18 +67,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download HTML Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a # v3
         with:
           name: sensemaking-summary-html
           path: downloaded-html
       # - name: Checkout
-      #   uses: actions/checkout@v3
+      #   uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
       - name: debug
         run: |
           ls -al
           ls -al downloaded-html
       - name: Deploy to gist
-        uses: exuanbo/actions-deploy-gist@v1
+        uses: exuanbo/actions-deploy-gist@47697fceaeea2006a90594ee24eb9cd0a1121ef8 # v1
         with:
           token: ${{ secrets.GIST_TOKEN }}
           gist_id: 2ea3c0f4cadffbde9c414c8d203cd599

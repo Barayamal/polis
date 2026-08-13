@@ -32,7 +32,7 @@ jobs:
         echo "Disk space after cleanup:"
         df -h
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Install mkcert
       run: |
@@ -62,7 +62,7 @@ jobs:
         ls -la
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
     - name: Create test.env with CI-specific paths
       run: |
@@ -185,7 +185,7 @@ jobs:
 
     - name: Upload Cypress screenshots
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: cypress-screenshots
         path: e2e/cypress/screenshots
@@ -193,7 +193,7 @@ jobs:
 
     - name: Upload Cypress videos
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: cypress-videos
         path: e2e/cypress/videos
