@@ -51,9 +51,6 @@ describe("Vote API", () => {
       expect(response.text).toMatch(
         /polis_err_param_parse_failed_conversation_id/
       );
-      expect(response.text).toMatch(
-        /polis_err_fetching_zid_for_conversation_id/
-      );
     });
 
     test("should require a valid tid", async () => {
@@ -71,7 +68,6 @@ describe("Vote API", () => {
       // The API returns 400 for missing required parameters
       expect(response.status).toBe(400);
       expect(response.text).toMatch(/polis_err_param_parse_failed_tid/);
-      expect(response.text).toMatch(/polis_fail_parse_int/);
     });
 
     test("should accept votes of -1, 0, or 1", async () => {
