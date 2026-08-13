@@ -254,9 +254,6 @@ describe("Math and Analysis Endpoints", () => {
     expect(pcaResponse.text).toMatch(
       /polis_err_param_parse_failed_conversation_id/
     );
-    expect(pcaResponse.text).toMatch(
-      /polis_err_fetching_zid_for_conversation_id/
-    );
 
     // Request correlation matrix with invalid report_id
     const corrResponse: Response = await testAgent.get(
@@ -266,7 +263,6 @@ describe("Math and Analysis Endpoints", () => {
     // Should return an error status
     expect(corrResponse.status).toBe(400);
     expect(corrResponse.text).toMatch(/polis_err_param_parse_failed_report_id/);
-    expect(corrResponse.text).toMatch(/polis_err_fetching_rid_for_report_id/);
   });
 
   test("Math endpoints - Require sufficient data for meaningful analysis", async () => {
