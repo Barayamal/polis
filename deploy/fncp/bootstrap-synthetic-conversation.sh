@@ -3,7 +3,7 @@ set -eu
 
 # One-shot local bootstrap for the disposable FNCP stack. It uses only the
 # documented OIDC simulator administrator, creates exactly one synthetic
-# conversation and seed statement, enables its XID gate, and atomically binds
+# conversation and fifteen fixed seed statements, enables its XID gate, and atomically binds
 # both dedicated services to that created conversation. It never contacts a
 # public service, emits an identifier/credential, restarts a service or deploys.
 
@@ -220,6 +220,9 @@ conversation_status=$(request "$work_dir/conversation.json" \
     "is_active": true,
     "is_anon": true,
     "is_draft": false,
+    "is_data_open": false,
+    "topics_enabled": false,
+    "treevite_enabled": false,
     "strict_moderation": true,
     "profanity_filter": false
   }' \
@@ -227,19 +230,35 @@ conversation_status=$(request "$work_dir/conversation.json" \
 expect_status "$conversation_status" "200" "Synthetic conversation creation"
 conversation_id=$(jq -er '.conversation_id' "$work_dir/conversation.json")
 
-comment_status=$(request "$work_dir/comment.json" \
+jq -e 'length == 15 and all(.[]; type == "string" and length > 0)' \
+  "$deploy_dir/seed-statements.json" >/dev/null
+seed_index=0
+while [ "$seed_index" -lt 15 ]; do
+seed_text=$(jq -er ".[${seed_index}]" "$deploy_dir/seed-statements.json")
+comment_status=$(request "$work_dir/seed-${seed_index}.json" \
   --header "Authorization: Bearer $admin_token" \
   --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
   --data "$(jq -nc \
     --arg conversation_id "$conversation_id" \
+    --arg seed_text "$seed_text" \
     '{
       conversation_id: $conversation_id,
-      txt: "Community-controlled decisions should include transparent follow-through.",
+      txt: $seed_text,
       is_seed: true
     }')" \
   "$api_origin/api/v3/comments")
 expect_status "$comment_status" "200" "Synthetic seed creation"
+seed_index=$((seed_index + 1))
+done
+
+# Include exact API-returned IDs in the same atomic binding transition; no
+# guessed ordinal IDs and no vote admission before all fifteen exist.
+jq -s '[.[].tid] | if length == 15 and (unique | length) == 15 and all(.[]; type == "number" and . >= 0 and floor == .) then . else error("invalid seed IDs") end' \
+  "$work_dir"/seed-*.json >"$work_dir/statement-ids.json"
+jq --slurpfile tids "$work_dir/statement-ids.json" \
+  '. + {statement_ids: $tids[0]}' "$work_dir/conversation.json" \
+  >"$work_dir/bound-conversation.json"
 
 gate_status=$(request "$work_dir/gate.json" \
   --request PUT \
@@ -256,7 +275,7 @@ gate_status=$(request "$work_dir/gate.json" \
 expect_status "$gate_status" "200" "Synthetic XID gate activation"
 
 node "$deploy_dir/rewrite-synthetic-bootstrap-binding.mjs" \
-  "$env_file" "$work_dir/conversation.json"
+  "$env_file" "$work_dir/bound-conversation.json"
 
 echo "Synthetic conversation prepared without exposing its identifier."
 echo "Do not run the trace yet."

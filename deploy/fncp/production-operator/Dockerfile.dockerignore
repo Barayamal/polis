@@ -1,0 +1,12 @@
+**
+!deploy/
+!deploy/fncp/
+!deploy/fncp/production-operator/
+!deploy/fncp/production-operator/gateway.mjs
+!deploy/fncp/production-operator/main.mjs
+!deploy/fncp/production-security/
+!deploy/fncp/production-security/zlib-fixed/
+!deploy/fncp/production-security/zlib-fixed/**
+!server/
+!server/busybox-fixed/
+!server/busybox-fixed/**

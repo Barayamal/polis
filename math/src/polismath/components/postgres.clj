@@ -6,21 +6,23 @@
             [com.stuartsierra.component :as component]
             [clojure.java.jdbc :as jdbc]
             [honeysql.core :as sql]
-            [honeysql.helpers :as honey])
+            [honeysql.helpers :as honey]
+            [polismath.components.database-tls :as database-tls])
   (:import (org.postgresql.util PGobject)
            (com.zaxxer.hikari HikariConfig HikariDataSource)))
             ;[alex-and-georges.debug-repl :as dbr]
 
 
 
-(defn create-hikari-datasource
-  "Create a HikariCP datasource for better connection pooling"
+(defn create-hikari-config
+  "Build and validate pool configuration without opening database connections"
   [db-uri pool-config]
-  (let [[_ user password host port db] (re-matches #"postgres://(?:(.+):(.*)@)?([^:]+)(?::(\d+))?/(.+)" db-uri)
+  (let [{:keys [jdbc-url username password properties]}
+        (database-tls/connection-options db-uri pool-config)
         pool-size (get pool-config :pool-size 10)
         config (doto (HikariConfig.)
-                 (.setJdbcUrl (str "jdbc:postgresql://" host ":" (or port 5432) "/" db))
-                 (.setUsername user)
+                 (.setJdbcUrl jdbc-url)
+                 (.setUsername username)
                  (.setPassword password)
                  (.setDriverClassName "org.postgresql.Driver")
                  ;; Connection pool settings optimized for concurrent workloads
@@ -44,12 +46,22 @@
                  (.addDataSourceProperty "cacheServerConfiguration" "true")
                  (.addDataSourceProperty "elideSetAutoCommits" "true")
                  (.addDataSourceProperty "maintainTimeStats" "false"))]
-    (HikariDataSource. config)))
+    (doseq [[key value] properties]
+      (.addDataSourceProperty config key value))
+    config))
+
+(defn create-hikari-datasource
+  "Create the pool only after the dedicated JDBC contract is validated."
+  [db-uri pool-config]
+  (HikariDataSource. (create-hikari-config db-uri pool-config)))
 
 (defn heroku-db-spec
   "Create a JDBC datasource spec from a Heroku-style database URI."
-  [db-uri _ignore-ssl pool-config]  ; ignore-ssl parameter kept for compatibility but not used with HikariCP
-  (let [datasource (create-hikari-datasource db-uri pool-config)]
+  [db-uri ignore-ssl pool-config]
+  (let [pool-config (cond-> pool-config
+                      (and (contains? pool-config :release-mode) ignore-ssl)
+                      (assoc :ignore-ssl ignore-ssl))
+        datasource (create-hikari-datasource db-uri pool-config)]
     {:datasource datasource}))
 
 

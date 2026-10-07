@@ -335,7 +335,8 @@ function sendNotificationEmail(
   return sendEmailByUid(uid, subject, body);
 }
 
-const shouldSendNotifications = !Config.isDevMode;
+const shouldSendNotifications =
+  !Config.isDevMode && !Config.freshBootstrapLocalOnly;
 if (shouldSendNotifications) {
   doNotificationLoop();
 }

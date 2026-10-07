@@ -1,0 +1,29 @@
+# syntax=docker.io/docker/dockerfile:1.4@sha256:9ba7531bd80fb0a858632727cf7a112fbfd19b17e94c4e84ced81e24ef1a0dbc
+# Unreleased candidate, not a replacement for the frozen eight-image delivery.
+FROM docker.io/library/mariadb@sha256:9249261993db977032af3b0ff7369af07ea13216f61d77b30a243ccb2b2ffc04
+USER root
+# USN-8737-2 (Noble). Exact versions deliberately fail if no longer available;
+# never silently accept an unreviewed upgrade or change the vendor DB branch.
+RUN apt-get update \
+    && apt-get install --no-install-recommends --only-upgrade -y libc6=2.39-0ubuntu8.9 libc-bin=2.39-0ubuntu8.9 \
+    && test "$(dpkg-query -W -f='${Version}' libc6)" = 2.39-0ubuntu8.9 \
+    && test "$(dpkg-query -W -f='${Version}' libc-bin)" = 2.39-0ubuntu8.9 \
+    && test -f /usr/local/bin/gosu \
+    && rm /usr/local/bin/gosu \
+    && test ! -e /usr/local/bin/gosu \
+    && test "$(id -u mysql)" = 999 \
+    && mariadbd --version \
+    && rm -rf /var/lib/apt/lists/*
+USER 999:999
+ENTRYPOINT ["mariadbd"]
+CMD []
+ARG BASE_SOURCE_REVISION
+ARG CANDIDATE_DOCKERFILE_SHA256
+RUN case "$BASE_SOURCE_REVISION:$CANDIDATE_DOCKERFILE_SHA256" in *[!0-9a-f:]*|:*) exit 1 ;; esac \
+    && test "${#BASE_SOURCE_REVISION}" -eq 40 \
+    && test "${#CANDIDATE_DOCKERFILE_SHA256}" -eq 64
+LABEL org.opencontainers.image.revision="$BASE_SOURCE_REVISION" \
+      org.opencontainers.image.base.digest="sha256:9249261993db977032af3b0ff7369af07ea13216f61d77b30a243ccb2b2ffc04" \
+      org.barayamal.fncp.profile="FNCP_MARIADB_NORMAL_V1" \
+      org.barayamal.fncp.status="UNRELEASED_LOCAL_CANDIDATE" \
+      org.barayamal.fncp.candidate-dockerfile-sha256="$CANDIDATE_DOCKERFILE_SHA256"

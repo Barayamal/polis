@@ -158,7 +158,7 @@ test("binding update replaces both IDs and completion state through one rename",
     await chmod(environmentPath, 0o600);
     await writeFile(
       responsePath,
-      JSON.stringify({ conversation_id: createdId }),
+      JSON.stringify({ conversation_id: createdId, statement_ids: Array.from({length: 15}, (_, i) => 100 + i) }),
       "utf8"
     );
 
@@ -188,6 +188,7 @@ test("binding update replaces both IDs and completion state through one rename",
       )
     );
     assert.match(updated, /^UNRELATED_SECRET=do-not-change$/mu);
+    assert.match(updated, /^FNCP_FIXED_STATEMENT_IDS=100,101,102,103,104,105,106,107,108,109,110,111,112,113,114$/mu);
     assert.equal((await stat(environmentPath)).mode & 0o777, 0o600);
     assert.match(rewrite, /await rename\(temporaryPath, environmentPath\)/u);
   } finally {

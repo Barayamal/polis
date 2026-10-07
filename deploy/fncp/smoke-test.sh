@@ -34,8 +34,43 @@ then
   exit 1
 fi
 
+# Reject an absent/malformed manifest before any mutating QA request.
+statement_ids_json="$(jq -enc --arg ids "${FNCP_FIXED_STATEMENT_IDS:-}" '
+  ($ids | split(",")) as $parts |
+  if ($parts | length) == 15 and
+     ($parts | all(test("^(0|[1-9][0-9]*)$")))
+  then ($parts | map(tonumber)) as $numbers |
+    if ($numbers | unique | length) == 15 and
+       ($numbers | all(. <= 9007199254740991))
+    then $numbers else error("invalid manifest") end
+  else error("invalid manifest") end' 2>/dev/null)" || {
+  echo "Exactly fifteen synthetic statement IDs must be bound before the trace." >&2
+  exit 1
+}
+
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/fncp-polis-smoke.XXXXXX")"
-trap 'rm -rf "$work_dir"' EXIT INT TERM
+
+cleanup() {
+  # Revoke only this invocation's generated synthetic XID on an early failure.
+  # Never broaden cleanup to existing provider records or genuine data.
+  if [ -n "${allowed_xid:-}" ] && [ "${provider_removed:-false}" != "true" ]; then
+    cleanup_status="$(request "$work_dir/cleanup-revoke.json" \
+      --header "Authorization: Bearer $FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL" \
+      --header "X-Forwarded-Proto: https" \
+      --header "Content-Type: application/json" \
+      --header "Idempotency-Key: $remove_key" \
+      --data "$(jq -nc --arg conversation_id "$conversation_id" --arg participant_xid "$allowed_xid" \
+        '{conversationId: $conversation_id, participantXid: $participant_xid, operationVersion: 2}')" \
+      "$api_origin/fncp/private/xid-allowlist/remove")" || cleanup_status="000"
+    if [ "$cleanup_status" != "204" ]; then
+      echo "Synthetic XID cleanup was not verified; keep this disposable stack isolated." >&2
+    fi
+  fi
+  rm -rf "$work_dir"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 request() {
   output="$1"
@@ -146,37 +181,43 @@ allowed_status="$(request "$work_dir/allowed.json" \
   --header "X-FNCP-Conversation-ID: $conversation_id" \
   --header "X-FNCP-Participant-XID: $allowed_xid" \
   --data-urlencode "conversation_id=$conversation_id" \
-  --data-urlencode "xid=$allowed_xid" \
-  --data-urlencode "pid=-1" \
   --data-urlencode "lang=en" \
-  --data-urlencode "agid=1" \
   "$api_origin/api/v3/participationInit")"
 expect_status "$allowed_status" "200" "Allowed XID"
-seed_tid="$(jq -er '.nextComment.tid' "$work_dir/allowed.json")"
+jq -e 'has("auth") | not' "$work_dir/allowed.json" >/dev/null
+
+statements_status="$(request "$work_dir/statements.json" \
+  --get \
+  --header "X-Forwarded-Proto: https" \
+  --header "X-FNCP-Gateway-Key: $FNCP_GATEWAY_SHARED_SECRET" \
+  --header "X-FNCP-Conversation-ID: $conversation_id" \
+  --header "X-FNCP-Participant-XID: $allowed_xid" \
+  --data-urlencode "conversation_id=$conversation_id" \
+  "$api_origin/api/v3/comments")"
+expect_status "$statements_status" "200" "Fifteen fixed synthetic statements"
+jq -e --argjson expected "$statement_ids_json" \
+  'type == "array" and length == 15 and
+   ([.[].tid] | sort) == ($expected | sort)' \
+  "$work_dir/statements.json" >/dev/null
+seed_tid="$(printf '%s' "$statement_ids_json" | jq -er '.[0]')"
+# Fifteen IDs cannot occupy all sixteen values; no assumption about their IDs.
+unknown_tid="$(printf '%s' "$statement_ids_json" | jq -er '([range(0;16)] - .)[0]')"
 
 participant_status="$(request "$work_dir/participant.html" \
   --get \
   --data-urlencode "xid=$allowed_xid" \
   "$participant_origin/alpha/$conversation_id")"
-expect_status "$participant_status" "200" "Allowlisted participant SSR"
-for expected_text in \
-  "FNCP Option C disposable access QA" \
-  "Community-controlled decisions should include transparent follow-through." \
-  "Agree" \
-  "Disagree" \
-  "Pass / Unsure"
-do
-  if ! grep -Fq "$expected_text" "$work_dir/participant.html"; then
-    echo "Allowlisted participant SSR omitted: $expected_text" >&2
-    exit 1
-  fi
-done
+expect_status "$participant_status" "400" "Direct participant SSR with bare XID"
+if ! grep -Fq "Conflicting participant identity." "$work_dir/participant.html"; then
+  echo "Direct participant SSR did not preserve the gateway boundary." >&2
+  exit 1
+fi
 
 missing_participant_status="$(request "$work_dir/participant-missing.html" \
   "$participant_origin/alpha/$conversation_id")"
-expect_status "$missing_participant_status" "200" "Missing-XID participant SSR"
+expect_status "$missing_participant_status" "403" "Direct participant SSR without XID"
 if ! grep -Fq \
-  "This conversation requires an XID (external identifier) to participate." \
+  "Gateway access required." \
   "$work_dir/participant-missing.html"
 then
   echo "Missing-XID participant SSR did not fail closed clearly." >&2
@@ -191,16 +232,63 @@ vote_status="$(request "$work_dir/vote.json" \
   --header "Content-Type: application/json" \
   --data "$(jq -nc \
     --arg conversation_id "$conversation_id" \
-    --arg xid "$allowed_xid" \
     --argjson tid "$seed_tid" \
     '{
       conversation_id: $conversation_id,
-      xid: $xid,
       tid: $tid,
       vote: 0
     }')" \
   "$api_origin/api/v3/votes")"
 expect_status "$vote_status" "200" "Establish synthetic XID participant"
+jq -e 'has("auth") | not' "$work_dir/vote.json" >/dev/null
+
+unknown_vote_status="$(request "$work_dir/unknown-vote.json" \
+  --header "X-Forwarded-Proto: https" \
+  --header "X-FNCP-Gateway-Key: $FNCP_GATEWAY_SHARED_SECRET" \
+  --header "X-FNCP-Conversation-ID: $conversation_id" \
+  --header "X-FNCP-Participant-XID: $allowed_xid" \
+  --header "Content-Type: application/json" \
+  --data "$(jq -nc --argjson tid "$unknown_tid" '{tid: $tid, vote: -1}')" \
+  "$api_origin/api/v3/votes")"
+expect_status "$unknown_vote_status" "400" "Unknown statement ID"
+jq -e '.error == "Invalid fixed-statement vote."' "$work_dir/unknown-vote.json" >/dev/null
+
+invalid_vote_status="$(request "$work_dir/invalid-vote.json" \
+  --header "X-Forwarded-Proto: https" \
+  --header "X-FNCP-Gateway-Key: $FNCP_GATEWAY_SHARED_SECRET" \
+  --header "X-FNCP-Conversation-ID: $conversation_id" \
+  --header "X-FNCP-Participant-XID: $allowed_xid" \
+  --header "Content-Type: application/json" \
+  --data "$(jq -nc --argjson tid "$seed_tid" '{tid: $tid, vote: 2}')" \
+  "$api_origin/api/v3/votes")"
+expect_status "$invalid_vote_status" "400" "Invalid vote value"
+jq -e '.error == "Invalid fixed-statement vote."' "$work_dir/invalid-vote.json" >/dev/null
+
+suggestion_status="$(request "$work_dir/suggestion.json" \
+  --header "X-Forwarded-Proto: https" \
+  --header "X-FNCP-Gateway-Key: $FNCP_GATEWAY_SHARED_SECRET" \
+  --header "X-FNCP-Conversation-ID: $conversation_id" \
+  --header "X-FNCP-Participant-XID: $allowed_xid" \
+  --header "Content-Type: application/json" \
+  --data '{"txt":"Synthetic suggestion must never be stored"}' \
+  "$api_origin/api/v3/comments")"
+expect_status "$suggestion_status" "404" "Participant suggestions at API origin"
+jq -e '.error == "Not found."' "$work_dir/suggestion.json" >/dev/null
+
+proxy_suggestion_status="$(request "$work_dir/proxy-suggestion.html" \
+  --header "Content-Type: application/json" \
+  --data '{"txt":"Synthetic suggestion must never be stored"}' \
+  "$participant_origin/api/v3/comments")"
+expect_status "$proxy_suggestion_status" "405" "Participant suggestions at proxy"
+
+direct_vote_status="$(request "$work_dir/direct-vote.json" \
+  --header "X-Forwarded-Proto: https" \
+  --header "Content-Type: application/json" \
+  --data "$(jq -nc --arg conversation_id "$conversation_id" --argjson tid "$seed_tid" \
+    '{conversation_id: $conversation_id, tid: $tid, vote: -1}')" \
+  "$api_origin/api/v3/votes")"
+expect_status "$direct_vote_status" "403" "Direct vote without gateway authority"
+jq -e '.error == "Gateway access required."' "$work_dir/direct-vote.json" >/dev/null
 
 warm_status="$(request "$work_dir/warm.json" \
   --get \
@@ -209,20 +297,12 @@ warm_status="$(request "$work_dir/warm.json" \
   --header "X-FNCP-Conversation-ID: $conversation_id" \
   --header "X-FNCP-Participant-XID: $allowed_xid" \
   --data-urlencode "conversation_id=$conversation_id" \
-  --data-urlencode "xid=$allowed_xid" \
-  --data-urlencode "pid=-1" \
   --data-urlencode "lang=en" \
-  --data-urlencode "agid=1" \
   "$api_origin/api/v3/participationInit")"
 expect_status "$warm_status" "200" "Reopen synthetic XID participant"
-participant_token="$(jq -r '.auth.token // empty' "$work_dir/warm.json")"
-if [ -z "$participant_token" ]; then
-  participant_token="$(jq -r '.auth.token // empty' "$work_dir/vote.json")"
-fi
-if [ -z "$participant_token" ]; then
-  echo "Synthetic participant JWT was not issued." >&2
-  exit 1
-fi
+# Reuse the same established identity after revocation. Internal participant
+# JWTs must remain stripped; this is not a genuine browser-session test.
+jq -e 'has("auth") | not' "$work_dir/warm.json" >/dev/null
 
 missing_status="$(request "$work_dir/missing.json" \
   --get \
@@ -240,8 +320,6 @@ invalid_status="$(request "$work_dir/invalid.json" \
   --header "X-FNCP-Conversation-ID: $conversation_id" \
   --header "X-FNCP-Participant-XID: $replacement_xid" \
   --data-urlencode "conversation_id=$conversation_id" \
-  --data-urlencode "xid=$replacement_xid" \
-  --data-urlencode "pid=-1" \
   --data-urlencode "lang=en" \
   "$api_origin/api/v3/participationInit")"
 expect_status "$invalid_status" "403" "Invalid XID"
@@ -271,6 +349,7 @@ revoke_status="$(request "$work_dir/revoke.json" \
     }')" \
   "$api_origin/fncp/private/xid-allowlist/remove")"
 expect_status "$revoke_status" "204" "Provider XID removal"
+provider_removed="true"
 
 removed_readback_status="$(request "$work_dir/removed-readback.json" \
   --header "Authorization: Bearer $FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL" \
@@ -301,46 +380,36 @@ revoked_status="$(request "$work_dir/revoked.json" \
   --header "X-FNCP-Conversation-ID: $conversation_id" \
   --header "X-FNCP-Participant-XID: $allowed_xid" \
   --data-urlencode "conversation_id=$conversation_id" \
-  --data-urlencode "xid=$allowed_xid" \
-  --data-urlencode "pid=-1" \
   --data-urlencode "lang=en" \
-  --data-urlencode "agid=1" \
   "$api_origin/api/v3/participationInit")"
 expect_status "$revoked_status" "403" "Revoked XID"
+jq -e '.error == "polis_err_xid_not_allowed"' "$work_dir/revoked.json" >/dev/null
 
 warm_revoked_status="$(request "$work_dir/warm-revoked.json" \
-  --get \
-  --header "Authorization: Bearer $participant_token" \
   --header "X-Forwarded-Proto: https" \
   --header "X-FNCP-Gateway-Key: $FNCP_GATEWAY_SHARED_SECRET" \
   --header "X-FNCP-Conversation-ID: $conversation_id" \
   --header "X-FNCP-Participant-XID: $allowed_xid" \
-  --data-urlencode "conversation_id=$conversation_id" \
-  --data-urlencode "xid=$allowed_xid" \
-  --data-urlencode "pid=-1" \
-  --data-urlencode "lang=en" \
-  --data-urlencode "agid=1" \
-  "$api_origin/api/v3/participationInit")"
-expect_status "$warm_revoked_status" "403" "Revoked warm XID session"
-
-close_status="$(request "$work_dir/close.json" \
-  --request PUT \
-  --header "Authorization: Bearer $admin_token" \
-  --header "X-Forwarded-Proto: https" \
   --header "Content-Type: application/json" \
-  --data "$(jq -nc --arg conversation_id "$conversation_id" \
-    '{conversation_id: $conversation_id, is_active: false}')" \
-  "$api_origin/api/v3/conversations")"
-expect_status "$close_status" "200" "Close disposable conversation"
+  --data "$(jq -nc --argjson tid "$seed_tid" '{tid: $tid, vote: -1}')" \
+  "$api_origin/api/v3/votes")"
+expect_status "$warm_revoked_status" "403" "Revoked established identity write"
+jq -e '.error == "polis_err_xid_not_allowed"' "$work_dir/warm-revoked.json" >/dev/null
 
 printf '%s\n' \
   "FNCP Option C disposable smoke test: PASS" \
-  "Conversation: synthetic local QA (closed)" \
-  "Allowlisted participant SSR: 200 with conversation and controls" \
-  "Missing-XID participant SSR: 200 with fail-closed notice" \
+  "Conversation: shared synthetic local QA; lifecycle unchanged" \
+  "Exact fixed synthetic statement count: 15" \
+  "Direct participant SSR: bare XID 400; missing authority 403" \
   "Allowed XID: 200" \
+  "Unknown statement and invalid vote: 400" \
+  "Suggestions: API 404; proxy 405" \
+  "Direct vote without gateway: 403" \
+  "Participant bearer tokens: not exposed" \
   "Missing XID: 403" \
   "Invalid XID: 403" \
   "OIDC bypass: 403" \
   "Removed XID: 403" \
-  "Removed warm XID session: 403"
+  "Removed established identity write: 403" \
+  "Scope: origin access matrix only; real browser-session assurance not established" \
+  "This trace does not test whole-round closure; it revokes only its allocated identity"

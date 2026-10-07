@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "classification": "closed-local-core",
+  "upstreamBaseline": "2898471efe889976670b09977ca6c08946dc04d9",
+  "included": {
+    "api": {
+      "context": "server",
+      "dockerfile": "Dockerfile",
+      "target": "fncp-production",
+      "normalEntrypoint": "dist/index.js"
+    },
+    "postgres": {
+      "context": "server",
+      "dockerfile": "Dockerfile-selfhost-db",
+      "freshInitialization": "explicit initialize command; no automatic migrations"
+    },
+    "migration": {
+      "context": "server",
+      "dockerfile": "Dockerfile-migrate",
+      "lifecycle": "short-lived maintenance profile"
+    },
+    "math": {
+      "context": "math",
+      "dockerfile": "Dockerfile",
+      "target": "fncp-production",
+      "role": "separate restricted math role"
+    }
+  },
+  "notWiredIntoThisCompose": [
+    "WordPress and MariaDB",
+    "production participant BFF",
+    "real OIDC provider",
+    "activation/event service",
+    "TLS edge",
+    "restricted staff results interface"
+  ],
+  "excluded": [
+    "Chromium and QA drivers",
+    "legacy clients",
+    "Pro/Delphi",
+    "LLM features",
+    "translation",
+    "participant statement submission",
+    "public results/export",
+    "real invitations"
+  ],
+  "invariants": {
+    "participantIngress": false,
+    "publicPorts": 0,
+    "defaultClosed": true,
+    "statementCount": 15,
+    "registrationCap": 20,
+    "syntheticOnlyGuardChanges": false
+  },
+  "operatorTools": {
+    "aggregateExport": {
+      "entrypoint": "operator-export.mjs",
+      "authorization": "private local configuration custody",
+      "individualIdentityOrVoteExport": false,
+      "requiresClosedAndCurrentResults": true
+    },
+    "offlineCoreRecovery": {
+      "entrypoint": "recovery/offline-core-restore.mjs",
+      "encryptedSnapshot": true,
+      "startsRestoredApplications": false,
+      "joinedWordPressAccessRecovery": false
+    }
+  }
+}

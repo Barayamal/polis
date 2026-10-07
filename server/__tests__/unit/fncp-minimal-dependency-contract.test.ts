@@ -60,7 +60,8 @@ describe("minimal FNCP production dependency contract", () => {
     expect(packageJson.dependencies).not.toHaveProperty("axios");
     expect(packageJson.dependencies).not.toHaveProperty("morgan");
     expect(packageJson.devDependencies.axios).toBe("1.18.1");
-    expect(packageJson.devDependencies.morgan).toBe("1.11.0");
+    expect(packageJson.devDependencies.morgan).toBe("1.12.1");
+    expect(packageLock.packages["node_modules/morgan"]?.version).toBe("1.12.1");
     expect(appSource).not.toMatch(/import\s+morgan\s+from\s+"morgan"/);
     expect(appSource).toContain('const morgan = require("morgan")');
     expect(appSource).toContain(

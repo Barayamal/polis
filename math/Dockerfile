@@ -1,8 +1,8 @@
-FROM docker.io/library/node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS fncp-busybox-fixed
+FROM docker.io/library/node:24.18.1-alpine@sha256:f70403e87646dc51b45295f4b8b70cdad0b63d2297c4c9899119b03f7af7a6b3 AS fncp-busybox-fixed
 
 RUN apk add --no-cache \
   build-base=0.5-r4 \
-  curl=8.21.0-r0 \
+  curl=8.22.0-r0 \
   file=5.47-r2 \
   linux-headers=7.0.0-r1 \
   patch=2.8-r0 \
@@ -12,6 +12,9 @@ RUN apk add --no-cache \
 COPY busybox-fixed /opt/fncp-busybox-fix
 RUN chmod 0555 /opt/fncp-busybox-fix/build-fixed-busybox.sh \
   && /opt/fncp-busybox-fix/build-fixed-busybox.sh
+COPY zlib-fixed /opt/fncp-zlib-fix
+RUN chmod 0555 /opt/fncp-zlib-fix/build-fixed-zlib.sh \
+  && /opt/fncp-zlib-fix/build-fixed-zlib.sh
 
 FROM docker.io/library/clojure:temurin-17-tools-deps@sha256:8250a7e6b20954680c2e3bf2e84ad4caab1c5ea68c56c28bca41fb9ac5a2e96e AS build
 
@@ -85,13 +88,17 @@ ENV PATH="${JAVA_HOME}/bin:${PATH}"
 WORKDIR /app
 
 RUN apk add --no-cache \
-      ca-certificates-bundle=20260611-r0 \
+      ca-certificates-bundle=20260909-r0 \
+      libcrypto3=3.5.8-r0 \
+      libssl3=3.5.8-r0 \
       zlib=1.3.2-r0
 
 LABEL org.barayamal.fncp.busybox.remediation="CVE-2025-60876-upstream-patch" \
       org.opencontainers.image.source="https://github.com/Barayamal/polis" \
       org.opencontainers.image.revision="${SOURCE_REVISION}"
 COPY --from=fncp-busybox-fixed /out/busybox /bin/busybox
+COPY --from=fncp-busybox-fixed /out/zlib/lib/libz.so.1.3.2 /lib/libz.so.1.3.2
+COPY --from=fncp-busybox-fixed /out/zlib/evidence/provenance.txt /usr/share/fncp-security/zlib-provenance.txt
 RUN set -eu; \
   test "$(readlink -f /bin/sh)" = /bin/busybox; \
   test "$(readlink -f /usr/bin/wget)" = /bin/busybox; \
@@ -100,6 +107,7 @@ RUN set -eu; \
   if /usr/bin/wget "$bad_url" >/tmp/wget.stdout 2>/tmp/wget.stderr; then exit 1; fi; \
   grep -Fq 'Unencoded control character found in the URL!' /tmp/wget.stderr; \
   rm -f /tmp/wget.stdout /tmp/wget.stderr
+RUN test "$(sha256sum /lib/libz.so.1.3.2 | awk '{print $1}')" = "$(sed -n 's/^binary_sha256=//p' /usr/share/fncp-security/zlib-provenance.txt)"
 
 COPY --from=fncp-jre-build /opt/fncp-jre ${JAVA_HOME}
 COPY --from=build --chown=65532:65532 /runtime/app ./
@@ -132,3 +140,12 @@ USER 65532:65532
 
 ENTRYPOINT []
 CMD ["./bin/run"]
+
+# Dedicated self-host profile: omission of an external mode keeps the guard on.
+# Ordinary upstream builds keep the prior runtime behavior via the final stage.
+FROM runtime AS fncp-production
+ENV FNCP_OPTION_C_RELEASE_MODE=production
+LABEL org.barayamal.fncp.release-mode="production" \
+      org.barayamal.fncp.zlib.remediation="CVE-2026-85091-df84af25dc1942490e1d1c899a07619152a46148"
+
+FROM runtime AS upstream-production

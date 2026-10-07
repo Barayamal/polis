@@ -1,7 +1,7 @@
 /**
  * First Nations Community Pulse private-origin gateway enforcement.
  *
- * Modified by Barayamal on 26–27 July 2026.
+ * Modified by Barayamal on 26–27 July and 13 September 2026.
  *
  * This optional middleware is deliberately scoped to the configured FNCP
  * conversation and the participant API routes used by the Barayamal gateway.
@@ -22,7 +22,6 @@ const PARTICIPANT_ROUTE_DEFINITIONS = [
   "GET /api/v3/math/pca2",
   "GET /api/v3/nextComment",
   "GET /api/v3/participationInit",
-  "POST /api/v3/comments",
   "POST /api/v3/votes",
 ] as const;
 
@@ -48,11 +47,50 @@ const HEAD_ALIAS_PARTICIPANT_PATHS = new Set(
 );
 
 // The dedicated Option C participant capability manifest contains only the
-// six routes above. joinWithInvite runs hybridAuthOptional and may create an
+// five routes above. joinWithInvite runs hybridAuthOptional and may create an
 // OIDC/anonymous user before its route handler executes, so an FNCP instance
 // must reject it in this earlier middleware regardless of supplied identity,
 // invitation, or provider allowlist state.
 const FNCP_DISABLED_ROUTE_KEYS = new Set(["POST /api/v3/joinwithinvite"]);
+
+// The approved round contains fixed seed statements. Participant free text is
+// not a capability, including when a caller knows the private gateway key.
+// Keep ordinary upstream conversations unchanged when this policy is absent.
+const FNCP_FIXED_STATEMENT_WRITE = "POST /api/v3/comments";
+const VOTE_BODY_KEYS = new Set([
+  "conversation_id",
+  "conversationId",
+  "tid",
+  "vote",
+  "lang",
+]);
+const VOTE_QUERY_KEYS = new Set(["conversation_id", "conversationId"]);
+
+function validVoteEnvelope(request: GatewayRequestShape): boolean {
+  const body = request.body;
+  if (
+    !body ||
+    Array.isArray(body) ||
+    Object.keys(body).some((key) => !VOTE_BODY_KEYS.has(key)) ||
+    Object.keys(request.query || {}).some((key) => !VOTE_QUERY_KEYS.has(key))
+  ) {
+    return false;
+  }
+
+  // Do not inherit the general-purpose integer parser's coercion. This
+  // private JSON contract accepts only exact Agree/Disagree/Pass values.
+  return (
+    typeof body.tid === "number" &&
+    Number.isSafeInteger(body.tid) &&
+    body.tid >= 0 &&
+    typeof body.vote === "number" &&
+    [-1, 0, 1].includes(body.vote) &&
+    (body.lang === undefined ||
+      (typeof body.lang === "string" &&
+        /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,6})?$/.test(body.lang) &&
+        body.lang.length <= 10))
+  );
+}
 
 const IDENTITY_KEYS = new Set([
   "access_token",
@@ -80,6 +118,24 @@ export interface FncpGatewayConfig {
   activationValid: boolean;
   conversationId: string;
   sharedSecret: string;
+  fixedStatementIds?: ReadonlySet<number>;
+}
+
+function parseFixedStatementIds(
+  value: string | undefined
+): ReadonlySet<number> | undefined {
+  const entries = value?.split(",") || [];
+  if (
+    entries.length !== 15 ||
+    entries.some((entry) => !/^(0|[1-9][0-9]*)$/.test(entry))
+  ) {
+    return undefined;
+  }
+  const ids = entries.map(Number);
+  if (ids.some((id) => !Number.isSafeInteger(id)) || new Set(ids).size !== 15) {
+    return undefined;
+  }
+  return new Set(ids);
 }
 
 interface GatewayRequestShape {
@@ -162,6 +218,7 @@ export function loadFncpGatewayConfig(
         (dedicatedProduction && activation === "true")),
     conversationId: env.FNCP_GATEWAY_CONVERSATION_ID || "",
     sharedSecret: env.FNCP_GATEWAY_SHARED_SECRET || "",
+    fixedStatementIds: parseFixedStatementIds(env.FNCP_FIXED_STATEMENT_IDS),
   };
 }
 
@@ -213,6 +270,13 @@ export function evaluateFncpGatewayRequest(
   const hasConflictingConversation = requestedConversations.some(
     (conversation) => conversation !== config.conversationId
   );
+
+  if (
+    routeKey === FNCP_FIXED_STATEMENT_WRITE &&
+    (targetsConfiguredConversation || claimsGatewayAccess)
+  ) {
+    return { enforce: true, status: 404, error: "Not found." };
+  }
 
   if (!routeIsParticipant) {
     // Express aliases HEAD to GET automatically. Deny that alias for protected
@@ -272,6 +336,28 @@ export function evaluateFncpGatewayRequest(
       status: 400,
       error: "Conflicting participant identity.",
     };
+  }
+
+  if (routeKey === "POST /api/v3/votes") {
+    // Reads can support an absent synthetic bootstrap conversation, but votes
+    // stay closed until the operator binds all fifteen exact returned TIDs.
+    if (!config.fixedStatementIds || config.fixedStatementIds.size !== 15) {
+      return {
+        enforce: true,
+        status: 503,
+        error: "Fixed-statement voting is not configured.",
+      };
+    }
+    if (
+      !validVoteEnvelope(request) ||
+      !config.fixedStatementIds.has(request.body?.tid as number)
+    ) {
+      return {
+        enforce: true,
+        status: 400,
+        error: "Invalid fixed-statement vote.",
+      };
+    }
   }
 
   return {

@@ -8,8 +8,9 @@
  */
 
 import crypto from "node:crypto";
+import { isAbsolute } from "node:path";
 
-import { loadFncpProviderAllowlistConfig } from "../fncp-provider-policy";
+import { loadFncpProviderAllowlistConfig } from "../fncp-provider-config";
 import { loadFncpGatewayConfig } from "./fncp-gateway";
 
 const DEDICATED_RELEASE_MODE = "production";
@@ -24,7 +25,10 @@ export type FncpProductionAdmissionFailure =
   | "conversation-binding"
   | "gateway-credential"
   | "provider-credential"
-  | "credential-separation";
+  | "credential-separation"
+  | "fixed-statements"
+  | "database-tls"
+  | "runtime-profile";
 
 export type FncpProductionAdmission =
   | { dedicated: false }
@@ -91,8 +95,37 @@ export function assertFncpProductionAdmission(
   if (sameCredential(gateway.sharedSecret, provider.bearerCredential)) {
     throw new FncpProductionAdmissionError("credential-separation");
   }
+  if (!gateway.fixedStatementIds || gateway.fixedStatementIds.size !== 15) {
+    throw new FncpProductionAdmissionError("fixed-statements");
+  }
+  // This check stays pure; the CA loader validates the actual file before any
+  // Pool is created. Dedicated releases must never select the legacy insecure
+  // DATABASE_SSL fallback or URL query options that replace pg's TLS object.
+  const caPath = env.DATABASE_SSL_CA_FILE;
+  if (env.DATABASE_SSL !== "true" || !caPath || !isAbsolute(caPath) ||
+      /[\u0000-\u0020\u007f]/u.test(caPath) ||
+      !validDatabaseUrl(env.DATABASE_URL) ||
+      !validDatabaseUrl(env.READ_ONLY_DATABASE_URL ?? env.DATABASE_URL) ||
+      (env.NODE_TLS_REJECT_UNAUTHORIZED !== undefined && env.NODE_TLS_REJECT_UNAUTHORIZED !== "1")) {
+    throw new FncpProductionAdmissionError("database-tls");
+  }
+  const disabled = ["DEV_MODE", "TESTING", "ENABLE_TELEMETRY", "SHOULD_USE_TRANSLATION_API",
+    "BACKFILL_COMMENT_LANG_DETECTION", "RUN_PERIODIC_EXPORT_TESTS", "SERVER_LOG_TO_FILE"];
+  if (disabled.some(key => env[key] !== undefined && env[key] !== "false") ||
+      env.FNCP_FRESH_BOOTSTRAP_LOCAL_ONLY !== undefined) {
+    throw new FncpProductionAdmissionError("runtime-profile");
+  }
 
   return { dedicated: true, conversationId: gateway.conversationId };
+}
+
+function validDatabaseUrl(value: string | undefined): boolean {
+  try {
+    if (!value || /[\u0000-\u0020\u007f]/u.test(value)) return false;
+    const url = new URL(value);
+    return ["postgres:", "postgresql:"].includes(url.protocol) && !!url.hostname &&
+      !!url.username && !!url.password && /^\/[^/]+$/u.test(url.pathname) && !url.search && !url.hash;
+  } catch { return false; }
 }
 
 function sameCredential(left: string, right: string): boolean {

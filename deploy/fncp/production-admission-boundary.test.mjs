@@ -11,6 +11,7 @@ const [
   index,
   gateway,
   provider,
+  providerConfig,
   staging,
   prepare,
   bootstrap,
@@ -28,6 +29,7 @@ const [
   readFile(join(repoRoot, "server", "index.ts"), "utf8"),
   readFile(join(repoRoot, "server", "src", "auth", "fncp-gateway.ts"), "utf8"),
   readFile(join(repoRoot, "server", "src", "fncp-provider-policy.ts"), "utf8"),
+  readFile(join(repoRoot, "server", "src", "fncp-provider-config.ts"), "utf8"),
   readFile(join(deployDir, "staging.env.example"), "utf8"),
   readFile(join(deployDir, "prepare-staging.sh"), "utf8"),
   readFile(
@@ -48,8 +50,12 @@ const [
   readFile(join(repoRoot, "server", "Dockerfile"), "utf8"),
 ]);
 
-test("the production entrypoint admits before opening a socket", () => {
+test("the production entrypoint admits before loading application side effects or opening a socket", () => {
+  assert.match(index, /assertFncpProductionAdmission\(\);[\s\S]*import app, \{ appReady \} from/u);
   assert.match(index, /assertFncpProductionAdmission\(\);[\s\S]*app\.listen/u);
+  assert.match(admission, /from "\.\.\/fncp-provider-config"/u);
+  assert.doesNotMatch(admission, /from "\.\.\/fncp-provider-policy"/u);
+  assert.doesNotMatch(providerConfig, /\bimport\b[\s\S]*\bfrom\b/u);
   assert.match(dockerfile, /CMD \["node",[\s\S]*"dist\/index\.js"\]/u);
 });
 
@@ -95,7 +101,7 @@ test("dedicated admission requires exact dual enforcement and one conversation",
 });
 
 test("dedicated request-time loaders fail closed instead of disabling policy", () => {
-  for (const source of [gateway, provider]) {
+  for (const source of [gateway, providerConfig]) {
     assert.match(source, /env\.FNCP_OPTION_C_RELEASE_MODE !== undefined/u);
     assert.match(source, /enabled: dedicatedReleaseConfigured \|\|/u);
     assert.match(

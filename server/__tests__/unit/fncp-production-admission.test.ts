@@ -1,9 +1,4 @@
-import { describe, expect, jest, test } from "@jest/globals";
-
-jest.mock("../../src/db/pg-query", () => ({
-  __esModule: true,
-  default: { queryP: jest.fn() },
-}));
+import { describe, expect, test } from "@jest/globals";
 
 import {
   assertFncpProductionAdmission,
@@ -18,6 +13,10 @@ const providerCredential = "p".repeat(48);
 function productionEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return {
     NODE_ENV: "production",
+    FNCP_FIXED_STATEMENT_IDS: Array.from({ length: 15 }, (_, i) => i).join(","),
+    DATABASE_URL: "postgres://runtime:invented@database.invalid:5432/polis",
+    DATABASE_SSL: "true",
+    DATABASE_SSL_CA_FILE: "/run/fncp/ca.pem",
     FNCP_OPTION_C_RELEASE_MODE: "production",
     FNCP_GATEWAY_ENFORCEMENT: "true",
     FNCP_GATEWAY_CONVERSATION_ID: conversationId,
@@ -46,6 +45,23 @@ function expectFailure(
 }
 
 describe("FNCP dedicated production startup admission", () => {
+  test.each([undefined, "0,1", "[0,1,2]", "00,1,2,3,4,5,6,7,8,9,10,11,12,13,14",
+    "0,1,2,3,4,5,6,7,8,9,10,11,12,13,13"])("rejects incomplete or ambiguous fixed statements %p", value => {
+    expectFailure(productionEnv({ FNCP_FIXED_STATEMENT_IDS: value }), "fixed-statements");
+  });
+  test.each([
+    { DATABASE_SSL: undefined }, { DATABASE_SSL: "false" }, { DATABASE_SSL_CA_FILE: undefined },
+    { DATABASE_SSL_CA_FILE: "ca.pem" }, { DATABASE_URL: "postgres://runtime:private@db/polis?sslmode=no-verify" },
+    { READ_ONLY_DATABASE_URL: "postgres://runtime:private@db/polis?sslmode=disable" },
+    { NODE_TLS_REJECT_UNAUTHORIZED: "0" },
+  ])("rejects an incomplete or insecure database TLS contract", value => {
+    expectFailure(productionEnv(value), "database-tls");
+  });
+  test.each(["DEV_MODE", "TESTING", "ENABLE_TELEMETRY", "SHOULD_USE_TRANSLATION_API",
+    "BACKFILL_COMMENT_LANG_DETECTION", "RUN_PERIODIC_EXPORT_TESTS", "SERVER_LOG_TO_FILE"])(
+    "rejects the excluded runtime feature %s", key => {
+      expectFailure(productionEnv({ [key]: "true" }), "runtime-profile");
+    });
   test("preserves ordinary upstream Pol.is while release mode is absent", () => {
     expect(
       assertFncpProductionAdmission({

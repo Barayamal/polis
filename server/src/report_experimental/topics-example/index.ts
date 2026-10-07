@@ -8,18 +8,14 @@ import { sendCommentGroupsSummary } from "../../report";
 import { Sensemaker } from "@tevko/sensemaking-tools/src/sensemaker";
 import { GoogleAIModel } from "@tevko/sensemaking-tools/src/models/aiStudio_model";
 import { Comment, VoteTally, Topic } from "@tevko/sensemaking-tools/src/types";
-import { parse } from "csv-parse";
+import { createTopicCsvParser } from "../../utils/csv-records";
 import config from "../../config";
 import logger from "../../utils/logger";
 
 async function parseCsvString(csvString: string) {
   return new Promise((resolve, reject) => {
     const data: Comment[] = [];
-    const parser = parse({
-      columns: true, // Use first row as headers
-      skip_empty_lines: true, // Ignore empty lines
-      relax_column_count: true,
-    });
+    const parser = createTopicCsvParser();
 
     parser.on("error", (error) => reject(error));
 

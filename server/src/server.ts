@@ -35,10 +35,12 @@ if (devMode) {
 }
 
 // Bluebird uncaught error handler.
-BluebirdPromise.onPossiblyUnhandledRejection(function (err: any) {
-  logger.error("onPossiblyUnhandledRejection", err);
-  // throw err; // not throwing since we're printing stack traces anyway
-});
+if (!Config.freshBootstrapLocalOnly) {
+  BluebirdPromise.onPossiblyUnhandledRejection(function (err: any) {
+    logger.error("onPossiblyUnhandledRejection", err);
+    // throw err; // not throwing since we're printing stack traces anyway
+  });
+}
 
 const adminEmails = Config.adminEmails ? JSON.parse(Config.adminEmails) : [];
 
@@ -46,16 +48,20 @@ const polisFromAddress = Config.polisFromAddress;
 
 const serverUrl = Config.getServerUrl(); // typically https://pol.is or http://localhost:5000
 
-const akismet = akismetLib.client({
-  blog: serverUrl,
-  apiKey: Config.akismetAntispamApiKey,
-});
+// The library sends HTTP even for a missing key. A validated fresh bootstrap
+// must neither construct this external client nor attempt key verification.
+if (!Config.freshBootstrapLocalOnly && Config.akismetAntispamApiKey) {
+  const akismet = akismetLib.client({
+    blog: serverUrl,
+    apiKey: Config.akismetAntispamApiKey,
+  });
 
-akismet.verifyKey(function (err: any, verified: any) {
-  if (verified) {
-    logger.debug("Akismet: API key successfully verified.");
-  }
-});
+  akismet.verifyKey(function (err: any, verified: any) {
+    if (verified) {
+      logger.debug("Akismet: API key successfully verified.");
+    }
+  });
+}
 
 function haltOnTimeout(req: { timedout: any }, res: any, next: () => void) {
   if (req.timedout) {

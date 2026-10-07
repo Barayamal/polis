@@ -8,18 +8,28 @@
 "use strict";
 
 import * as dotenv from "dotenv";
-dotenv.config();
+import { freshBootstrapStartup } from "./src/auth/fncp-bootstrap-startup";
+// A fresh helper must never silently load retained working-directory .env data.
+// Validate malformed opt-ins too: they cannot fall back to ordinary startup.
+if (process.env.FNCP_FRESH_BOOTSTRAP_LOCAL_ONLY === undefined &&
+    process.env.FNCP_OPTION_C_RELEASE_MODE === undefined) {
+  dotenv.config();
+} else if (process.env.FNCP_FRESH_BOOTSTRAP_LOCAL_ONLY !== undefined) {
+  freshBootstrapStartup(process.env);
+}
 
 import Promise from "bluebird";
 import express from "express";
 
 import server from "./src/server";
 import Config from "./src/config";
+import { createFncpApplicationReadiness } from "./src/auth/fncp-bootstrap-readiness";
 import { makeFileFetcher } from "./src/utils/file-fetcher";
 import logger from "./src/utils/logger";
 import { fetchIndexForConversation } from "./src/conversation";
 import { getPidForParticipant } from "./src/user";
 import { fncpGatewayMiddleware } from "./src/auth/fncp-gateway";
+import { createFncpProductionRouteBoundary } from "./src/auth/fncp-production-route-boundary";
 import {
   fncpLogBoundaryMiddleware,
   isFncpSensitiveRequest,
@@ -255,6 +265,7 @@ const HMAC_SIGNATURE_PARAM_NAME = "signature";
 // parsers can retain a private gateway credential, XID, invitation/session
 // token, or participant identifier.
 app.use(fncpLogBoundaryMiddleware);
+app.use(createFncpProductionRouteBoundary());
 
 // Dev-only http logger
 if (devMode) {
@@ -295,7 +306,10 @@ const helpersInitialized = new Promise(function (resolve) {
   resolve(server.initializePolisHelpers());
 });
 
-helpersInitialized.then(
+// A fresh owner must await all route/error-handler registration, not merely the
+// Express object or the helper bundle. This does not attest database health.
+export const appReady = createFncpApplicationReadiness(
+  helpersInitialized,
   function (o: any) {
     const {
       fetchIndexForAdminPage,
@@ -353,7 +367,10 @@ helpersInitialized.then(
     app.use(fncpGatewayMiddleware);
     app.use(writeDefaultHead);
 
-    app.use(createResponseCompression());
+    // Compression writes headers before end(), even for uncompressed JSON.
+    // The owned fresh admission boundary must validate the complete bounded
+    // response before any headers leave; ordinary application behavior stays.
+    if (!Config.freshBootstrapLocalOnly) app.use(createResponseCompression());
     app.use(middleware_log_request_body);
     app.use(middleware_log_middleware_errors);
 
@@ -2287,12 +2304,13 @@ helpersInitialized.then(
     // move app.listen to index.ts
   },
 
+  Config.freshBootstrapLocalOnly,
   function (err) {
     logger.error("failed to init server", err);
   }
 );
 
 // Initialize global process-level error handlers
-setupGlobalProcessHandlers();
+if (!Config.freshBootstrapLocalOnly) setupGlobalProcessHandlers();
 
 export default app;

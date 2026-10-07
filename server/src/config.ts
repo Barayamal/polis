@@ -1,6 +1,10 @@
 /* eslint-disable no-restricted-properties */
 import fs from "node:fs";
 import isTrue from "boolean";
+import { freshBootstrapStartup } from "./auth/fncp-bootstrap-startup";
+
+// Validate before configuration helpers can write credentials or import clients.
+const freshBootstrap = freshBootstrapStartup(process.env);
 
 const devHostname: string = process.env.API_DEV_HOSTNAME || "localhost:5000";
 const devMode: boolean = isTrue(process.env.DEV_MODE);
@@ -19,6 +23,10 @@ import("source-map-support").then((sourceMapSupport) => {
 });
 
 export default {
+  fncpDedicatedProduction: process.env.FNCP_OPTION_C_RELEASE_MODE === "production",
+  freshBootstrapLocalOnly: freshBootstrap?.localOnly === true,
+  freshBootstrapDatabaseCertificateSha256: freshBootstrap?.databaseCertificateSha256 || null,
+  freshBootstrapJwksCertificateSha256: freshBootstrap?.jwksCertificateSha256 || null,
   domainOverride,
   isDevMode: devMode,
   serverPort,
@@ -95,6 +103,7 @@ export default {
   ),
   cacheMathResults: isTrueOrBlank(process.env.CACHE_MATH_RESULTS),
   databaseSSL: isTrue(process.env.DATABASE_SSL),
+  databaseSslCaFile: process.env.DATABASE_SSL_CA_FILE,
   databaseURL: process.env.DATABASE_URL as string,
   ddEnv: process.env.DD_ENV as string,
   enableTelemetry: isTrue(process.env.ENABLE_TELEMETRY),

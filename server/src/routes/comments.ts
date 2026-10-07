@@ -1,6 +1,6 @@
 import _ from "underscore";
 import { ManagementClient } from "auth0";
-import { parse } from "csv-parse/sync";
+import { parseCsvRecords } from "../utils/csv-records";
 import badwords from "badwords/object";
 
 import { addParticipant } from "../participant";
@@ -91,11 +91,25 @@ function hasBadWords(txt: string) {
   return false;
 }
 
-const managementClient = new ManagementClient({
-  domain: Config.authDomain!,
-  clientId: Config.authClientId!,
-  clientSecret: Config.authClientSecret!,
-});
+let managementClient: ManagementClient | undefined;
+
+function assertAuth0ManagementAllowed(): void {
+  if (Config.freshBootstrapLocalOnly) {
+    throw new Error("polis_err_fncp_fresh_bootstrap_auth0_management_disabled");
+  }
+}
+
+function getManagementClient(): ManagementClient {
+  assertAuth0ManagementAllowed();
+  if (!managementClient) {
+    managementClient = new ManagementClient({
+      domain: Config.authDomain!,
+      clientId: Config.authClientId!,
+      clientSecret: Config.authClientSecret!,
+    });
+  }
+  return managementClient;
+}
 
 async function commentExists(zid: number, txt: string): Promise<boolean> {
   const rows = (await pg.queryP(
@@ -253,13 +267,17 @@ interface CommentModerationResult {
 }
 
 export async function isProConvo(owner: number): Promise<boolean> {
+  // Deny before reading owner data and outside the ordinary lookup catch: this
+  // profile must not reinterpret a forbidden external lookup as a non-Pro user.
+  assertAuth0ManagementAllowed();
   try {
     const { email } = await getUserInfoForUid2(owner);
     if (!email) {
       logger.warn(`No email found for owner ID: ${owner}`);
       return false;
     }
-    const users = await managementClient.usersByEmail.getByEmail({ email });
+    const client = getManagementClient();
+    const users = await client.usersByEmail.getByEmail({ email });
 
     if (!users || users.data.length === 0) {
       logger.warn(`No OIDC user found for email: ${email}`);
@@ -272,7 +290,7 @@ export async function isProConvo(owner: number): Promise<boolean> {
       logger.error(`OIDC user object for ${email} is missing a user_id.`);
       return false;
     }
-    const roles = await managementClient.users.getRoles({ id: userId });
+    const roles = await client.users.getRoles({ id: userId });
     const hasRole = roles.data.some((role) => role.name === "delphi-enabled");
 
     return hasRole;
@@ -866,10 +884,7 @@ async function handle_POST_comments_bulk(
       return;
     }
 
-    const records = parse(String(csv), {
-      columns: true,
-      skip_empty_lines: true,
-    });
+    const records = parseCsvRecords(String(csv));
 
     const results = [];
     let lastInteractionTime = new Date(0);

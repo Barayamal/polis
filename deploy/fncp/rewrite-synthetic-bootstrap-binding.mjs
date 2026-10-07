@@ -43,6 +43,12 @@ export async function rewriteSyntheticBootstrapBinding(
     readFile(conversationResponsePath, "utf8"),
   ]);
   const response = JSON.parse(rawResponse);
+  const statementIds = response?.statement_ids;
+  if (!Array.isArray(statementIds) || statementIds.length !== 15 ||
+      new Set(statementIds).size !== 15 ||
+      !statementIds.every((id) => Number.isSafeInteger(id) && id >= 0)) {
+    throw new Error("invalid fixed statement manifest");
+  }
   const createdId =
     response &&
     !Array.isArray(response) &&
@@ -75,6 +81,16 @@ export async function rewriteSyntheticBootstrapBinding(
     "FNCP_GATEWAY_CONVERSATION_ID",
     createdId
   );
+  // Older local configurations may predate this field. Never preserve an
+  // existing nonempty manifest while rebinding the conversation.
+  if (/^FNCP_FIXED_STATEMENT_IDS=/mu.test(updated)) {
+    if (exactValue(updated, "FNCP_FIXED_STATEMENT_IDS") !== "") {
+      throw new Error("statement manifest already bound");
+    }
+    updated = replaceExactValue(updated, "FNCP_FIXED_STATEMENT_IDS", statementIds.join(","));
+  } else {
+    updated += `\nFNCP_FIXED_STATEMENT_IDS=${statementIds.join(",")}\n`;
+  }
   updated = replaceExactValue(
     updated,
     "FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID",

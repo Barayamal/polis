@@ -85,6 +85,44 @@ describe("supported Express HTTP middleware", () => {
     });
   });
 
+  test("preserves duplicate fields, arrays and sparse indices with the patched qs parser", async () => {
+    const response = await request(createTestApp())
+      .post("/inspect")
+      .set("Content-Type", "application/x-www-form-urlencoded")
+      .send("choice=agree&choice=pass&rounds[]=one&rounds[]=two&nested[round]=test&items[999999]=sparse");
+
+    expect(response.status).toBe(200);
+    expect(response.body.body).toEqual({
+      choice: ["agree", "pass"],
+      rounds: ["one", "two"],
+      nested: { round: "test" },
+      items: { "999999": "sparse" },
+    });
+  });
+
+  test("does not turn prototype-shaped form fields into inherited properties", async () => {
+    const response = await request(createTestApp())
+      .post("/inspect")
+      .set("Content-Type", "application/x-www-form-urlencoded")
+      .send("__proto__[fncp_polluted]=yes&constructor[prototype][fncp_polluted]=yes&safe=retained");
+
+    expect(response.status).toBe(200);
+    expect(response.body.body.safe).toBe("retained");
+    expect(Object.prototype.hasOwnProperty.call(response.body.body, "__proto__")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(Object.prototype, "fncp_polluted")).toBe(false);
+    expect(({} as Record<string, unknown>).fncp_polluted).toBeUndefined();
+  });
+
+  test("keeps isBuffer-shaped nested input as ordinary form data", async () => {
+    const response = await request(createTestApp())
+      .post("/inspect")
+      .set("Content-Type", "application/x-www-form-urlencoded")
+      .send("constructor[isBuffer]=not-a-function&record[isBuffer]=false&record[value]=test");
+
+    expect(response.status).toBe(200);
+    expect(response.body.body.record).toEqual({ isBuffer: "false", value: "test" });
+  });
+
   test("compresses eligible responses", async () => {
     const app = createTestApp();
     const response = await request(app)

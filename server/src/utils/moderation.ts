@@ -24,9 +24,14 @@ async function loadFiles() {
   );
 }
 
-loadFiles();
+// The fresh fixed-seed bootstrap has no moderation or geolocation role. The
+// owned child starts from a fixed compiled directory, not an asset directory;
+// importing this module must not read prompts or dispatch external work there.
+if (!config.freshBootstrapLocalOnly) loadFiles();
 
 export async function getRegionFromIP(ip: string): Promise<string> {
+  if (config.freshBootstrapLocalOnly)
+    throw new Error("FNCP_FRESH_BOOTSTRAP_MODERATION_DISABLED");
   if (!ip) {
     return DEFAULT_REGION;
   }
@@ -63,6 +68,8 @@ async function analyzeComment(
   convo_topic: string,
   geographical_context?: string // ip address if available
 ) {
+  if (config.freshBootstrapLocalOnly)
+    throw new Error("FNCP_FRESH_BOOTSTRAP_MODERATION_DISABLED");
   try {
     const json = await convertXML(internal_config.fileContents);
     const finalGeographicalContext = geographical_context

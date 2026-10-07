@@ -9,6 +9,45 @@ record, invitation, vote or statement.
 
 Latest recorded evidence:
 
+- [14 September fresh WordPress-to-participant integration — latest](./LOCAL-C-PARTICIPANT-INTEGRATION-2026-09-14.md) — real WordPress/strict access/Pol.is, three native53 and independent protocol26 PASS; vote attribution, selective revocation, closed restart and logical recovery PASS. Final exact images scanned; vulnerable QA image excluded from deployment. Clock guard preserved, VM settings restored, all48 task containers and VM stopped. Production remains unfinished and KEEP_CLOSED.
+- [14 September actual fresh Linux container integration — historical bootstrap milestone](./LOCAL-C-CONTAINER-INTEGRATION-2026-09-14.md) — real Pol.is/PostgreSQL: 19/19 bootstrap requests, 15 synthetic seeds, final closed/gated state and independent SQL baseline PASS. All ten task containers and VM stopped. Each Node22/24/26: 1,936 foundation, 568 fresh server, 12 CSV; PHP59/TypeScript PASS. Fresh WordPress/participant integration and production assurance remain unfinished. KEEP_CLOSED.
+- [14 September fixed parent, issuer-bound bridge and Node22 assurance — historical 01:27 checkpoint](./LOCAL-C-BOOTSTRAP-PARENT-2026-09-14.md) — each Node22/24/26 passes 1,872 foundation, 556 fresh server and 12 CSV tests; PHP59 and TypeScript pass. Real issuer/parent/child/TLS composition with synthetic app; actual database/container ownership, Linux image/topology and fresh WordPress/Pol.is integration remain unfinished. KEEP_CLOSED.
+- [14 September HTTPS child entrypoint and transaction correction — historical 00:56 checkpoint](./LOCAL-C-BOOTSTRAP-ENTRYPOINT-2026-09-14.md) — each Node24/26 passes 1,843 foundation, 514 fresh server and 12 CSV tests; PHP59 and TypeScript pass. Owned host-loopback listener, fixed IPC child, public API trust and single-client OIDC transactions implemented. Concrete parent/container ownership, Node22/image and actual joined integration remain unfinished. KEEP_CLOSED.
+- [14 September fresh dependencies and admission — historical 00:24 checkpoint](./LOCAL-C-BOOTSTRAP-ADMISSION-2026-09-14.md) — 1,820 foundation, 417 fresh server and 12 CSV tests per Node runtime; PHP59. Separate lockfile-aligned dependencies, appReady, 19-request admission and public-only JWKS added here; older dependencies preserved.
+- [13 September preparatory startup and application TLS — historical 23:54 checkpoint](./LOCAL-C-BOOTSTRAP-STARTUP-2026-09-13.md) — 1,797 foundation and 335 server unit tests passed per Node runtime; PHP 59 passed. CSV was 9/12 with installed 5.6.0 versus locked 7.0.2; the later fresh install resolves that mismatch without overwriting the old tree. Startup/effect guards, strict app PG/JWKS TLS and cleanup/error fixes were implemented here.
+- [13 September database executor and owned-session composition — historical 23:16 checkpoint](./LOCAL-C-BOOTSTRAP-EXECUTOR-2026-09-13.md) — 1,788 tests on each Node 24/26 and 59 PHP checks PASS. Concrete pg/TLS transport and injected session composition implemented then; actual PostgreSQL/Pol.is runtime was NOT RUN. See the later startup/TLS report for current work and outstanding checks.
+- [13 September bootstrap HTTPS transport and database contract — historical 22:50 checkpoint](./LOCAL-C-BOOTSTRAP-TRANSPORT-2026-09-13.md) — 1,735 tests on each Node 24/26 and 59 PHP checks PASS. Real certificate-pinned HTTPS runs19 modeled API requests with verified synthetic JWTs; database SELECT/result contracts are source-tested only. Exact owned runtime integration, SQL execution, ordinary image, container TLS/topology and actual WordPress/Pol.is browser journey remain unfinished. KEEP_CLOSED.
+- [13 September fresh bootstrap protocol and local HTTPS issuer — earlier](./LOCAL-C-BOOTSTRAP-PROTOCOL-2026-09-13.md) — 1,670 tests on each Node24/26 and59 PHP checks. One-shot protocol/HTTP mapper is model-tested; host-loopback RS256/JWKS uses actual TLS and installed JWT-library tests. Cached-token revocation is not provided by issuer closure. No Docker/Pol.is/database request, VM start or native-browser integration; owned helper/image/schema/container TLS/topology remain unfinished. KEEP_CLOSED.
+- [13 September concrete Docker transport/preflight/lifecycle source — earlier](./LOCAL-C-DOCKER-ADAPTER-2026-09-13.md) — 1,620 tests on each Node24/26 and59 PHP checks. Fixed socket/empty client configuration, active callback authority, exact-ID ownership and cancellation/uncertain-result handling. That increment's real read-only preflight was BLOCKED; separate status found Colima stopped. Neither was repeated in the latest increment. No Docker mutation or VM start.
+- [13 September fresh-only self-hosting foundation — earlier](./LOCAL-C-FRESH-FOUNDATION-2026-09-13.md) — 1,549 tests on each Node24/26 and59 PHP checks. Fresh private ownership/configuration, guarded injected lifecycle, exact bootstrap-result validation and separate pristine WordPress source/preparation API. Official7.1 bytes passed memory-only verification in that earlier increment, not reacquired in the latest one. Concrete Docker adapters were then unimplemented; see the later report for current source progress.
+- [13 September two approved native browser accounts — earlier, not rerun in latest increment](./LOCAL-C-CROSS-ACCOUNT-2026-09-13.md) — 1,500 tests on each Node24/26 and59 PHP checks. Two-profile HTTPS proof passes30 checks plus27 nested strict assertions per runtime: valid forwarded invitations denied, unchanged rightful tokens accepted, both open sessions denied after both signed revocations. All14 final native journeys pass and all16 fresh profiles are removed. Actual strict service with modeled WordPress/Pol.is/invented issuer; no runtime access-rule change or production authority.
+- [Fresh actual WordPress/Pol.is runtime plan — partial source implementation](./LOCAL-C-FRESH-RUNTIME-PLAN-2026-09-13.md) — fresh ownership/source foundations implemented; actual integration NOT_RUN. Follow the new boundary rather than rerunning retained-state launch scripts unchanged.
+- [13 September native HTTPS through the strict service — earlier](./LOCAL-C-STRICT-NATIVE-HTTPS-2026-09-13.md) — 1,490 tests on each Node24/26 and59 PHP checks. Strict complete-vote and warm-revocation journeys each pass31 immediate/35 committed checks on each runtime; BFF-model27/31 regressions also pass. Actual strict access/activation and signed receipt/event boundaries, model WordPress/Pol.is/invented issuer. All strict runs end revoked with six ephemeral ports refused. No runtime access-rule change or production authority.
+- [13 September native HTTPS and shutdown assurance — earlier](./LOCAL-C-NATIVE-HTTPS-2026-09-13.md) — 1,483 tests on each Node24/26, 59 PHP checks; actual Chrome149 HTTPS journeys pass 27 immediate-redirect and31 committed-issuer-page checks on each runtime. Disposable profile-only trust, cancellation/replay denial, 28 native HTTP UI regressions, and two shutdown fixes. Invented issuer/models only; no actual WordPress/Pol.is retest, real identity or production authority.
+- [13 September native HTTP browser UI continuation — earlier](./LOCAL-C-NATIVE-BROWSER-2026-09-13.md) — 1,391 tests on each Node24/26, 59 PHP checks, and28 actual Chromium UI checks on each Node runtime. Historical failed HTTPS interception remains failed evidence; the later native HTTPS runner is separate.
+- [13 September HTTPS protocol redirect — earlier](./LOCAL-C-HTTPS-REDIRECT-2026-09-13.md) — 1,349 tests on each Node 24/26, 59 PHP checks; certificate-verified loopback TLS and invented issuer with modelled browser cookies/navigation. No real IdP or production authority.
+- [13 September dedicated strict local service — earlier](./LOCAL-C-STRICT-SERVICE-2026-09-13.md) — 1,154 tests on each of Node 24/26, 59 PHP checks; private operator authority, no HTTP test administration, all-service rollback/drain and 26-file pinned graph. Programmatic/local-only, not a production CLI or real login. No Docker, retained-store access, send or deployment.
+- [13 September receiver, lifecycle and source-package review — earlier](./LOCAL-C-SOURCE-CLOSURE-2026-09-13.md) — 1,012 tests on each of Node 24/26, 59 PHP checks; 24-file pinned first-party source graph, not a full release or deployable strict service. No Docker, retained-store access, send or deployment.
+- [13 September identity deadlines, actual local TLS and gateway admission — earlier](./LOCAL-C-NETWORK-HARDENING-2026-09-13.md) — 918 tests on each of Node 24/26, 59 PHP checks; invented issuer, no real browser redirect, Docker, retained-store change or deployment.
+- [13 September review ZIP, pre-start admission and browser process crash proof — earlier](./LOCAL-C-REVIEW-BUNDLE-2026-09-13.md) — 864 tests on each of Node 24/26, 59 PHP checks, independently checked local archive; no Docker, real identity or production deployment.
+- [13 September restored access cold start and whole-system review scope — earlier](./LOCAL-C-COLD-RESTART-REVIEW-2026-09-13.md) — 736 tests on each of Node 24/26, 59 PHP checks, actual closed restart and bounded offline inventory; not production or full restored-application assurance.
+- [13 September seamless registration and actual four-store recovery — earlier local increment](./LOCAL-C-SEAMLESS-RECOVERY-2026-09-13.md) — 611 Node / 59 PHP checks, 26 actual journey stages and closed data restore PASS; real login, production recovery and deployment remain unproved/unapproved.
+- [Expanded actual recovery procedure and exclusions](./expanded-recovery/README.md)
+- [13 September fresh WordPress registration bound to strict identity and actual Pol.is](./LOCAL-C-WORDPRESS-IDENTITY-2026-09-13.md)
+- [New registration/outbox protocol, local runner and limits](./wordpress-identity/README.md)
+- [Strict identity/activation recovery validator — model only, KEEP_CLOSED](./strict-recovery/README.md)
+- [13 September integrated signed identity, browser, approval and actual Pol.is journey](./LOCAL-C-INTEGRATED-2026-09-13.md)
+- [Strict integrated proof: run instructions and exact limitations](./integrated-journey/README.md)
+- [13 September identity, signed activation and three-store recovery increment](./LOCAL-C-FOUNDATIONS-2026-09-13.md)
+- [OIDC protocol foundation — synthetic only](./identity-foundation/README.md)
+- [Signed activation foundation — synthetic only](./activation-foundation/README.md)
+- [Coordinated three-store recovery procedure](./local-recovery/README-C-COORDINATED-RECOVERY.md)
+- [13 September actual local WordPress/browser journey](./LOCAL-C-JOURNEY-2026-09-13.md)
+- [WordPress/browser restart walkthrough](./local-wordpress-runtime/README.md)
+- [13 September local C implementation and test results](./LOCAL-C-IMPLEMENTATION-2026-09-13.md)
+- [13 September dependency review](./DEPENDENCY-REVIEW-2026-09-13.md)
+- [Local synthetic approval/invitation bridge](./local-access/README.md)
+- [Synthetic backup/isolated restore proof](./local-recovery/README.md)
 - [Disposable staging results observed through 28 July 2026](./STAGING-EVIDENCE-2026-07-26.md)
 - [D1 dependency reduction](./D1-DEPENDENCY-EVIDENCE-2026-07-28.md)
 - [D3 request-client migration](./D3-REQUEST-MIGRATION-EVIDENCE-2026-07-28.md)
@@ -147,9 +186,12 @@ removes its containers, network, certificate volume and temporary files.
 
 The local-only image evidence collector defaults to the five fork-owned Pol.is
 ARM64 release artifacts: API server, math worker, participant alpha, nginx
-proxy and the short-lived migration task. The planned production topology uses
-managed RDS, so PostgreSQL is infrastructure rather than an application
-release image. The disposable PostgreSQL and OIDC simulator images remain
+proxy and the short-lived migration task. That earlier five-image scope assumed
+managed RDS, but C1/C2/C3 remain unselected: it is not an owner-approved topology.
+PostgreSQL is classified as infrastructure in that particular scan scope, not
+excluded from the complete system's assurance obligations. New host-side access,
+identity, activation and WordPress components are also outside those five images.
+The disposable PostgreSQL and OIDC simulator images remain
 available only through the explicit `staging-seven` QA scope. The collector
 builds the math dependencies in the pinned Clojure image, but copies only the
 reviewed runtime closure into the separately pinned Temurin 17 JRE image; the
@@ -272,13 +314,17 @@ remain separate, mandatory work.
 
 ## Build and start
 
+These are build/recreate instructions, **not routine resume for the preserved
+13 September proof**. Use the current owner guide's no-build resume path for that
+stack. Do not rebuild or replace retained proof containers merely to view status.
+
 ```sh
-docker compose \
+docker --context colima-fncp-c-20260913 compose \
   --env-file deploy/fncp/.env.staging \
   -f deploy/fncp/docker-compose.staging.yml \
   build
 
-docker compose \
+docker --context colima-fncp-c-20260913 compose \
   --env-file deploy/fncp/.env.staging \
   -f deploy/fncp/docker-compose.staging.yml \
   up -d
@@ -288,17 +334,17 @@ When the repository is cloned below macOS `/tmp`, Colima cannot bind-mount
 the generated certificates from that path. Use the bounded local-only helper:
 
 ```sh
-./deploy/fncp/start-colima-staging.sh
+DOCKER_CONTEXT=colima-fncp-c-20260913 ./deploy/fncp/start-colima-staging.sh
 ```
 
 The helper removes only this Compose project's disposable containers, resets
 the two certificate bind mounts, rebuilds the exact local source with refreshed
-pinned bases, validates the generated participant `jwt-private.pem` and
-`jwt-public.pem`, and copies the disposable certificates and keys into the
-newly created containers before starting the same loopback-only stack. Before
-writing its continuation marker, it reads back the exact source-revision label
-from server, math, participant and proxy images and the dedicated release-mode
-label from server; a mismatch stops the stack. The keys are not added to a
+pinned bases, checks that required certificate/key files are present and nonempty,
+and creates stopped containers. It checks all four source-revision labels and the
+server's dedicated release-mode **before copying any keys/certificates or starting
+any service**. A mismatched label or failed inspection permits neither operation,
+even if a failed inspection printed a plausible value. Labels are assertions, not
+complete dirty-source or cryptographic image attestation. The keys are not added to a
 built image. The helper does not touch Docker objects outside the
 `fncp-polis-staging` project. It writes an ignored, non-secret
 `.colima-staging` marker so the bootstrap and activation helpers reuse the same
@@ -358,12 +404,17 @@ changed environment; use the activation helper.
 The smoke script then uses the already-created configured conversation. It
 adds and removes generated QA XIDs only through the private provider adapter,
 verifies exact readbacks, and exercises allowed, missing, invalid,
-OIDC-bypass, removed-XID and removed-warm-session paths. It prints statuses
+OIDC-bypass, removed-XID and removed-established-identity paths. It verifies the
+fifteen fixed synthetic statement IDs and negative suggestion, unknown-ID and
+invalid-vote requests. It prints statuses
 only and deletes its temporary token and response files on exit. Its Pol.is
 API requests supply `X-Forwarded-Proto: https` because this loopback check
 stands in for the reviewed TLS reverse-proxy boundary. A request without that
-secure-proxy signal is rejected. The synthetic conversation is closed at the
-end. Purge the disposable database volume after evidence is recorded.
+secure-proxy signal is rejected. It revokes only its own generated synthetic
+identity and leaves the shared synthetic conversation lifecycle unchanged so
+other local checks can still run. This trace does not test whole-round closure
+or genuine browser-session assurance. Stop the local services and purge the
+disposable database volume after all evidence is recorded.
 
 The clean cold-start matrix observed on 28 July 2026 passed: the allowlisted
 XID returned `200`; missing, invalid, OIDC-bypass, removed and warm-session
@@ -392,29 +443,31 @@ not install its CA as a system-wide trust anchor. Use an isolated browser
 profile for manual QA or pass
 `--cacert deploy/fncp/certs/rootCA.pem` to command-line checks.
 
-## Stop and purge
+## Stop and preserve the current proof
 
-Stop without deleting the disposable database:
-
-```sh
-docker compose \
-  --env-file deploy/fncp/.env.staging \
-  -f deploy/fncp/docker-compose.staging.yml \
-  down
-```
-
-After evidence has been reduced to non-identifying aggregate results, remove
-the disposable database volume:
+From this prepared clone, stop only the dedicated local stack. Preserve its
+containers, database volumes, source, private configuration and recovery evidence:
 
 ```sh
-docker compose \
+docker --context colima-fncp-c-20260913 compose \
+  -f deploy/fncp/local-wordpress-runtime/compose.yml stop
+docker --context colima-fncp-c-20260913 compose \
   --env-file deploy/fncp/.env.staging \
   -f deploy/fncp/docker-compose.staging.yml \
-  down --volumes
+  stop
+colima stop --profile fncp-c-20260913
 ```
 
-Then delete the ignored `.env.staging`, `.colima-staging`,
-`.synthetic-bootstrap-restart`, `certs/` and any raw QA logs.
+Stop any separately started host-side proof processes using their own controlled
+shutdown before stopping the VM. Do not assume container shutdown stops a host
+Node process. Verify the relevant listeners are closed afterward.
+
+There is **no routine purge step**. Reducing results to aggregate evidence does
+not authorize deleting source stores, archives, keys, configuration or logs.
+Any future cleanup needs a separate exact-target inventory and Dean's explicit
+approval, including the effect on recovery. Historical registration retention is
+a different workflow and supplies no deletion authority here. Never use a broad
+volume-removal or repository-cleanup command to stop or repair this proof.
 
 ## Production is a separate decision
 
@@ -429,8 +482,9 @@ requires, at minimum:
    revocation on every protected request;
 5. direct/native participant, report, export and admin-route denial at the
    public participant gateway;
-6. the six-route FNCP participant manifest passing its exact DB-backed and
-   browser trace suites: core reads, vote and statement writes succeed;
+6. the five-route fixed-statement participant manifest passing its exact
+   DB-backed and browser trace suites: core reads and fixed-statement votes
+   succeed, while participant statement suggestions/writes are denied;
    missing/removed identity, HEAD aliases and every unused route fail closed;
    staff routes retain normal authentication;
 7. a reviewed, component-aware dependency remediation and image/SBOM scan,

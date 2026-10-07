@@ -50,19 +50,17 @@ if [ -z "$oidc_container" ] || [ -z "$server_container" ]; then
   exit 1
 fi
 
-docker cp "$cert_dir/." "$oidc_container:/root/.simulacrum/certs/"
-docker cp -a "$cert_dir/rootCA.pem" "$server_container:/tmp/fncp-rootCA.pem"
-docker cp -a "$keys_dir" "$server_container:/app/keys"
-
-compose start
-
+# Inspect the created-but-stopped images before any service may listen. A
+# mismatched source or an ordinary upstream server must never run briefly
+# while this admission check decides whether the staging stack is acceptable.
+# Rejected images also receive no disposable certificate or signing-key copies.
 expected_source_revision="$(git rev-parse HEAD)"
 for service in server math client-participation-alpha nginx-proxy; do
-  image_id="$(compose images -q "$service")"
-  if [ -z "$image_id" ] ||
-    [ "$(docker image inspect "$image_id" \
-      --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" \
-      != "$expected_source_revision" ]
+  if ! image_id="$(compose images -q "$service")" ||
+    [ -z "$image_id" ] ||
+    ! image_revision="$(docker image inspect "$image_id" \
+      --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" ||
+    [ "$image_revision" != "$expected_source_revision" ]
   then
     compose stop >/dev/null 2>&1 || true
     echo "Disposable image source verification failed for $service." >&2
@@ -70,14 +68,20 @@ for service in server math client-participation-alpha nginx-proxy; do
   fi
 done
 server_image_id="$(compose images -q server)"
-if [ "$(docker image inspect "$server_image_id" \
-  --format '{{ index .Config.Labels "org.barayamal.fncp.release-mode" }}')" \
-  != "production" ]
+if ! release_mode="$(docker image inspect "$server_image_id" \
+  --format '{{ index .Config.Labels "org.barayamal.fncp.release-mode" }}')" ||
+  [ "$release_mode" != "production" ]
 then
   compose stop >/dev/null 2>&1 || true
   echo "Dedicated server release-mode verification failed." >&2
   exit 1
 fi
+
+docker cp "$cert_dir/." "$oidc_container:/root/.simulacrum/certs/"
+docker cp -a "$cert_dir/rootCA.pem" "$server_container:/tmp/fncp-rootCA.pem"
+docker cp -a "$keys_dir" "$server_container:/app/keys"
+
+compose start
 
 marker_temp="$(mktemp "$colima_marker.XXXXXX")"
 trap 'rm -f "$marker_temp"' EXIT INT TERM

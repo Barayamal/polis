@@ -37,6 +37,7 @@ jobs:
           sh -n deploy/fncp/collect-image-security-evidence.sh
           sh -n deploy/fncp/prepare-staging.sh
           sh -n deploy/fncp/smoke-test.sh
+          sh -n deploy/fncp/start-colima-staging.sh
           sh -n deploy/fncp/verify-staging.sh
           node --check deploy/fncp/rewrite-synthetic-bootstrap-binding.mjs
           sh -n server/bin/fncp-run-migrations.sh
@@ -45,13 +46,31 @@ jobs:
         run: |
           node --test \
             deploy/fncp/audit-production-dependencies.test.mjs \
+            deploy/fncp/busybox-remediation.test.mjs \
+            deploy/fncp/generate-busybox-openvex.test.mjs \
+            deploy/fncp/runtime-dependency-remediation.test.mjs \
             deploy/fncp/deployment-boundary.test.mjs \
             deploy/fncp/github-workflow-security.test.mjs \
             deploy/fncp/image-security-evidence.test.mjs \
             deploy/fncp/migration-image.test.mjs \
             deploy/fncp/production-admission-boundary.test.mjs \
             deploy/fncp/provider-allowlist-boundary.test.mjs \
-            deploy/fncp/synthetic-bootstrap-boundary.test.mjs
+            deploy/fncp/synthetic-bootstrap-boundary.test.mjs \
+            deploy/fncp/dependency-patch-boundary.test.mjs \
+            deploy/fncp/fixed-seed-bootstrap.test.mjs \
+            deploy/fncp/fixed-statement-smoke-boundary.test.mjs \
+            deploy/fncp/start-colima-staging.test.mjs \
+            deploy/fncp/fresh-bootstrap-result.test.mjs \
+            deploy/fncp/fresh-runtime/*.test.mjs \
+            deploy/fncp/local-access/*.test.mjs \
+            deploy/fncp/activation-foundation/*.test.mjs \
+            deploy/fncp/local-browser/*.test.mjs \
+            deploy/fncp/local-wordpress-runtime/*.test.mjs \
+            deploy/fncp/local-recovery/*.test.mjs \
+            deploy/fncp/release-review/*.test.mjs
+
+      - name: Validate locked local proof source closure
+        run: node deploy/fncp/release-review/proof-closure.mjs
 
       - name: Reject whitespace errors
         run: |
@@ -60,6 +79,39 @@ jobs:
           else
             git show --check --format= HEAD
           fi
+
+  identity-protocol:
+    name: Synthetic OIDC protocol foundation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+      - name: Install isolated locked identity dependencies
+        working-directory: deploy/fncp/identity-foundation
+        run: npm ci --ignore-scripts --no-fund
+      - name: Verify local TLS test prerequisite
+        run: openssl version
+      - name: Run synthetic protocol and loopback TLS tests
+        working-directory: deploy/fncp/identity-foundation
+        run: npm test
+      - name: Run integrated synthetic browser and approval journey
+        run: node --test deploy/fncp/integrated-journey/*.test.mjs deploy/fncp/wordpress-identity/*.test.mjs deploy/fncp/strict-recovery/*.test.mjs deploy/fncp/expanded-recovery/*.test.mjs deploy/fncp/strict-service/*.test.mjs
+      - name: Test disposable browser harness boundaries without launching a browser
+        run: node --test deploy/fncp/browser-engine-boundary.test.mjs deploy/fncp/browser-engine/*.test.mjs
+      - name: Run synthetic WordPress registration and approval contracts
+        run: |
+          php deploy/fncp/wordpress-identity/tests.php
+          php deploy/fncp/wordpress-local/tests.php
+          php deploy/fncp/wordpress-local/plugin-boundary-tests.php
 
   server:
     name: Server build and query safety
@@ -135,6 +187,10 @@ jobs:
           npm run test:unit --
           --config jest.fncp.config.ts
           --runInBand
+
+      - name: Verify the upgraded local watcher
+        working-directory: server
+        run: node --test ../deploy/fncp/nodemon-migration-smoke.mjs
 
       - name: Run isolated PostgreSQL integrations
         working-directory: server
@@ -215,6 +271,39 @@ jobs:
           --entrypoint clojure
           fncp-math-ci:${{ github.sha }}
           -M:test
+
+  production-source:
+    name: Private production source and loopback contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: Install pinned participant identity test dependencies
+        working-directory: deploy/fncp/production-identity
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Verify private source, fixed relay, invitation and recovery contracts
+        run: >-
+          node --test
+          deploy/fncp/production-*/*.test.mjs
+          deploy/fncp/production-deployment/wordpress-runtime/*.test.mjs
+          deploy/fncp/release-readiness/*.test.mjs
+
+      - name: Verify production WordPress contract and plugin models
+        run: |
+          php deploy/fncp/production-wordpress/tests.php
+          php deploy/fncp/production-wordpress/plugin-tests.php
 
   runtime-images:
     name: Runtime image (${{ matrix.service }})
@@ -319,9 +408,9 @@ jobs:
               docker run --rm --entrypoint sh "$IMAGE" -euc '
                 test "$(id -u)" -ne 0
                 test "$FNCP_OPTION_C_RELEASE_MODE" = production
-                apk info --exists "libpq=18.4-r0"
-                apk info --exists "openssl=3.5.7-r0"
-                apk info --exists "ca-certificates=20260611-r0"
+                apk info --exists "libpq=18.6-r0"
+                apk info --exists "openssl=3.5.8-r0"
+                apk info --exists "ca-certificates=20260909-r0"
                 test -r /app/dist/index.js
                 test -r /app/src/prompts/moderation/script.xml
                 test -r /app/src/prompts/report_experimental/system.xml
@@ -480,19 +569,23 @@ jobs:
   fncp-pr-gate:
     name: FNCP PR gate
     if: always()
-    needs: [contracts, server, participant-alpha, math, runtime-images]
+    needs: [contracts, identity-protocol, production-source, server, participant-alpha, math, runtime-images]
     runs-on: ubuntu-24.04
     permissions: {}
     steps:
       - name: Require every synthetic-only check
         env:
           CONTRACTS: ${{ needs.contracts.result }}
+          IDENTITY_PROTOCOL: ${{ needs.identity-protocol.result }}
+          PRODUCTION_SOURCE: ${{ needs.production-source.result }}
           SERVER: ${{ needs.server.result }}
           PARTICIPANT_ALPHA: ${{ needs.participant-alpha.result }}
           MATH: ${{ needs.math.result }}
           RUNTIME_IMAGES: ${{ needs.runtime-images.result }}
         run: |
           test "$CONTRACTS" = success
+          test "$IDENTITY_PROTOCOL" = success
+          test "$PRODUCTION_SOURCE" = success
           test "$SERVER" = success
           test "$PARTICIPANT_ALPHA" = success
           test "$MATH" = success

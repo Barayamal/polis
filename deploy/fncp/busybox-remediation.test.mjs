@@ -37,6 +37,7 @@ test("all five Alpine release Dockerfiles replace BusyBox", async () => {
       path,
     );
     assert.match(source, /build-base=0\.5-r4/u, path);
+    assert.match(source, /curl=8\.22\.0-r0/u, path);
     assert.match(source, /utmps-static=0\.1\.3\.3-r0/u, path);
     assert.match(
       source,

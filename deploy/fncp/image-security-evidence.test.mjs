@@ -55,6 +55,10 @@ const mathDockerfile = readFileSync(
   join(repositoryRoot, "math", "Dockerfile"),
   "utf8",
 );
+const migrationDockerfile = readFileSync(
+  join(repositoryRoot, "server", "Dockerfile-migrate"),
+  "utf8",
+);
 const mathRunScript = readFileSync(
   join(repositoryRoot, "math", "bin", "run"),
   "utf8",
@@ -659,11 +663,11 @@ test("PR gate builds and inspects every runtime image without publication action
   );
   assert.match(
     ciWorkflow,
-    /needs: \[contracts, server, participant-alpha, math, runtime-images\]/u,
+    /needs: \[contracts, identity-protocol, production-source, server, participant-alpha, math, runtime-images\]/u,
   );
   assert.equal(
     [...ciWorkflow.matchAll(/persist-credentials: false/gu)].length,
-    5,
+    [...ciWorkflow.matchAll(/uses: actions\/checkout@/gu)].length,
     "every checkout must keep its GitHub credential out of build contexts",
   );
 });
@@ -749,13 +753,15 @@ test("server final runtime prunes direct development dependencies", () => {
 
 test("server Alpine packages are exact-version pinned in every stage", () => {
   for (const [specification, expectedOccurrences] of [
-    ["libpq-dev=18.4-r0", 2],
+    ["libpq-dev=18.6-r0", 2],
     ["g++=15.2.0-r5", 2],
     ["make=4.4.1-r4", 2],
-    ["python3=3.14.5-r0", 2],
-    ["libpq=18.4-r0", 1],
-    ["openssl=3.5.7-r0", 1],
-    ["ca-certificates=20260611-r0", 1],
+    ["python3=3.14.7-r1", 2],
+    ["libpq=18.6-r0", 1],
+    ["openssl=3.5.8-r0", 1],
+    ["libcrypto3=3.5.8-r0", 1],
+    ["libssl3=3.5.8-r0", 1],
+    ["ca-certificates=20260909-r0", 1],
   ]) {
     assert.equal(
       serverDockerfile.split(specification).length - 1,
@@ -767,12 +773,49 @@ test("server Alpine packages are exact-version pinned in every stage", () => {
     serverDockerfile,
     /(?:^|\s)(?:libpq-dev|g\+\+|make|python3|libpq|openssl|ca-certificates)(?=\s|\\)/mu,
   );
-  assert.match(ciWorkflow, /apk info --exists "libpq=18\.4-r0"/u);
-  assert.match(ciWorkflow, /apk info --exists "openssl=3\.5\.7-r0"/u);
+  assert.match(ciWorkflow, /apk info --exists "libpq=18\.6-r0"/u);
+  assert.match(ciWorkflow, /apk info --exists "openssl=3\.5\.8-r0"/u);
   assert.match(
     ciWorkflow,
-    /apk info --exists "ca-certificates=20260611-r0"/u,
+    /apk info --exists "ca-certificates=20260909-r0"/u,
   );
+});
+
+test("production runtime patches preserve exact Node and OpenSSL security pins", () => {
+  const node22 = imageSecurityLock.baseImages.find(({ component }) => component === "server");
+  assert.equal(node22.tag, "docker.io/library/node:22.23.2-alpine");
+  assert.equal(node22.indexDigest, "sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32");
+  const node24Images = imageSecurityLock.baseImages.filter(({ tag }) => tag.startsWith("docker.io/library/node:24.") && tag.endsWith("-alpine"));
+  assert.equal(node24Images.length, 5);
+  for (const image of node24Images) {
+    assert.equal(image.tag, "docker.io/library/node:24.18.1-alpine");
+    assert.equal(image.indexDigest, "sha256:f70403e87646dc51b45295f4b8b70cdad0b63d2297c4c9899119b03f7af7a6b3");
+  }
+  const runtimeBoundaries = [
+    [serverDockerfile, " AS prod"],
+    [alphaDockerfile, " AS runtime"],
+    [mathDockerfile, " AS runtime"],
+    [proxyDockerfile, "FROM docker.io/library/nginx:"],
+    [migrationDockerfile, "FROM docker.io/library/postgres:"],
+  ];
+  for (const [source, boundary] of runtimeBoundaries) {
+    const offset = source.indexOf(boundary);
+    assert.ok(offset >= 0);
+    const runtime = source.slice(offset);
+    assert.match(runtime, /libcrypto3=3\.5\.8-r0/u);
+    assert.match(runtime, /libssl3=3\.5\.8-r0/u);
+    assert.match(runtime, /COPY --from=fncp-busybox-fixed \/out\/busybox \/bin\/busybox/u);
+    assert.match(runtime, /Unencoded control character found in the URL!/u);
+    assert.doesNotMatch(runtime, /(?:libcrypto3|libssl3)=3\.5\.7-r0/u);
+  }
+});
+
+test("migration runtime pins the complete patched libuuid revision", () => {
+  const runtime = migrationDockerfile.slice(migrationDockerfile.indexOf("FROM docker.io/library/postgres:"));
+  assert.match(runtime, /libuuid=2\.42\.3-r1/u);
+  assert.doesNotMatch(runtime, /libuuid=2\.42\.(?:1-r0|3-r0)/u);
+  assert.match(runtime, /USER postgres/u);
+  assert.match(runtime, /ENTRYPOINT \["\/usr\/local\/bin\/fncp-run-migrations"\]/u);
 });
 
 test("production Node dependency installs use no persistent build cache", () => {
@@ -915,7 +958,7 @@ test("participant runtime evidence rejects Sharp and esbuild package families", 
   assert.match(collector, /FNCP_EXPECTED_ALPINE_PACKAGES/u);
   assert.match(
     collector,
-    /libpq=18\.4-r0,openssl=3\.5\.7-r0,ca-certificates=20260611-r0/u,
+    /libpq=18\.6-r0,openssl=3\.5\.8-r0,ca-certificates=20260909-r0/u,
   );
   assert.match(collector, /\/lib\/apk\/db\/installed/u);
   assert.match(collector, /alpinePackageMismatches/u);
@@ -1003,7 +1046,7 @@ test("math worker crosses only its runtime closure into a non-root stage", () =>
   );
   assert.match(
     mathDockerfile,
-    /ca-certificates-bundle=20260611-r0/u,
+    /ca-certificates-bundle=20260909-r0/u,
   );
   assert.match(mathDockerfile, /zlib=1\.3\.2-r0/u);
   assert.match(
@@ -1159,10 +1202,7 @@ test("nginx slim evidence is internally consistent and preserves the wider no-go
   assert.equal(nginxSlimEvidence.overallOptionCGate, "fail");
 });
 
-test("alpha runtime evidence is internally consistent and preserves the wider no-go", () => {
-  const alphaLock = imageSecurityLock.baseImages.find(
-    ({ component }) => component === "client-participation-alpha",
-  );
+test("historical alpha runtime evidence preserves its original subject and wider no-go", () => {
   const severityTotal = Object.values(
     alphaRuntimeEvidence.scan.severities,
   ).reduce((sum, count) => sum + count, 0);
@@ -1180,14 +1220,16 @@ test("alpha runtime evidence is internally consistent and preserves the wider no
     alphaRuntimeEvidence.source.platform,
     imageSecurityLock.buildPlatform,
   );
-  assert.equal(alphaRuntimeEvidence.candidate.baseTag, alphaLock.tag);
+  // This July evidence is immutable history, not the patched September image.
+  // Current Dockerfile/lock alignment is verified independently above.
+  assert.equal(alphaRuntimeEvidence.candidate.baseTag, "docker.io/library/node:24-alpine");
   assert.equal(
     alphaRuntimeEvidence.candidate.baseIndexDigest,
-    alphaLock.indexDigest,
+    "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
   );
   assert.equal(
     alphaRuntimeEvidence.candidate.baseArm64Digest,
-    alphaLock.arm64Digest,
+    "sha256:eef73a25205e27bd016ce672af71560ad6b681142ddf00ff63c7b3098eafcd4d",
   );
   assert.equal(
     alphaRuntimeEvidence.tooling.syft.version,

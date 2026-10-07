@@ -1,5 +1,13 @@
 # Polis
 
+## Barayamal Community Pulse — latest review snapshot
+
+This review branch preserves the latest tested Build C source and [current Community Pulse direction](docs/community-pulse-build-c/README.md). The purpose now covers First Nations views on community issues and policies. Dean selected **Remove WordPress**; the [native migration plan](docs/community-pulse-build-c/NATIVE-MIGRATION-PLAN-2026-10-07.md) is prepared, with execution pending exact approval.
+
+The source here remains WordPress-dependent. The earlier working snapshot passed 2,949 local source tests; it is not an implemented native approval service or a newly qualified release. Fresh installed journey, image/scan/recovery qualification and separately approved staging remain outstanding. No branch/PR check authorizes deployment or opening.
+
+The upstream guide below is preserved. Updating the repository snapshot does not merge the newer upstream math/database architecture into the pinned pilot.
+
 Polis is an AI powered sentiment gathering platform. More organic than surveys and less effort than focus groups.
 
 For a detailed methods paper, see [Polis: Scaling Deliberation by Mapping High Dimensional Opinion Spaces][methods-paper].

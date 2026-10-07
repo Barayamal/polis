@@ -25,6 +25,10 @@ const conversationId = "4fncpintegration";
 function productionEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return {
     NODE_ENV: "production",
+    FNCP_FIXED_STATEMENT_IDS: Array.from({ length: 15 }, (_, i) => i).join(","),
+    DATABASE_URL: "postgres://runtime:invented@database.invalid:5432/polis",
+    DATABASE_SSL: "true",
+    DATABASE_SSL_CA_FILE: "/run/fncp/ca.pem",
     FNCP_OPTION_C_RELEASE_MODE: "production",
     FNCP_GATEWAY_ENFORCEMENT: "true",
     FNCP_GATEWAY_CONVERSATION_ID: conversationId,

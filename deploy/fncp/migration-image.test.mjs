@@ -49,6 +49,16 @@ function composeServiceBlock(serviceName) {
   return match[0];
 }
 
+function assertReviewedRuntimeApkInstall(stage) {
+  const normalized = stage.replace(/\\\r?\n\s*/gu, " ");
+  const installs = normalized.split(/\r?\n/u)
+    .filter((line) => /\bapk\s+add\b/u.test(line))
+    .map((line) => line.trim().replace(/\s+/gu, " "));
+  assert.deepEqual(installs, [
+    "RUN apk add --no-cache libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 libuuid=2.42.3-r1",
+  ]);
+}
+
 test("migration image is digest-pinned, source-bound and non-root by default", () => {
   assert.match(
     dockerfile,
@@ -129,7 +139,19 @@ test("migration image is digest-pinned, source-bound and non-root by default", (
   assert.match(dockerfile, /test -x \/usr\/local\/bin\/psql/u);
   assert.match(dockerfile, /rm -rf \/docker-entrypoint-initdb\.d/u);
   assert.match(dockerfile, /^FROM .+ AS fncp-busybox-fixed$/mu);
-  assert.doesNotMatch(finalImageStage, /\bapk add\b/u);
+  assertReviewedRuntimeApkInstall(finalImageStage);
+});
+
+test("migration runtime package boundary permits only the three reviewed security pins", () => {
+  assert.doesNotThrow(() => assertReviewedRuntimeApkInstall(finalImageStage));
+  for (const changed of [
+    finalImageStage.replace("libuuid=2.42.3-r1", "libuuid=2.42.3-r1 g++ make"),
+    finalImageStage.replace("libssl3=3.5.8-r0", "libssl3"),
+    finalImageStage.replace("libuuid=2.42.3-r1", "libuuid=2.42.3-r0"),
+    `${finalImageStage}\nRUN apk add --no-cache build-base\n`,
+  ]) {
+    assert.throws(() => assertReviewedRuntimeApkInstall(changed));
+  }
 });
 
 test("image includes only immutable top-level migrations", () => {

@@ -1,0 +1,39 @@
+name: fncp-wordpress-synthetic
+services:
+  db:
+    image: mysql:8.4.11@sha256:85b9bf2e29cf836ecb8c2a15a935d4ba0c606631dff1dd79531a11983c638f2a
+    restart: "no"
+    environment:
+      MYSQL_DATABASE: fncp_wp_synthetic
+      MYSQL_USER: fncp_wp_synthetic
+      MYSQL_PASSWORD_FILE: /run/secrets/db-password
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/root-password
+    secrets:
+      - db-password
+      - root-password
+    ports:
+      - "127.0.0.1:33079:3306"
+    volumes:
+      - wp-synthetic-db:/var/lib/mysql
+    networks:
+      - host-loopback
+    labels:
+      org.barayamal.fncp.purpose: synthetic-wordpress-only
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+networks:
+  host-loopback:
+    # Docker internal networks suppress published ports in this daemon; a new
+    # dedicated bridge permits the host PHP client through loopback only.
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"
+volumes:
+  wp-synthetic-db:
+secrets:
+  db-password:
+    file: .runtime/db-password
+  root-password:
+    file: .runtime/root-password

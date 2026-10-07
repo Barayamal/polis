@@ -1,0 +1,11 @@
+{
+  "name": "fncp-identity-foundation",
+  "version": "0.0.0-local",
+  "private": true,
+  "type": "module",
+  "description": "Isolated synthetic-only OIDC protocol foundation; not integrated production authentication",
+  "engines": { "node": ">=22" },
+  "scripts": { "test": "node --test *.test.mjs" },
+  "dependencies": { "openid-client": "6.8.8" },
+  "devDependencies": { "jose": "6.2.12" }
+}

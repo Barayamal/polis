@@ -1,8 +1,8 @@
-FROM docker.io/library/node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS fncp-busybox-fixed
+FROM docker.io/library/node:24.18.1-alpine@sha256:f70403e87646dc51b45295f4b8b70cdad0b63d2297c4c9899119b03f7af7a6b3 AS fncp-busybox-fixed
 
 RUN apk add --no-cache \
   build-base=0.5-r4 \
-  curl=8.21.0-r0 \
+  curl=8.22.0-r0 \
   file=5.47-r2 \
   linux-headers=7.0.0-r1 \
   patch=2.8-r0 \
@@ -23,6 +23,7 @@ RUN case "$SOURCE_REVISION" in \
 LABEL org.barayamal.fncp.busybox.remediation="CVE-2025-60876-upstream-patch" \
       org.opencontainers.image.source="https://github.com/Barayamal/polis" \
       org.opencontainers.image.revision="${SOURCE_REVISION}"
+RUN apk add --no-cache libcrypto3=3.5.8-r0 libssl3=3.5.8-r0
 COPY --from=fncp-busybox-fixed /out/busybox /bin/busybox
 RUN set -eu; \
   test "$(readlink -f /bin/sh)" = /bin/busybox; \

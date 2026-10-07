@@ -35,6 +35,23 @@ const expectedWorkflowFiles = [
   "test-clojure.yml",
 ];
 
+test("Option C CI includes all three directly related PHP suites and release inventory checks", () => {
+  const source = workflows["fncp-option-c-ci.yml"];
+  for (const suite of ["wordpress-identity/tests.php", "wordpress-local/tests.php", "wordpress-local/plugin-boundary-tests.php"]) {
+    assert.equal(source.split(`php deploy/fncp/${suite}`).length - 1, 1, `exactly one required ${suite} command`);
+  }
+  assert.ok(source.includes("deploy/fncp/release-review/*.test.mjs"));
+  assert.ok(source.includes("node deploy/fncp/release-review/proof-closure.mjs"));
+  assert.ok(source.includes("deploy/fncp/expanded-recovery/*.test.mjs"));
+  assert.ok(source.includes("deploy/fncp/strict-service/*.test.mjs"));
+  assert.ok(source.includes("sh -n deploy/fncp/start-colima-staging.sh"));
+  assert.ok(source.includes("deploy/fncp/start-colima-staging.test.mjs"));
+  assert.ok(source.includes("run: openssl version"));
+  assert.ok(source.includes("Run synthetic protocol and loopback TLS tests"));
+  const identityPackage = JSON.parse(readFileSync(join(repositoryRoot, "deploy/fncp/identity-foundation/package.json"), "utf8"));
+  assert.equal(identityPackage.scripts.test, "node --test *.test.mjs");
+});
+
 // Each commit and release was resolved from the action's official GitHub
 // repository on 29 July 2026. "composite-node24-reviewed" means the composite
 // action itself has no JavaScript runtime and any nested JavaScript action was
@@ -133,6 +150,8 @@ const expectedJobPermissions = {
   },
   "fncp-option-c-ci.yml": {
     contracts: { contents: "read" },
+    "identity-protocol": { contents: "read" },
+    "production-source": { contents: "read" },
     server: { contents: "read" },
     "participant-alpha": { contents: "read" },
     math: { contents: "read" },

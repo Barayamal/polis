@@ -1,6 +1,6 @@
 import { GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { Readable } from "stream";
-import { parse } from "csv-parse";
+import { createVoteImportCsvParser } from "../utils/csv-records";
 import { S3Client, S3ClientConfig } from "@aws-sdk/client-s3";
 import pg from "../db/pg-query";
 import logger from "../utils/logger";
@@ -64,13 +64,7 @@ export async function processImportJob(payload: {
     let batch: any[] = [];
 
     await new Promise<void>((resolve, reject) => {
-      const parser = stream.pipe(
-        parse({
-          columns: true,
-          trim: true,
-          skip_empty_lines: true,
-        })
-      );
+      const parser = stream.pipe(createVoteImportCsvParser());
 
       parser
         .on("data", (row: ImportRow) => {

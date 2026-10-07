@@ -163,7 +163,7 @@ for service in server client-participation-alpha oidc-simulator; do
       check_keys=1
       check_npm=1
       check_alpha_build_tools=0
-      expected_alpine_packages="libpq=18.4-r0,openssl=3.5.7-r0,ca-certificates=20260611-r0"
+      expected_alpine_packages="libpq=18.6-r0,openssl=3.5.8-r0,ca-certificates=20260909-r0"
       ;;
     client-participation-alpha)
       # Astro resolves TypeScript through production dependencies (tsconfck and

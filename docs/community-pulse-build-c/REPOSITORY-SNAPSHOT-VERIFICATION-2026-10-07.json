@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-07",
+  "timezone": "Australia/Sydney",
+  "classification": "REVIEW_SOURCE_SNAPSHOT_NOT_A_RELEASE",
+  "reviewBranch": "codex/community-pulse-build-c-20261007",
+  "githubRepository": "Barayamal/polis",
+  "reviewBase": "2898471efe889976670b09977ca6c08946dc04d9",
+  "importedSnapshot": {
+    "localBaseRevision": "9fccfec82797573dd5c873f1dee761378dff3706",
+    "prePortabilitySourceFingerprint": "4730e2988791cafdeab55003f3cc13e38a783a8bc1d09650cf1020af9e8023d3",
+    "sourceFiles": 1995,
+    "unrelatedExportHistory": true,
+    "sourceBytesVerifiedBeforePortableDocumentationEdits": true
+  },
+  "verification": {
+    "node": "24.19.0",
+    "nodeUsedForRunnerAndSpawnedTools": true,
+    "testConcurrency": 4,
+    "testFiles": 140,
+    "tests": 2949,
+    "passed": 2949,
+    "failed": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "phpContractTests": 21,
+    "phpPluginModelTests": 11,
+    "phpSyntaxFiles": 3,
+    "proofClosureSourceFiles": 27,
+    "workflowSecurityTests": 14,
+    "whitespace": "PASS",
+    "changedFileCredentialReview": "PASS"
+  },
+  "scope": {
+    "wordpressDependentRuntimePreserved": true,
+    "wordpressFreeTargetSelected": true,
+    "nativeAuthorityMigrationApproved": false,
+    "nativeAuthorityImplemented": false,
+    "audienceDecision": "PENDING",
+    "liveFncpParticipantRecordsAccessed": false,
+    "newResponseCorpusIncluded": false,
+    "defaultBranchUpdated": false,
+    "imagesBuiltOrScanned": false,
+    "installedJourneyQualified": false,
+    "realProviderVerified": false,
+    "deploymentOrLaunchAuthorized": false
+  },
+  "exclusions": {
+    "exportExcludedTrackedFiles": [
+      "file-server/nginx/certs/snakeoil.cert.pem",
+      "file-server/nginx/certs/snakeoil.key.pem",
+      "math/data/legalization_conv.json"
+    ],
+    "originalsRecoverableFromGitHistory": true,
+    "privateRuntimeMaterialExcluded": true,
+    "workstationPathsMadePortableInHistoricalDocs": true,
+    "unavailableHistoricalArtifactsClearlyLabelled": true
+  },
+  "notes": [
+    "Initial fresh-clone tests were incomplete until locked server dependencies were installed.",
+    "A later source-manifest check correctly rejected still-indexed removed files; intended deletions were staged, the guard was preserved and the final full run passed.",
+    "Inherited upstream sample files not changed by this update remain outside the Community Pulse participant-data scope. No live participant store was queried.",
+    "The historical4730 fingerprint predates portable documentation changes and is not the digest of this review commit. Local source checks do not replace hosted CI or image/runtime assurance."
+  ]
+}

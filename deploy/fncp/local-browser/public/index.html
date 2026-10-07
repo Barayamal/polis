@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Community Pulse · Local synthetic proof</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the local proof</a>
+  <header class="masthead"><div class="brand">BARAYAMAL<span>COMMUNITY PULSE</span></div><span class="badge">SYNTHETIC ONLY</span></header>
+  <main id="main" class="layout">
+    <section class="intro" aria-labelledby="title">
+      <p class="eyebrow">OPTION C · SELF-HOSTED LOCAL PROOF</p>
+      <h1 id="title">Your account.<br> Your choice.<br> A closed round.</h1>
+      <p class="lede">Try the account-bound journey using invented test credentials. This is a local demonstration, not a public consultation.</p>
+      <div class="boundary"><h2>Test data only</h2><p>Mailbox ownership and Indigenous heritage are <strong>not verified</strong>. No real email or SMS is sent. Public Community Pulse surfaces remain closed.</p></div>
+      <ol class="steps" aria-label="Participation stages">
+        <li id="step-login" aria-current="step"><span>1</span><div>Sign in<small>Private synthetic fixture</small></div></li>
+        <li id="step-register" hidden><span>2</span><div>Register<small>Separate approval still required</small></div></li>
+        <li id="step-invite"><span id="number-invite">3</span><div>Redeem invitation<small>Single-use and account-bound</small></div></li>
+        <li id="step-vote"><span id="number-vote">4</span><div>Respond<small>15 fixed statements, no submissions</small></div></li>
+      </ol>
+    </section>
+    <section id="workspace" class="workspace" aria-labelledby="panel-title">
+      <div class="panel-top"><p class="eyebrow">LOCALHOST · PRIVATE TEST SESSION</p><button id="logout" class="text-button" type="button" hidden>Log out</button></div>
+      <h2 id="panel-title">Start with your synthetic account</h2>
+      <p id="status" class="status" role="status" aria-live="polite" tabindex="-1">Connecting to the local proof…</p>
+      <form id="oidc-start-form" autocomplete="off" hidden>
+        <p id="oidc-start-help" class="help">This mode verifies signed, invented OIDC identities. A private in-process test driver supplies the synthetic response. It does not connect to a real identity service or verify mailbox ownership or heritage.</p>
+        <button class="primary" type="submit">Start synthetic OIDC check</button>
+      </form>
+      <form id="oidc-callback-form" autocomplete="off" hidden>
+        <label for="oidc-callback">Private synthetic callback from the local test driver</label>
+        <input id="oidc-callback" type="password" required maxlength="8192" autocomplete="off" aria-describedby="oidc-help">
+        <p id="oidc-help" class="hint">Only the invented response for this browser session. Never paste a real token or open this value as a web address. It is cleared on submission.</p>
+        <button class="primary" type="submit">Verify the synthetic response</button>
+      </form>
+      <form id="login-form" autocomplete="off" hidden>
+        <p class="help">Use only the credentials from the operator’s private local test file. Do not enter a real email address or evidence of heritage.</p>
+        <label for="fixture">Synthetic fixture</label>
+        <input id="fixture" name="fixture" type="text" required pattern="synthetic_[a-z][a-z0-9_]{0,39}" maxlength="50" spellcheck="false" autocapitalize="none" autocomplete="off" placeholder="synthetic_alice">
+        <label for="fixture-secret">Private fixture secret</label>
+        <input id="fixture-secret" name="fixtureSecret" type="password" required minlength="32" maxlength="512" autocomplete="off" aria-describedby="secret-help">
+        <p id="secret-help" class="hint">For this synthetic proof only. It is not a Pol.is password.</p>
+        <button class="primary" type="submit">Sign in to the local proof <span aria-hidden="true">→</span></button>
+      </form>
+      <form id="registration-form" hidden aria-describedby="registration-help registration-version">
+        <p id="registration-help" class="help">Register this invented account for a local approval test. These are self-attestations—not verification of age or Indigenous heritage. Registration does not approve you or unlock voting.</p>
+        <fieldset class="declarations">
+          <legend>Three independent declarations</legend>
+          <label class="check-label"><input id="registration-adult" type="checkbox" required><span>For this invented test, I self-attest that I am at least 18 years old.</span></label>
+          <label class="check-label"><input id="registration-eligibility" type="checkbox" required><span>For this invented test, I self-attest that I meet the First Nations round eligibility described by Barayamal.</span></label>
+          <label class="check-label"><input id="registration-consent" type="checkbox" required><span>I agree to this invented registration being recorded locally with my opaque account reference, these three declarations, this notice version and timestamps, for Barayamal’s round-approval test.</span></label>
+        </fieldset>
+        <p id="registration-version" class="hint">Notice: synthetic-registration-v1 · No email address, ancestry documents or attachments are collected here.</p>
+        <button class="primary" type="submit">Submit synthetic registration</button>
+      </form>
+      <section id="registration-result" class="registration-result" hidden aria-labelledby="registration-result-title">
+        <h3 id="registration-result-title" tabindex="-1">Registration submitted — not approved</h3>
+        <p id="registration-result-copy">A separate Barayamal round decision and an account-bound invitation are still required. No email or message has been sent.</p>
+        <p id="registration-reference-line" class="hint">Local reference: <span id="registration-reference"></span></p>
+        <button id="show-invitation" class="text-button" type="button">I have an invitation after separate approval</button>
+      </section>
+      <form id="invite-form" autocomplete="off" hidden>
+        <p class="help">Paste the private invitation issued for this same synthetic account. A forwarded invitation cannot grant another account access.</p>
+        <label for="invitation">Single-use invitation</label>
+        <input id="invitation" name="invitationToken" type="password" required minlength="32" maxlength="512" autocomplete="off" aria-describedby="invitation-help">
+        <p id="invitation-help" class="hint">No message is sent. Expired or used invitations need a new local issuance.</p>
+        <button class="primary" type="submit">Redeem my invitation <span aria-hidden="true">→</span></button>
+      </form>
+      <section id="vote-panel" hidden aria-labelledby="statement-label">
+        <div class="statement-meta"><span id="statement-label">FIXED SYNTHETIC STATEMENT</span><span>15 in this round</span></div>
+        <blockquote id="statement" tabindex="-1"></blockquote>
+        <div id="vote-actions" class="vote-actions" role="group" aria-label="Respond to the displayed statement">
+          <button id="agree" type="button" data-vote="-1">Agree</button>
+          <button id="disagree" type="button" data-vote="1">Disagree</button>
+          <button id="pass" type="button" data-vote="0">Pass / unsure</button>
+        </div>
+        <p id="complete" class="completion" tabindex="-1" hidden>No further statements are available for this synthetic account. You can log out now.</p>
+        <button id="refresh" class="text-button" type="button">Check next statement</button>
+        <p class="hint">No suggestions, uploads or free-text submissions. Access is checked again with each request.</p>
+      </section>
+      <p class="session-note">The browser gets an HttpOnly local session cookie. Backend credentials stay on the server. Sessions expire after 15 minutes; restarting this browser service logs everyone out.</p>
+    </section>
+  </main>
+  <footer><span>LOCAL SYNTHETIC PROOF · NOT LAUNCH AUTHORITY</span><span>Nothing here opens a public round.</span></footer>
+  <noscript><p class="noscript">JavaScript is required for the local proof. Do not place credentials in a URL or submit them elsewhere.</p></noscript>
+</body>
+</html>

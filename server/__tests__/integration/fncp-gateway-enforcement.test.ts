@@ -20,6 +20,7 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
     enabled: process.env.FNCP_GATEWAY_ENFORCEMENT,
     conversationId: process.env.FNCP_GATEWAY_CONVERSATION_ID,
     secret: process.env.FNCP_GATEWAY_SHARED_SECRET,
+    fixedStatementIds: process.env.FNCP_FIXED_STATEMENT_IDS,
   };
 
   beforeAll(async () => {
@@ -40,14 +41,19 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
       topics_enabled: false,
     });
 
-    const seed = await admin.post("/api/v3/comments").send({
-      conversation_id: conversationId,
-      txt: "Synthetic gateway test statement",
-      is_seed: true,
-    });
-    expect(seed.status).toBe(200);
-    seedTid = seed.body.tid;
-    expect(Number.isInteger(seedTid)).toBe(true);
+    const fixedStatementIds: number[] = [];
+    for (let index = 1; index <= 15; index++) {
+      const seed = await admin.post("/api/v3/comments").send({
+        conversation_id: conversationId,
+        txt: `Synthetic gateway test statement ${index}`,
+        is_seed: true,
+      });
+      expect(seed.status).toBe(200);
+      expect(Number.isInteger(seed.body.tid)).toBe(true);
+      fixedStatementIds.push(seed.body.tid);
+    }
+    expect(new Set(fixedStatementIds).size).toBe(15);
+    seedTid = fixedStatementIds[0];
 
     const allowlist = await admin.post("/api/v3/xidAllowList").send({
       conversation_id: conversationId,
@@ -65,6 +71,7 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
     process.env.FNCP_GATEWAY_ENFORCEMENT = "true";
     process.env.FNCP_GATEWAY_CONVERSATION_ID = conversationId;
     process.env.FNCP_GATEWAY_SHARED_SECRET = sharedSecret;
+    process.env.FNCP_FIXED_STATEMENT_IDS = fixedStatementIds.join(",");
   });
 
   afterAll(async () => {
@@ -77,6 +84,7 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
     setOrDelete("FNCP_GATEWAY_ENFORCEMENT", previous.enabled);
     setOrDelete("FNCP_GATEWAY_CONVERSATION_ID", previous.conversationId);
     setOrDelete("FNCP_GATEWAY_SHARED_SECRET", previous.secret);
+    setOrDelete("FNCP_FIXED_STATEMENT_IDS", previous.fixedStatementIds);
   });
 
   test("direct participant access is rejected before Pol.is auth", async () => {
@@ -110,7 +118,7 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
     expect(response.body).not.toHaveProperty("auth");
   });
 
-  test("a fresh unallowlisted XID fails closed on all six capabilities", async () => {
+  test("a fresh unallowlisted XID fails closed on all five capabilities", async () => {
     const participant = await newAgent();
 
     for (const createRequest of participantCapabilityRequests(
@@ -156,7 +164,7 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
     expect(response.body).not.toHaveProperty("auth");
   });
 
-  test("trusted statement submission uses the same established XID", async () => {
+  test("trusted statement submission is denied for the fixed-statement round", async () => {
     const participant = await newAgent();
     const response = await trusted(
       participant.post("/api/v3/comments"),
@@ -165,8 +173,27 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
       conversation_id: conversationId,
       txt: "Synthetic participant statement for gateway QA",
     });
-    expect(response.status).toBe(200);
-    expect(response.body).not.toHaveProperty("auth");
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: "Not found." });
+    expect(response.headers["cache-control"]).toBe("no-store");
+  });
+
+  test("unknown statement IDs, extra fields and invalid votes fail before mutation", async () => {
+    const participant = await newAgent();
+    for (const input of [
+      { tid: 999999 },
+      { vote: 2 },
+      { vote: "1" },
+      { txt: "Synthetic extra text" },
+    ]) {
+      const response = await trusted(
+        participant.post("/api/v3/votes"),
+        allowedXid
+      ).send({ tid: seedTid, vote: -1, ...input });
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: "Invalid fixed-statement vote." });
+      expect(response.headers["cache-control"]).toBe("no-store");
+    }
   });
 
   test("unused and optional routes reject gateway assertions", async () => {
@@ -198,7 +225,7 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
     }
   });
 
-  test("revocation blocks all six capabilities for an already-warm participant while staff routes remain available", async () => {
+  test("revocation blocks all five capabilities for an already-warm participant while staff routes remain available", async () => {
     const participant = await newAgent();
     const established = await trusted(
       participant.get("/api/v3/participationInit"),
@@ -270,11 +297,6 @@ describe("FNCP minimum-route gateway enforcement integration", () => {
         trusted(participant.get("/api/v3/participationInit"), xid).query({
           conversation_id: conversationId,
           lang: "en",
-        }),
-      () =>
-        trusted(participant.post("/api/v3/comments"), xid).send({
-          conversation_id: conversationId,
-          txt: "Synthetic statement that must never reach the handler",
         }),
       () =>
         trusted(participant.post("/api/v3/votes"), xid).send({

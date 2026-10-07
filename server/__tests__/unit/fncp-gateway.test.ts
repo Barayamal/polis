@@ -1,18 +1,21 @@
 import { describe, expect, test } from "@jest/globals";
 import {
   evaluateFncpGatewayRequest,
+  loadFncpGatewayConfig,
   type FncpGatewayConfig,
 } from "../../src/auth/fncp-gateway";
 
 const conversationId = "4optioncqa";
 const sharedSecret = "gateway-test-secret-0123456789abcdef";
 const xid = "fncp_0123456789abcdef0123456789";
+const fixedIds = Array.from({ length: 15 }, (_, index) => 20 + index * 2);
 
 const enabled: FncpGatewayConfig = {
   enabled: true,
   activationValid: true,
   conversationId,
   sharedSecret,
+  fixedStatementIds: new Set(fixedIds),
 };
 
 function request(
@@ -53,6 +56,7 @@ describe("FNCP private-origin gateway enforcement", () => {
     expect(
       evaluateFncpGatewayRequest(request(), {
         enabled: true,
+        activationValid: true,
         conversationId,
         sharedSecret: "short",
       }).status
@@ -270,5 +274,166 @@ describe("FNCP private-origin gateway enforcement", () => {
     expect(
       evaluateFncpGatewayRequest(request({ headers }), enabled).status
     ).toBe(403);
+  });
+
+  test("denies fixed-round free text with or without trusted gateway assertions", () => {
+    for (const path of [
+      "/api/v3/comments",
+      "/API/V3/COMMENTS",
+      "/api/v3/comments/",
+    ]) {
+      for (const headers of [{}, gatewayHeaders()]) {
+        expect(
+          evaluateFncpGatewayRequest(
+            request({
+              method: "POST",
+              path,
+              headers,
+              body: { txt: "Synthetic unapproved text" },
+            }),
+            enabled
+          )
+        ).toEqual({ enforce: true, status: 404, error: "Not found." });
+      }
+    }
+  });
+
+  test("preserves generic upstream statement submission", () => {
+    const upstreamRequest = request({
+      method: "POST",
+      path: "/api/v3/comments",
+      query: { conversation_id: "4otherconv" },
+      body: { txt: "Synthetic upstream text" },
+    });
+    expect(evaluateFncpGatewayRequest(upstreamRequest, enabled)).toEqual({
+      enforce: false,
+    });
+    expect(
+      evaluateFncpGatewayRequest(
+        request({ method: "POST", path: "/api/v3/comments" }),
+        {
+          ...enabled,
+          enabled: false,
+        }
+      )
+    ).toEqual({ enforce: false });
+  });
+
+  test.each([-1, 0, 1])(
+    "accepts exact vote %s for each manifest TID",
+    (vote) => {
+      for (const tid of fixedIds) {
+        expect(
+          evaluateFncpGatewayRequest(
+            request({
+              method: "POST",
+              path: "/api/v3/votes",
+              headers: gatewayHeaders(),
+              body: { conversation_id: conversationId, tid, vote, lang: "en" },
+            }),
+            enabled
+          )
+        ).toEqual({ enforce: true, conversationId, participantXid: xid });
+      }
+    }
+  );
+
+  test.each([
+    { vote: 2 },
+    { vote: -2 },
+    { vote: 0.5 },
+    { vote: "1" },
+    { vote: true },
+    { vote: null },
+    { vote: NaN },
+    { vote: Infinity },
+    { vote: undefined },
+    { tid: -1 },
+    { tid: "20" },
+    { tid: 20.1 },
+    { tid: 21 },
+    { tid: Number.MAX_SAFE_INTEGER + 1 },
+    { txt: "Synthetic free text" },
+    { is_seed: true },
+    { starred: true },
+    { high_priority: true },
+    { nested: { comment: "Synthetic text" } },
+    { lang: "free text is not a language" },
+    { lang: { value: "en" } },
+  ])("rejects invalid or extra fixed-vote input %p", (input) => {
+    expect(
+      evaluateFncpGatewayRequest(
+        request({
+          method: "POST",
+          path: "/api/v3/votes",
+          headers: gatewayHeaders(),
+          body: { tid: fixedIds[0], vote: -1, ...input },
+        }),
+        enabled
+      ).status
+    ).toBe(400);
+  });
+
+  test("rejects extra query fields even when the JSON vote is valid", () => {
+    for (const query of [
+      { txt: "Synthetic free text" },
+      { vote: "1" },
+      { unknown: "value" },
+    ]) {
+      expect(
+        evaluateFncpGatewayRequest(
+          request({
+            method: "POST",
+            path: "/api/v3/votes",
+            headers: gatewayHeaders(),
+            query,
+            body: { tid: fixedIds[0], vote: -1 },
+          }),
+          enabled
+        ).status
+      ).toBe(400);
+    }
+  });
+
+  test("loads fifteen exact nonconsecutive IDs without assuming ordinal IDs", () => {
+    const config = loadFncpGatewayConfig({
+      FNCP_FIXED_STATEMENT_IDS: fixedIds.join(","),
+    });
+    expect([...config.fixedStatementIds!]).toEqual(fixedIds);
+  });
+
+  test.each([
+    undefined,
+    "",
+    fixedIds.slice(1).join(","),
+    [...fixedIds, 99].join(","),
+    [...fixedIds.slice(1), fixedIds[1]].join(","),
+    ["020", ...fixedIds.slice(1)].join(","),
+    ["20 ", ...fixedIds.slice(1)].join(","),
+    ["-1", ...fixedIds.slice(1)].join(","),
+    ["1.5", ...fixedIds.slice(1)].join(","),
+    ["1e1", ...fixedIds.slice(1)].join(","),
+    ["9007199254740992", ...fixedIds.slice(1)].join(","),
+  ])("keeps voting closed for missing/malformed manifest %p", (manifest) => {
+    const loaded = loadFncpGatewayConfig({
+      FNCP_FIXED_STATEMENT_IDS: manifest,
+    });
+    expect(loaded.fixedStatementIds).toBeUndefined();
+    const config = { ...enabled, fixedStatementIds: loaded.fixedStatementIds };
+    expect(
+      evaluateFncpGatewayRequest(
+        request({
+          method: "POST",
+          path: "/api/v3/votes",
+          headers: gatewayHeaders(),
+          body: { tid: fixedIds[0], vote: -1 },
+        }),
+        config
+      ).status
+    ).toBe(503);
+    expect(
+      evaluateFncpGatewayRequest(request({ headers: gatewayHeaders() }), config)
+        .status
+    ).toBeUndefined();
   });
 });

@@ -188,7 +188,7 @@ test("minimal FNCP path ships alpha assets without full legacy bundles", () => {
   assert.match(proxyConfig, /client_max_body_size 8k/);
 });
 
-test("public QA proxy exposes only alpha assets and six method-route capabilities", () => {
+test("public QA proxy exposes only alpha assets and five fixed-statement capabilities", () => {
   const exactApiLocations = [
     ...proxyConfig.matchAll(/location = (\/api\/v3\/[A-Za-z0-9/]+) \{/g),
   ].map((match) => match[1]);
@@ -202,7 +202,7 @@ test("public QA proxy exposes only alpha assets and six method-route capabilitie
   ]);
 
   const expectedMethodGuards = new Map([
-    ["/api/v3/comments", "GET|POST"],
+    ["/api/v3/comments", "GET"],
     ["/api/v3/math/pca2", "GET"],
     ["/api/v3/nextComment", "GET"],
     ["/api/v3/participationInit", "GET"],
@@ -249,7 +249,7 @@ test("public QA proxy exposes only alpha assets and six method-route capabilitie
   assert.match(proxyDockerfile, /^USER nginx$/mu);
 });
 
-test("all six retained participant capabilities explicitly revalidate the conversation XID allowlist", () => {
+test("five retained capabilities and the upstream comment route retain XID revalidation", () => {
   const routeDefinitions = [
     ["get", "/api/v3/comments", "handle_GET_comments"],
     ["get", "/api/v3/math/pca2", "handle_GET_math_pca2"],
@@ -313,7 +313,6 @@ test("disposable smoke is readiness-bounded and models secure proxy requests", (
     "oidc_bypass",
     "revoked",
     "warm_revoked",
-    "close",
   ];
   for (const requestName of apiRequests) {
     const block = smoke.match(
@@ -334,10 +333,10 @@ test("disposable smoke is readiness-bounded and models secure proxy requests", (
     smoke,
     /participant_origin="http:\/\/127\.0\.0\.1:8088"/
   );
-  assert.match(smoke, /Allowlisted participant SSR/);
-  assert.match(smoke, /Missing-XID participant SSR/);
+  assert.match(smoke, /Direct participant SSR with bare XID/);
+  assert.match(smoke, /Direct participant SSR without XID/);
   assert.match(
     smoke,
-    /This conversation requires an XID \(external identifier\) to participate\./
+    /Gateway access required\./
   );
 });
