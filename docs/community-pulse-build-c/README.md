@@ -1,6 +1,6 @@
 # Build C — current direction and progress
 
-7 October 2026, Australia/Sydney · Owner: Dean / Barayamal
+Updated 8 October 2026, Australia/Sydney · Owner: Dean / Barayamal
 
 First Nations Community Pulse gathers First Nations people's views, priorities
 and experiences on community issues, policies and decisions affecting them.
@@ -35,6 +35,21 @@ The GitHub review snapshot was independently rechecked in a fresh checkout:
 the same runtime. PHP model/syntax checks, proof closure and credential review
 passed. See [repository snapshot verification](REPOSITORY-SNAPSHOT-VERIFICATION-2026-10-07.json).
 These are source/protocol checks, not a native authority or installed release.
+
+The [current engineering review PR](https://github.com/Barayamal/polis/pull/44)
+also carries the hosted-CI portability repairs. Its updated source passed
+**2,953/2,953** FNCP tests on Node 24.19.0, server lint/build and focused startup,
+production and installation checks. Exact Alpine package pins were verified for
+both supported architectures. See [CI repair verification](CI-REPAIR-VERIFICATION-2026-10-08.json).
+The fresh GitHub run and full release image/scan/recovery qualification remain
+separate gates. The older 2,949-test receipt describes the imported snapshot
+before these repairs, not the current source tree.
+
+The companion private repository has [current scope documentation in PR 40](https://github.com/Barayamal/first-nations-community-pulse/pull/40)
+and [a separate audit repair in PR 41](https://github.com/Barayamal/first-nations-community-pulse/pull/41).
+That repair's exact-head quality CI passed; its production-only dependency audit
+reported zero vulnerabilities. It does not clear development-only findings,
+update either default branch or qualify a deployed native application.
 
 The earlier verification snapshot records source fingerprint
 `4730e2988791cafdeab55003f3cc13e38a783a8bc1d09650cf1020af9e8023d3`

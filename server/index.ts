@@ -4,6 +4,7 @@
  */
 import { assertOrdinaryHttpEntrypoint } from "./src/auth/fncp-bootstrap-startup";
 // This must precede the app import: this ordinary entrypoint is not TLS-enabled.
+// eslint-disable-next-line no-restricted-properties -- Refuse the fresh profile before Config or app initializes clients.
 assertOrdinaryHttpEntrypoint(process.env);
 import { assertFncpProductionAdmission } from "./src/auth/fncp-production-admission";
 // Dedicated admission must also precede application imports. Loading the app
@@ -26,6 +27,7 @@ if (Config.nodeEnv === "production" && Config.enableTelemetry) {
  * @returns {Object} The server instance
  */
 function startServer(port = Config.serverPort): Server | Promise<Server> {
+  // eslint-disable-next-line no-restricted-properties -- Recheck the current profile immediately before opening a listener.
   assertOrdinaryHttpEntrypoint(process.env);
   // Admission must complete before this process opens a listening socket.
   // Ordinary upstream Pol.is remains unchanged while the dedicated release
@@ -57,6 +59,7 @@ async function startDedicatedServer(port: number): Promise<Server> {
   try {
     await appReady;
     assertFncpProductionAdmission();
+    // eslint-disable-next-line no-restricted-properties -- Dedicated runtime independently validates the current environment at admission.
     await runtime.prepareFncpProductionRuntime(process.env);
     server = await new Promise<Server>((resolve, reject) => {
       const listener = app.listen(port, () => {

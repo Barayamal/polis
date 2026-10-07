@@ -30,6 +30,14 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Install locked server test prerequisites
+        working-directory: server
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install locked synthetic identity test prerequisites
+        working-directory: deploy/fncp/identity-foundation
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
       - name: Validate shell entrypoints
         run: |
           sh -n deploy/fncp/activate-synthetic-binding.sh
@@ -409,7 +417,7 @@ jobs:
                 test "$(id -u)" -ne 0
                 test "$FNCP_OPTION_C_RELEASE_MODE" = production
                 apk info --exists "libpq=18.6-r0"
-                apk info --exists "openssl=3.5.8-r0"
+                apk info --exists "openssl=3.5.9-r0"
                 apk info --exists "ca-certificates=20260909-r0"
                 test -r /app/dist/index.js
                 test -r /app/src/prompts/moderation/script.xml

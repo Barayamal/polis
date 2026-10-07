@@ -23,7 +23,7 @@ RUN case "$SOURCE_REVISION" in \
 LABEL org.barayamal.fncp.busybox.remediation="CVE-2025-60876-upstream-patch" \
       org.opencontainers.image.source="https://github.com/Barayamal/polis" \
       org.opencontainers.image.revision="${SOURCE_REVISION}"
-RUN apk add --no-cache libcrypto3=3.5.8-r0 libssl3=3.5.8-r0
+RUN apk add --no-cache libcrypto3=3.5.9-r0 libssl3=3.5.9-r0
 COPY --from=fncp-busybox-fixed /out/busybox /bin/busybox
 RUN set -eu; \
   test "$(readlink -f /bin/sh)" = /bin/busybox; \

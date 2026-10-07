@@ -59,7 +59,10 @@ try {
   const ssl=(args,input)=>{const r=spawnSync('openssl',args,{cwd:scratch,input,encoding:'utf8',timeout:10000});if(r.status!==0)throw Error('Synthetic TLS preparation failed.');};
   ssl(['req','-x509','-newkey','ec','-pkeyopt','ec_paramgen_curve:prime256v1','-noenc','-days','1','-subj','/CN=Invented installation CA','-addext','basicConstraints=critical,CA:TRUE','-addext','keyUsage=critical,keyCertSign,cRLSign','-keyout','ca-key.pem','-out','ca.pem']);
   ssl(['req','-new','-newkey','ec','-pkeyopt','ec_paramgen_curve:prime256v1','-noenc','-subj','/CN=wordpress','-keyout','leaf-key.pem','-out','leaf.csr']);
-  ssl(['x509','-req','-in','leaf.csr','-CA','ca.pem','-CAkey','ca-key.pem','-CAcreateserial','-days','1','-extfile','/dev/stdin','-out','leaf.pem'],'subjectAltName=DNS:wordpress\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth\n');
+  const leafExtensions=join(scratch,'leaf-extensions.cnf');
+  write(leafExtensions,'subjectAltName=DNS:wordpress\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth\n');
+  chmodSync(leafExtensions,0o600);
+  ssl(['x509','-req','-in','leaf.csr','-CA','ca.pem','-CAkey','ca-key.pem','-CAcreateserial','-days','1','-extfile',leafExtensions,'-out','leaf.pem']);
   for(const [source,target]of[['ca.pem','receiver-ca.pem'],['leaf.pem','server.pem'],['leaf-key.pem','server-key.pem']])write(join(bundle,'wordpress',target),readFileSync(join(scratch,source)));
   const files=['wordpress-initialize.php','wordpress-initialize-lib.php'];
   evidence('initializer-source.json',Object.entries(sourceBytes).map(([name,raw])=>({name,sha256:sha(raw)})));

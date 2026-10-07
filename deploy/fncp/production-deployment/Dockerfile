@@ -11,7 +11,7 @@ COPY deploy/fncp/production-identity/package.json deploy/fncp/production-identit
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 FROM docker.io/library/node:22.23.2-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS participant
 COPY --from=busybox-fixed /out/busybox /bin/busybox
-RUN apk add --no-cache libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 ca-certificates=20260909-r0 && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/corepack /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/pnpm /usr/local/bin/pnpx /usr/local/bin/yarn /usr/local/bin/yarnpkg
+RUN apk add --no-cache libcrypto3=3.5.9-r0 libssl3=3.5.9-r0 ca-certificates=20260909-r0 && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/corepack /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/pnpm /usr/local/bin/pnpx /usr/local/bin/yarn /usr/local/bin/yarnpkg
 COPY --from=busybox-fixed /out/zlib/lib/libz.so.1.3.2 /lib/libz.so.1.3.2
 COPY --from=busybox-fixed /out/zlib/evidence/provenance.txt /usr/share/fncp-security/zlib-provenance.txt
 RUN test "$(sha256sum /lib/libz.so.1.3.2 | awk '{print $1}')" = "$(sed -n 's/^binary_sha256=//p' /usr/share/fncp-security/zlib-provenance.txt)"

@@ -16,6 +16,7 @@ const ROUTES = new Set([
   "POST /fncp/private/xid-allowlist/remove",
 ]);
 
+// eslint-disable-next-line no-restricted-properties -- Keep this pure route guard independent of Config's import side effects.
 export function createFncpProductionRouteBoundary(env: NodeJS.ProcessEnv = process.env) {
   const dedicated = env.FNCP_OPTION_C_RELEASE_MODE === "production";
   return (req: Request, res: Response, next: NextFunction): void => {

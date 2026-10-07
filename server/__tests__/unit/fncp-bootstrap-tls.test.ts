@@ -24,7 +24,8 @@ const handles: Array<() => Promise<void> | void> = [];
 
 beforeAll(() => {
   folder = mkdtempSync(join(tmpdir(), "fncp-bootstrap-tls-test-"));
-  const openssl = (args: string[]) => execFileSync("/opt/homebrew/bin/openssl", args, {
+  const opensslExecutable = process.platform === "darwin" ? "/opt/homebrew/bin/openssl" : "/usr/bin/openssl";
+  const openssl = (args: string[]) => execFileSync(opensslExecutable, args, {
     cwd: folder, env: { PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C", OPENSSL_CONF: "/dev/null" },
     timeout: 10000, maxBuffer: 8192, stdio: "pipe",
   });

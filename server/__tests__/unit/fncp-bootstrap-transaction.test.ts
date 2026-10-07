@@ -145,6 +145,25 @@ test("unawaited work is drained then rolled back, never committed", async () => 
   expect(f.clients[0].release).toHaveBeenCalledTimes(1);
 });
 
+test("unawaited work is drained and its denial takes priority over a callback failure", async () => {
+  let complete: () => void;
+  const callbackError = privateError();
+  const f = fixture({ handle: (sql) => sql === "mutation" ? new Promise((resolve) => { complete = () => resolve(rows()); }) : rows() });
+  const observed = f.pg.withTransaction(async (query: any) => {
+    void query("mutation");
+    throw callbackError;
+  }).catch((error: Error) => error);
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(f.calls.map((x) => x.sql)).toEqual(["BEGIN", "mutation"]);
+  expect(f.clients[0].release).not.toHaveBeenCalled();
+  complete();
+  const failure = await observed;
+  expect(failure.message).toContain("not fully awaited");
+  expect(failure).not.toBe(callbackError);
+  expect(f.calls.map((x) => x.sql)).toEqual(["BEGIN", "mutation", "ROLLBACK"]);
+  expect(f.clients[0].release).toHaveBeenCalledTimes(1);
+});
+
 test("an old error object's rollback marker cannot authorize a later uncertain commit", async () => {
   const error = privateError(); let iteration = 0;
   const f = fixture({ handle: (sql) => { if ((iteration === 0 && sql === "mutation") || (iteration === 1 && sql === "COMMIT")) throw error; return rows(); } });

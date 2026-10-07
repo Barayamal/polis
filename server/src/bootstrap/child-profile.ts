@@ -68,7 +68,7 @@ export function copyFreshBootstrapChildEnvironment(
         typeof descriptor.value !== "string" ||
         descriptor.value.length === 0 ||
         descriptor.value.length > 1024 ||
-        /[\u0000\r\n]/u.test(descriptor.value)
+        descriptor.value.includes("\0") || /[\r\n]/u.test(descriptor.value)
       )
         throw failure();
       copy[name] = descriptor.value;

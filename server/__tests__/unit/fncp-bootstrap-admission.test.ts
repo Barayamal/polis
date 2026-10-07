@@ -42,6 +42,13 @@ const jwk = {
   alg: "RS256",
 };
 let tls: { key: Buffer; cert: Buffer };
+function removeGeneratedFile(file: string) {
+  try {
+    unlinkSync(file);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+}
 beforeAll(() => {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), "fncp-admission-test-"));
   chmodSync(dir, 0o700);
@@ -49,7 +56,7 @@ beforeAll(() => {
     cert = join(dir, "cert.pem");
   try {
     const result = spawnSync(
-      "/opt/homebrew/bin/openssl",
+      process.platform === "darwin" ? "/opt/homebrew/bin/openssl" : "/usr/bin/openssl",
       [
         "req",
         "-x509",
@@ -85,13 +92,7 @@ beforeAll(() => {
     expect(result.status).toBe(0);
     tls = { key: readFileSync(key), cert: readFileSync(cert) };
   } finally {
-    for (const file of [key, cert]) {
-      try {
-        unlinkSync(file);
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-      }
-    }
+    for (const file of [key, cert]) removeGeneratedFile(file);
     rmdirSync(dir);
   }
 });

@@ -17,7 +17,7 @@ export function loadDatabaseCaTls(options: {
   try {
     const path = options.certificateFile;
     if (!options.enabled || typeof path !== "string" || !isAbsolute(path) ||
-        /[\u0000-\u0020\u007f]/u.test(path)) throw fail();
+        Array.from(path, character => character.charCodeAt(0)).some(code => code <= 0x20 || code === 0x7f)) throw fail();
     const url = new URL(options.databaseUrl);
     if (!["postgres:", "postgresql:"].includes(url.protocol) || !url.hostname ||
         url.search || url.hash) throw fail();

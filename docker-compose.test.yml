@@ -153,12 +153,25 @@ services:
   nginx-proxy:
     build:
       context: ./file-server
-      dockerfile: nginx.Dockerfile
+      dockerfile: nginx.test.Dockerfile
     depends_on:
       - client-participation-alpha
       - server
     environment:
       - API_SERVER_PORT=5000
+    volumes:
+      - type: bind
+        source: "${AUTH_CERTS_PATH:?AUTH_CERTS_PATH is required for disposable CI certificates}/localhost.pem"
+        target: /etc/nginx/certs/snakeoil.cert.pem
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${AUTH_CERTS_PATH:?AUTH_CERTS_PATH is required for disposable CI certificates}/localhost-key.pem"
+        target: /etc/nginx/certs/snakeoil.key.pem
+        read_only: true
+        bind:
+          create_host_path: false
     labels:
       polis_tag: test
     networks:

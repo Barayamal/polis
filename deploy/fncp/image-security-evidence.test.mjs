@@ -756,11 +756,11 @@ test("server Alpine packages are exact-version pinned in every stage", () => {
     ["libpq-dev=18.6-r0", 2],
     ["g++=15.2.0-r5", 2],
     ["make=4.4.1-r4", 2],
-    ["python3=3.14.7-r1", 2],
+    ["python3=3.14.8-r0", 2],
     ["libpq=18.6-r0", 1],
-    ["openssl=3.5.8-r0", 1],
-    ["libcrypto3=3.5.8-r0", 1],
-    ["libssl3=3.5.8-r0", 1],
+    ["openssl=3.5.9-r0", 1],
+    ["libcrypto3=3.5.9-r0", 1],
+    ["libssl3=3.5.9-r0", 1],
     ["ca-certificates=20260909-r0", 1],
   ]) {
     assert.equal(
@@ -774,7 +774,7 @@ test("server Alpine packages are exact-version pinned in every stage", () => {
     /(?:^|\s)(?:libpq-dev|g\+\+|make|python3|libpq|openssl|ca-certificates)(?=\s|\\)/mu,
   );
   assert.match(ciWorkflow, /apk info --exists "libpq=18\.6-r0"/u);
-  assert.match(ciWorkflow, /apk info --exists "openssl=3\.5\.8-r0"/u);
+  assert.match(ciWorkflow, /apk info --exists "openssl=3\.5\.9-r0"/u);
   assert.match(
     ciWorkflow,
     /apk info --exists "ca-certificates=20260909-r0"/u,
@@ -802,8 +802,8 @@ test("production runtime patches preserve exact Node and OpenSSL security pins",
     const offset = source.indexOf(boundary);
     assert.ok(offset >= 0);
     const runtime = source.slice(offset);
-    assert.match(runtime, /libcrypto3=3\.5\.8-r0/u);
-    assert.match(runtime, /libssl3=3\.5\.8-r0/u);
+    assert.match(runtime, /libcrypto3=3\.5\.9-r0/u);
+    assert.match(runtime, /libssl3=3\.5\.9-r0/u);
     assert.match(runtime, /COPY --from=fncp-busybox-fixed \/out\/busybox \/bin\/busybox/u);
     assert.match(runtime, /Unencoded control character found in the URL!/u);
     assert.doesNotMatch(runtime, /(?:libcrypto3|libssl3)=3\.5\.7-r0/u);
@@ -958,7 +958,7 @@ test("participant runtime evidence rejects Sharp and esbuild package families", 
   assert.match(collector, /FNCP_EXPECTED_ALPINE_PACKAGES/u);
   assert.match(
     collector,
-    /libpq=18\.6-r0,openssl=3\.5\.8-r0,ca-certificates=20260909-r0/u,
+    /libpq=18\.6-r0,openssl=3\.5\.9-r0,ca-certificates=20260909-r0/u,
   );
   assert.match(collector, /\/lib\/apk\/db\/installed/u);
   assert.match(collector, /alpinePackageMismatches/u);
@@ -1048,7 +1048,7 @@ test("math worker crosses only its runtime closure into a non-root stage", () =>
     mathDockerfile,
     /ca-certificates-bundle=20260909-r0/u,
   );
-  assert.match(mathDockerfile, /zlib=1\.3\.2-r0/u);
+  assert.match(mathDockerfile, /zlib=1\.3\.2-r1/u);
   assert.match(
     mathDockerfile,
     /COPY --from=fncp-busybox-fixed \/out\/busybox \/bin\/busybox/u,

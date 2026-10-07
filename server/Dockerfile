@@ -50,7 +50,7 @@ RUN apk add --no-cache \
     libpq-dev=18.6-r0 \
     g++=15.2.0-r5 \
     make=4.4.1-r4 \
-    python3=3.14.7-r1
+    python3=3.14.8-r0
 RUN npm config set fetch-retries 5 && \
     npm config set fetch-retry-mintimeout 20000 && \
     npm config set fetch-retry-maxtimeout 120000
@@ -73,7 +73,7 @@ RUN apk add --no-cache \
     libpq-dev=18.6-r0 \
     g++=15.2.0-r5 \
     make=4.4.1-r4 \
-    python3=3.14.7-r1
+    python3=3.14.8-r0
 
 RUN npm config set fetch-retries 5 && \
     npm config set fetch-retry-mintimeout 20000 && \
@@ -110,9 +110,9 @@ RUN set -eu; \
 
 RUN apk add --no-cache \
       libpq=18.6-r0 \
-      openssl=3.5.8-r0 \
-      libcrypto3=3.5.8-r0 \
-      libssl3=3.5.8-r0 \
+      openssl=3.5.9-r0 \
+      libcrypto3=3.5.9-r0 \
+      libssl3=3.5.9-r0 \
       ca-certificates=20260909-r0 && \
     rm -rf \
       /usr/local/lib/node_modules/npm \

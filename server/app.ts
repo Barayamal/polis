@@ -11,12 +11,14 @@ import * as dotenv from "dotenv";
 import { freshBootstrapStartup } from "./src/auth/fncp-bootstrap-startup";
 // A fresh helper must never silently load retained working-directory .env data.
 // Validate malformed opt-ins too: they cannot fall back to ordinary startup.
+/* eslint-disable no-restricted-properties -- Bootstrap admission must precede Config and its client initialization. */
 if (process.env.FNCP_FRESH_BOOTSTRAP_LOCAL_ONLY === undefined &&
     process.env.FNCP_OPTION_C_RELEASE_MODE === undefined) {
   dotenv.config();
 } else if (process.env.FNCP_FRESH_BOOTSTRAP_LOCAL_ONLY !== undefined) {
   freshBootstrapStartup(process.env);
 }
+/* eslint-enable no-restricted-properties */
 
 import Promise from "bluebird";
 import express from "express";

@@ -9,15 +9,15 @@ RUN chmod 0555 /opt/fncp-zlib-fix/build-fixed-zlib.sh && /opt/fncp-zlib-fix/buil
 FROM docker.io/library/wordpress@sha256:ab6fc9ad816c305305905694238e5566a39e8d1c56719741e359605a89f15bf6 AS wordpress-source
 FROM docker.io/library/alpine@sha256:e7a1a92a5bfeee40966aea60f0796b0e7917cc35591542701834f03a68fa3d18
 RUN apk add --no-cache \
-      apache2=2.4.68-r0 apache2-ssl=2.4.68-r0 \
-      php83=8.3.33-r0 php83-apache2=8.3.33-r0 php83-common=8.3.33-r0 \
-      php83-mysqli=8.3.33-r0 php83-mysqlnd=8.3.33-r0 php83-openssl=8.3.33-r0 \
-      php83-curl=8.3.33-r0 php83-dom=8.3.33-r0 php83-xml=8.3.33-r0 \
-      php83-mbstring=8.3.33-r0 php83-session=8.3.33-r0 php83-ctype=8.3.33-r0 \
-      php83-fileinfo=8.3.33-r0 php83-iconv=8.3.33-r0 php83-tokenizer=8.3.33-r0 \
-      php83-sodium=8.3.33-r0 php83-posix=8.3.33-r0 php83-simplexml=8.3.33-r0 \
-      php83-xmlreader=8.3.33-r0 php83-xmlwriter=8.3.33-r0 \
-      libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 ca-certificates=20260909-r0 \
+      apache2=2.4.69-r0 apache2-ssl=2.4.69-r0 \
+      php83=8.3.35-r0 php83-apache2=8.3.35-r0 php83-common=8.3.35-r0 \
+      php83-mysqli=8.3.35-r0 php83-mysqlnd=8.3.35-r0 php83-openssl=8.3.35-r0 \
+      php83-curl=8.3.35-r0 php83-dom=8.3.35-r0 php83-xml=8.3.35-r0 \
+      php83-mbstring=8.3.35-r0 php83-session=8.3.35-r0 php83-ctype=8.3.35-r0 \
+      php83-fileinfo=8.3.35-r0 php83-iconv=8.3.35-r0 php83-tokenizer=8.3.35-r0 \
+      php83-sodium=8.3.35-r0 php83-posix=8.3.35-r0 php83-simplexml=8.3.35-r0 \
+      php83-xmlreader=8.3.35-r0 php83-xmlwriter=8.3.35-r0 \
+      libcrypto3=3.5.9-r0 libssl3=3.5.9-r0 ca-certificates=20260909-r0 \
     && addgroup -S -g 33 fncp-wordpress \
     && adduser -S -D -H -u 33 -G fncp-wordpress -s /sbin/nologin fncp-wordpress \
     && ln -s /usr/bin/php83 /usr/local/bin/php

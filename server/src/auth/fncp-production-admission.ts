@@ -103,7 +103,7 @@ export function assertFncpProductionAdmission(
   // DATABASE_SSL fallback or URL query options that replace pg's TLS object.
   const caPath = env.DATABASE_SSL_CA_FILE;
   if (env.DATABASE_SSL !== "true" || !caPath || !isAbsolute(caPath) ||
-      /[\u0000-\u0020\u007f]/u.test(caPath) ||
+      Array.from(caPath, character => character.charCodeAt(0)).some(code => code <= 0x20 || code === 0x7f) ||
       !validDatabaseUrl(env.DATABASE_URL) ||
       !validDatabaseUrl(env.READ_ONLY_DATABASE_URL ?? env.DATABASE_URL) ||
       (env.NODE_TLS_REJECT_UNAUTHORIZED !== undefined && env.NODE_TLS_REJECT_UNAUTHORIZED !== "1")) {
@@ -121,7 +121,7 @@ export function assertFncpProductionAdmission(
 
 function validDatabaseUrl(value: string | undefined): boolean {
   try {
-    if (!value || /[\u0000-\u0020\u007f]/u.test(value)) return false;
+    if (!value || Array.from(value, character => character.charCodeAt(0)).some(code => code <= 0x20 || code === 0x7f)) return false;
     const url = new URL(value);
     return ["postgres:", "postgresql:"].includes(url.protocol) && !!url.hostname &&
       !!url.username && !!url.password && /^\/[^/]+$/u.test(url.pathname) && !url.search && !url.hash;

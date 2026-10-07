@@ -18,7 +18,7 @@ LABEL org.barayamal.fncp.artifact="polis-selfhost-database" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
       org.opencontainers.image.source="https://github.com/Barayamal/polis"
 # The custom entrypoint runs directly as postgres (70); gosu is unused.
-RUN apk add --no-cache libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 libuuid=2.42.3-r1 \
+RUN apk add --no-cache libcrypto3=3.5.9-r0 libssl3=3.5.9-r0 libuuid=2.42.3-r1 \
   && rm -f /usr/local/bin/gosu \
   && test "$(postgres --version)" = 'postgres (PostgreSQL) 17.11' \
   && test "$(id -u postgres)" = 70 \

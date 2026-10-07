@@ -52,6 +52,79 @@ const sourceBoundDockerfiles = new Map(
   )
 );
 
+const repositoryRoot = join(deployDir, "..", "..");
+const [ciCompose, ciProxyRecipe, ciProxyIgnore, legacyProxyConfig, developmentCompose] =
+  await Promise.all([
+    "docker-compose.test.yml",
+    "file-server/nginx.test.Dockerfile",
+    "file-server/nginx.test.Dockerfile.dockerignore",
+    "file-server/nginx/nginx-ssl.site.default.conf",
+    "docker-compose.yml",
+  ].map((path) => readFile(join(repositoryRoot, path), "utf8")));
+
+function ciProxyBlock() {
+  const match = ciCompose.match(/^  nginx-proxy:\n[\s\S]*?(?=^  file-server:)/mu);
+  assert.ok(match, "missing disposable CI proxy");
+  return match[0];
+}
+
+test("legacy CI proxy receives credentials only at runtime, never in its image", () => {
+  assert.match(ciProxyRecipe,
+    /^FROM docker\.io\/library\/nginx:1\.21\.5-alpine@sha256:eb05700fe7baa6890b74278e39b66b2ed1326831f9ec3ed4bdc6361a4ac2f333$/mu);
+  assert.deepEqual(ciProxyRecipe.split("\n").filter((line) => /^COPY\b/u.test(line)), [
+    "COPY nginx/nginx-ssl.site.default.conf /etc/nginx/conf.d/default.conf.template",
+    "COPY nginx/docker-entrypoint.sh /docker-entrypoint.sh",
+  ]);
+  assert.doesNotMatch(ciProxyRecipe, /^ADD\b|^(?:COPY|RUN).*\.(?:pem|key)|^RUN.*(?:mkcert|openssl)/mu);
+  assert.match(ciProxyRecipe, /mkdir -p \/etc\/nginx\/certs/u);
+  assert.match(ciProxyRecipe, /not an FNCP production release candidate/u);
+});
+
+test("CI proxy build context denies certificate, key and unrelated source submission", () => {
+  assert.deepEqual(ciProxyIgnore.trim().split("\n"), [
+    "**",
+    "!nginx",
+    "!nginx/nginx-ssl.site.default.conf",
+    "!nginx/docker-entrypoint.sh",
+    "!nginx.test.Dockerfile",
+    "!nginx.test.Dockerfile.dockerignore",
+  ]);
+  assert.doesNotMatch(ciProxyIgnore, /!.*(?:certs|\.pem|\.key|\*)/u);
+});
+
+test("CI proxy maps the generated leaf and key to exact readonly TLS paths", () => {
+  const block = ciProxyBlock();
+  assert.match(block, /context: \.\/file-server\n\s+dockerfile: nginx\.test\.Dockerfile/u);
+  const mounts = [...block.matchAll(/      - type: bind\n([\s\S]*?)(?=      - type: bind|    labels:)/gu)];
+  assert.equal(mounts.length, 2);
+  for (const [index, [source, target]] of [
+    ["localhost.pem", "snakeoil.cert.pem"],
+    ["localhost-key.pem", "snakeoil.key.pem"],
+  ].entries()) {
+    const mount = mounts[index][1];
+    assert.ok(mount.includes('source: "${AUTH_CERTS_PATH:?AUTH_CERTS_PATH is required for disposable CI certificates}/' + source + '"'));
+    assert.ok(mount.includes("target: /etc/nginx/certs/" + target));
+    assert.match(mount, /read_only: true\n\s+bind:\n\s+create_host_path: false/u);
+    assert.ok(legacyProxyConfig.includes("/etc/nginx/certs/" + target + ";"));
+  }
+  assert.doesNotMatch(block, /rootCA\.pem|:rw\b|build:\n[\s\S]*?secrets:/u);
+  assert.match(developmentCompose, /context: \.\/file-server\n\s+dockerfile: nginx\.Dockerfile/u);
+  assert.doesNotMatch(developmentCompose, /nginx\.test\.Dockerfile/u);
+});
+
+test("all three legacy CI workflows generate the mounted certificate pair before building", async () => {
+  for (const name of ["python-ci.yml", "cypress-tests.yml", "jest-server-test.yml"]) {
+    const workflow = await readFile(join(repositoryRoot, ".github/workflows", name), "utf8");
+    const generation = workflow.indexOf("mkcert -cert-file localhost.pem -key-file localhost-key.pem");
+    assert.ok(generation >= 0, name + " must generate the exact disposable leaf/key pair");
+    assert.ok(workflow.indexOf("mkdir -p ./.simulacrum/certs") < generation);
+    assert.match(workflow, /localhost 127\.0\.0\.1 ::1 oidc-simulator host\.docker\.internal/u);
+    assert.match(workflow, /AUTH_CERTS_PATH=.*AUTH_CERTS_PATH=\.\/\.simulacrum\/certs/u);
+    assert.ok(workflow.indexOf("docker compose -f docker-compose.test.yml", generation) > generation);
+    assert.doesNotMatch(workflow, /cp .*snakeoil|COPY .*snakeoil/u);
+  }
+});
+
 function composeServiceBlock(serviceName) {
   const match = compose.match(
     new RegExp(

@@ -57,6 +57,13 @@ describe("FNCP dedicated production startup admission", () => {
   ])("rejects an incomplete or insecure database TLS contract", value => {
     expectFailure(productionEnv(value), "database-tls");
   });
+  test("forbidden ASCII controls, space and DEL cannot enter a CA path or database URL", () => {
+    for (const code of [...Array.from({ length: 0x21 }, (_, index) => index), 0x7f]) {
+      const character = String.fromCharCode(code);
+      expectFailure(productionEnv({ DATABASE_SSL_CA_FILE: "/run/fncp/ca" + character + ".pem" }), "database-tls");
+      expectFailure(productionEnv({ DATABASE_URL: "postgres://runtime:invented" + character + "@database.invalid/polis" }), "database-tls");
+    }
+  });
   test.each(["DEV_MODE", "TESTING", "ENABLE_TELEMETRY", "SHOULD_USE_TRANSLATION_API",
     "BACKFILL_COMMENT_LANG_DETECTION", "RUN_PERIODIC_EXPORT_TESTS", "SERVER_LOG_TO_FILE"])(
     "rejects the excluded runtime feature %s", key => {

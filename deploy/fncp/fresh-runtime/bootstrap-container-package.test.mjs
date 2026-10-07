@@ -201,7 +201,7 @@ test('package behavior: PostgreSQL repair installs only fixed runtime libraries 
   const instructions = recipe.replace(/[ \t]*\\\n\s*/gu, ' ').split('\n');
   const installs = instructions.filter(line => /\bapk\b/u.test(line));
   assert.deepEqual(installs, [
-    'RUN apk add --no-cache libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 libuuid=2.42.3-r1 && rm -f /usr/local/bin/gosu',
+    'RUN apk add --no-cache libcrypto3=3.5.9-r0 libssl3=3.5.9-r0 libuuid=2.42.3-r1 && rm -f /usr/local/bin/gosu',
   ]);
   assert.ok(instructions.indexOf('USER root') < instructions.indexOf(installs[0]));
   assert.ok(instructions.indexOf(installs[0]) < instructions.indexOf('USER 70:70'));

@@ -27,6 +27,13 @@ import { isProxy, isPromise } from "node:util/types";
 import { createFreshBootstrapAdmission } from "../auth/fncp-bootstrap-admission";
 
 const failure = () => new Error("FNCP_FRESH_BOOTSTRAP_HTTPS_FAILED");
+function removeGeneratedFile(path: string) {
+  try {
+    unlinkSync(path);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw failure();
+  }
+}
 function fields(value: unknown, keys: string[]) {
   if (
     !value ||
@@ -154,13 +161,7 @@ function generateTls() {
     key?.fill(0);
     throw failure();
   } finally {
-    for (const path of [keyPath, certPath]) {
-      try {
-        unlinkSync(path);
-      } catch (error) {
-        if (error.code !== "ENOENT") throw failure();
-      }
-    }
+    for (const path of [keyPath, certPath]) removeGeneratedFile(path);
     rmdirSync(directory);
   }
 }

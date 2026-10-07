@@ -29,6 +29,7 @@ export function assertBootstrapChild() {
     )
       throw new Error("FNCP_FRESH_BOOTSTRAP_PRIVATE_STDIO_REQUIRED");
   }
+  // eslint-disable-next-line no-restricted-properties -- Validate the attested child environment before importing Config or app.
   if (!freshBootstrapStartup(process.env))
     throw new Error("FNCP_FRESH_BOOTSTRAP_PROFILE_REQUIRED");
 }
@@ -92,6 +93,7 @@ export function runBootstrapChild() {
         Object.keys(message).sort().join() !==
           "issuer,publicJwk,seedStatementsJson,type" ||
         message["type"] !== "start" ||
+        // eslint-disable-next-line no-restricted-properties -- Compare IPC trust to the validated child environment without importing Config.
         message["issuer"] !== process.env.AUTH_ISSUER
       )
         throw new Error("invalid");

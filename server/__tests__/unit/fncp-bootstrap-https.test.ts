@@ -8,9 +8,11 @@ import {
   X509Certificate,
 } from "node:crypto";
 import { readFileSync } from "node:fs";
+import fs from "node:fs";
 import { request } from "node:https";
 import * as net from "node:net";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { connect as connectTls } from "node:tls";
 import { createBootstrapHttpsRuntime } from "../../src/bootstrap/https-runtime";
 
@@ -226,6 +228,29 @@ afterEach(async () => {
   for (const runtime of owned) await runtime.close();
   owned.clear();
   jest.restoreAllMocks();
+});
+
+test("generated TLS cleanup failure denies startup before application initialization", async () => {
+  const remove = fs.unlinkSync;
+  let directory: string;
+  const unlink = jest.spyOn(fs, "unlinkSync").mockImplementationOnce(path => {
+    directory = dirname(String(path));
+    remove(path);
+    throw Object.assign(new Error("invented cleanup diagnostic"), { code: "EACCES" });
+  });
+  const initialize = jest.fn();
+  try {
+    await expect(createBootstrapHttpsRuntime({ trust, signal: new AbortController().signal, initialize }))
+      .rejects.toThrow(errorCode);
+    expect(initialize).not.toHaveBeenCalled();
+  } finally {
+    unlink.mockRestore();
+    if (directory) {
+      expect(dirname(directory)).toBe(fs.realpathSync(tmpdir()));
+      expect(basename(directory).startsWith("fncp-owned-api-tls-")).toBe(true);
+      fs.rmSync(directory, { recursive: true, force: false });
+    }
+  }
 });
 
 test("fresh kernel serves canonical create only after readiness, then closes its exact listener", async () => {

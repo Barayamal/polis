@@ -50,7 +50,8 @@ async function certificate(t, alternateLeaf = false) {
   const directory = await mkdtemp(join(tmpdir(), 'fncp-database-wire-tls-test-'));
   await chmod(directory, 0o700); t.after(() => rm(directory, { recursive: true, force: true }));
   const keyPath = join(directory, 'owned-key.pem'); const certPath = join(directory, 'owned-cert.pem');
-  const openssl = args => spawnSync('/opt/homebrew/bin/openssl', args, { cwd: directory, shell: false,
+  const opensslExecutable = process.platform === 'darwin' ? '/opt/homebrew/bin/openssl' : '/usr/bin/openssl';
+  const openssl = args => spawnSync(opensslExecutable, args, { cwd: directory, shell: false,
     stdio: ['ignore', 'pipe', 'pipe'], timeout: 10000, maxBuffer: 8192,
     env: { PATH: '/opt/homebrew/bin:/usr/bin:/bin', LANG: 'C', LC_ALL: 'C', OPENSSL_CONF: '/dev/null' } });
   assert.equal(openssl(['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-noenc',

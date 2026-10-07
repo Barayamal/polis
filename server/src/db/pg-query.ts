@@ -294,16 +294,23 @@ async function withTransaction<T>(work: (query: TransactionQuery) => Promise<T>)
       leased.catch(() => undefined);
       return leased;
     };
+    let workFailed = false;
+    let workFailure: unknown;
     try {
       result = await work(query);
+    } catch (error) {
+      workFailed = true;
+      workFailure = error;
     } finally {
       active = false;
-      // An escaped/unawaited query cannot run concurrently with COMMIT or ROLLBACK.
-      if (pending) {
-        await pending.catch(() => undefined);
-        throw new Error("Database transaction work was not fully awaited");
-      }
     }
+    // An escaped/unawaited query cannot run concurrently with COMMIT or ROLLBACK.
+    // Drain it before propagating either the callback failure or lease rejection.
+    if (pending) {
+      await pending.catch(() => undefined);
+      throw new Error("Database transaction work was not fully awaited");
+    }
+    if (workFailed) throw workFailure;
     if (connectionFailed) throw new Error("Database transaction connection failed");
     if (queryFailed) throw queryFailure;
     commitAttempted = true;

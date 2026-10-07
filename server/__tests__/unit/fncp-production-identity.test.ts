@@ -23,6 +23,14 @@ test("new identity gets one mapping and no automatic owner capability", async ()
   expect(f.query.mock.calls[1][0]).toContain("false, now_as_millis()");
   expect(f.query.mock.calls[2][1]).toEqual(["invented-subject", 8]);
 });
+test("every forbidden ASCII control, space and DEL is denied before a mapping transaction", async () => {
+  const f = fixture();
+  for (const code of [...Array.from({ length: 0x21 }, (_, index) => index), 0x7f]) {
+    await expect(f.create("invented" + String.fromCharCode(code) + "subject", claims))
+      .rejects.toThrow(/^FNCP_PRODUCTION_OIDC_MAPPING_FAILED$/);
+  }
+  expect(f.pg.withTransaction).not.toHaveBeenCalled();
+});
 test("email collision cannot overwrite or attach another subject", async () => {
   const f = fixture([[], []]);
   await expect(f.create("other-subject", claims)).rejects.toThrow(/^FNCP_PRODUCTION_OIDC_MAPPING_FAILED$/);

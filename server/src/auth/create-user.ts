@@ -155,7 +155,8 @@ async function getOrCreateDedicatedOidcUser(subject: string, claims: any): Promi
     const namespace = Config.authNamespace || "";
     const email = claims?.email ?? claims?.[`${namespace}email`];
     const verified = claims?.email_verified ?? claims?.[`${namespace}email_verified`];
-    if (typeof subject !== "string" || !subject || subject.length > 512 || /[\u0000-\u0020\u007f]/u.test(subject) ||
+    if (typeof subject !== "string" || !subject || subject.length > 512 ||
+        Array.from(subject, character => character.charCodeAt(0)).some(code => code <= 0x20 || code === 0x7f) ||
         typeof email !== "string" || email.length > 256 || !/^[^\s@]+@[^\s@]+$/u.test(email) || verified !== true) throw failure();
     const name = claims?.name ?? claims?.[`${namespace}name`] ?? claims?.nickname ?? email.split("@")[0];
     if (typeof name !== "string" || name.length > 746) throw failure();

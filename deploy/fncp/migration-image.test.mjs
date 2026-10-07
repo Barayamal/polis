@@ -55,7 +55,7 @@ function assertReviewedRuntimeApkInstall(stage) {
     .filter((line) => /\bapk\s+add\b/u.test(line))
     .map((line) => line.trim().replace(/\s+/gu, " "));
   assert.deepEqual(installs, [
-    "RUN apk add --no-cache libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 libuuid=2.42.3-r1",
+    "RUN apk add --no-cache libcrypto3=3.5.9-r0 libssl3=3.5.9-r0 libuuid=2.42.3-r1",
   ]);
 }
 
@@ -146,7 +146,7 @@ test("migration runtime package boundary permits only the three reviewed securit
   assert.doesNotThrow(() => assertReviewedRuntimeApkInstall(finalImageStage));
   for (const changed of [
     finalImageStage.replace("libuuid=2.42.3-r1", "libuuid=2.42.3-r1 g++ make"),
-    finalImageStage.replace("libssl3=3.5.8-r0", "libssl3"),
+    finalImageStage.replace("libssl3=3.5.9-r0", "libssl3"),
     finalImageStage.replace("libuuid=2.42.3-r1", "libuuid=2.42.3-r0"),
     `${finalImageStage}\nRUN apk add --no-cache build-base\n`,
   ]) {

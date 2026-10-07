@@ -89,9 +89,9 @@ WORKDIR /app
 
 RUN apk add --no-cache \
       ca-certificates-bundle=20260909-r0 \
-      libcrypto3=3.5.8-r0 \
-      libssl3=3.5.8-r0 \
-      zlib=1.3.2-r0
+      libcrypto3=3.5.9-r0 \
+      libssl3=3.5.9-r0 \
+      zlib=1.3.2-r1
 
 LABEL org.barayamal.fncp.busybox.remediation="CVE-2025-60876-upstream-patch" \
       org.opencontainers.image.source="https://github.com/Barayamal/polis" \

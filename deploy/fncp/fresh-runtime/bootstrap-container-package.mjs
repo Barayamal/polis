@@ -51,7 +51,7 @@ const API_STAGE = [
 const PG_RECIPE = [
   'FROM docker.io/library/postgres:17.11-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73',
   'USER root',
-  'RUN apk add --no-cache libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 libuuid=2.42.3-r1 \\',
+  'RUN apk add --no-cache libcrypto3=3.5.9-r0 libssl3=3.5.9-r0 libuuid=2.42.3-r1 \\',
   '    && rm -f /usr/local/bin/gosu',
   'RUN mkdir -p /run/fncp/postgres-material /opt/fncp/migrations \\',
   '    && chown postgres:postgres /run/fncp/postgres-material \\',
