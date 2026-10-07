@@ -152,7 +152,13 @@ export function createProductionAccess(options){
       }catch(e){return Promise.reject(e instanceof ProductionAccessError?e:deny(503,'event_unavailable'));}
     },
     redeem(principal,invitationToken){return queue(async()=>{if(!OPAQUE.test(invitationToken))throw deny();const g=active(),{i}=assertApproved(principal,g);const tokenHash=sha(invitationToken),inv=db.prepare('SELECT * FROM invitations WHERE token_hash=?').get(tokenHash);if(!inv||inv.account_id!==i.accountId||inv.used||inv.expires_ms<=clock())throw deny();const r=await readback(i.accountId,principal,g);assertApproved(principal,g);if(r.state!=='approved')throw deny();let cap;
-      transact(()=>{if(db.prepare('UPDATE invitations SET used=1 WHERE token_hash=? AND used=0').run(tokenHash).changes!==1)throw deny();accountEpochs.set(i.accountId,(accountEpochs.get(i.accountId)??0)+1);cap=Object.freeze({});grants.set(cap,{principal,accountId:i.accountId,expiresAt:Math.min(i.expiresAt,clock()+15*60_000),epoch,accountEpoch:accountEpochs.get(i.accountId),generation:g});});return cap;});},
+      transact(()=>{
+        // Approval readback is asynchronous. Consume only after rechecking the
+        // current recipient and deadline at the actual grant transaction.
+        const {i:recipient}=assertApproved(principal,g),consumedAt=clock();
+        if(recipient.expiresAt<=consumedAt||db.prepare('UPDATE invitations SET used=1 WHERE token_hash=? AND account_id=? AND used=0 AND expires_ms>?').run(tokenHash,recipient.accountId,consumedAt).changes!==1)throw deny();
+        accountEpochs.set(recipient.accountId,(accountEpochs.get(recipient.accountId)??0)+1);cap=Object.freeze({});grants.set(cap,{principal,accountId:recipient.accountId,expiresAt:Math.min(recipient.expiresAt,consumedAt+15*60_000),epoch,accountEpoch:accountEpochs.get(recipient.accountId),generation:g});
+      });return cap;});},
     participate(principal,grant,kind,values={}){return queue(async()=>{if(!['init','next','vote'].includes(kind))throw deny(400,'invalid_request');exact(values,kind==='vote'?['tid','vote']:[]);if(kind==='vote'&&(!seed.has(values.tid)||![-1,0,1].includes(values.vote)))throw deny(400,'invalid_vote');
       const check=()=>{const cap=grants.get(grant),g=active();const {i,r}=assertApproved(principal,g);if(!cap||cap.principal!==principal||cap.accountId!==i.accountId||cap.epoch!==epoch||cap.accountEpoch!==accountEpochs.get(i.accountId)||cap.generation!==g||cap.expiresAt<=clock())throw deny();return {i,r,g};};
       const before=check();const w=await readback(before.i.accountId,principal,before.g);check();if(w.state!=='approved')throw deny();let result;

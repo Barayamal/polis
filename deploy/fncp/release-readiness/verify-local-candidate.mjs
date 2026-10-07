@@ -5,6 +5,7 @@ import { readFileSync, readdirSync, mkdirSync, writeFileSync, lstatSync } from '
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { CANDIDATE_READINESS_LIMITS } from './collect-candidate-release.mjs';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const directories = [
@@ -52,7 +53,8 @@ const summary = { status: passed ? 'PASS_LOCAL_SYNTHETIC_ONLY' : 'FAIL', began,
   completedAt: new Date().toISOString(), node: process.version, testFiles: tests.length,
   totals, processStatus: result.status, signal: result.signal, error: result.error?.code ?? null,
   sourceUnchangedDuringRun: unchanged, sourceManifestSha256: hash(JSON.stringify(before, null, 2) + '\n'),
-  realProviderValidated: false, publicHttpsValidated: false, joinedRuntimeRebuilt: false, deploymentAuthorized: false };
+  realProviderValidated: false, publicHttpsValidated: false, joinedRuntimeRebuilt: false, deploymentAuthorized: false,
+  ...CANDIDATE_READINESS_LIMITS };
 save('summary.json', JSON.stringify(summary, null, 2) + '\n');
 process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
 if (!passed) process.exitCode = 1;

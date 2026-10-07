@@ -56,18 +56,12 @@ test.each([undefined, "", "192.0.2.1"])(
   }
 );
 
-test.each(["", "192.0.2.1", "127.0.0.1"])(
-  "fresh geolocation rejects without fetch (%s)",
-  async (ip) => {
-    const h = fixture(true);
-    const fetch = jest.spyOn(globalThis, "fetch");
-    await expect(h.module.getRegionFromIP(ip)).rejects.toThrow(
-      "FNCP_FRESH_BOOTSTRAP_MODERATION_DISABLED"
-    );
-    expect(fetch).not.toHaveBeenCalled();
-    expect(h.logger.error).not.toHaveBeenCalled();
-  }
-);
+test("fresh module has no geolocation helper or IP transport", () => {
+  const h = fixture(true);
+  expect(h.module).not.toHaveProperty("getRegionFromIP");
+  expect(h.readFile).not.toHaveBeenCalled();
+  expect(h.sdk).not.toHaveBeenCalled();
+});
 
 test("ordinary import still loads the two existing prompts", async () => {
   const h = fixture(false);
@@ -79,9 +73,7 @@ test("ordinary import still loads the two existing prompts", async () => {
   ]);
 });
 
-test("ordinary absent IP retains its no-fetch regional fallback", async () => {
+test("ordinary module no longer exposes an IP lookup", () => {
   const h = fixture(false);
-  const fetch = jest.spyOn(globalThis, "fetch");
-  await expect(h.module.getRegionFromIP("")).resolves.toBe("US or Europe (EU)");
-  expect(fetch).not.toHaveBeenCalled();
+  expect(h.module).not.toHaveProperty("getRegionFromIP");
 });

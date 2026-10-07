@@ -11,7 +11,7 @@ const internal_config = {
   system_lore: "",
 };
 const DEFAULT_REGION = "US or Europe (EU)";
-const IP_LOOKUP_TIMEOUT_MS = 5_000;
+let promptLoadFailed = false;
 
 async function loadFiles() {
   internal_config.fileContents = await fs.readFile(
@@ -27,58 +27,28 @@ async function loadFiles() {
 // The fresh fixed-seed bootstrap has no moderation or geolocation role. The
 // owned child starts from a fixed compiled directory, not an asset directory;
 // importing this module must not read prompts or dispatch external work there.
-if (!config.freshBootstrapLocalOnly) loadFiles();
+export const moderationReady = config.freshBootstrapLocalOnly
+  ? Promise.resolve()
+  : loadFiles().catch(() => {
+      // Handle rejection immediately, including when no caller starts an
+      // analysis. Preserve Promise<void>; keep no raw filesystem exception.
+      promptLoadFailed = true;
+    });
 
-export async function getRegionFromIP(ip: string): Promise<string> {
-  if (config.freshBootstrapLocalOnly)
-    throw new Error("FNCP_FRESH_BOOTSTRAP_MODERATION_DISABLED");
-  if (!ip) {
-    return DEFAULT_REGION;
-  }
-  try {
-    const response = await fetch(
-      `http://ip-api.com/json/${encodeURIComponent(ip)}`,
-      {
-        redirect: "follow",
-        signal: AbortSignal.timeout(IP_LOOKUP_TIMEOUT_MS),
-      }
-    );
-    if (!response.ok) {
-      throw new Error(`IP lookup returned HTTP ${response.status}.`);
-    }
-    const data = JSON.parse(await response.text()) as {
-      status?: string;
-      city?: string;
-      regionName?: string;
-      country?: string;
-    };
-    if (data.status === "success" && data.country) {
-      return [data.city, data.regionName, data.country]
-        .filter(Boolean)
-        .join(", ");
-    }
-  } catch (error) {
-    logger.error("Error fetching region from IP:", { error });
-  }
-  return DEFAULT_REGION;
-}
-
-async function analyzeComment(
-  txt: string,
-  convo_topic: string,
-  geographical_context?: string // ip address if available
-) {
+// Backport the upstream 80193c65 privacy boundary: location stays at its
+// existing fallback, never inferred from or enriched with a participant IP.
+async function analyzeComment(txt: string, convo_topic: string) {
   if (config.freshBootstrapLocalOnly)
     throw new Error("FNCP_FRESH_BOOTSTRAP_MODERATION_DISABLED");
   try {
+    await moderationReady;
+    if (promptLoadFailed)
+      throw new Error("POLIS_MODERATION_PROMPTS_UNAVAILABLE");
     const json = await convertXML(internal_config.fileContents);
-    const finalGeographicalContext = geographical_context
-      ? await getRegionFromIP(geographical_context)
-      : DEFAULT_REGION;
     json.polis_moderation_rubric.children[11].task.children[1].input = {
       comment_text: txt,
       conversation_topic: convo_topic,
-      geographical_context: finalGeographicalContext,
+      geographical_context: DEFAULT_REGION,
     };
 
     const prompt_xml = js2xmlparser.parse("polis_moderation_rubric", json);
@@ -119,9 +89,24 @@ async function analyzeComment(
     });
 
     const result = respGem.text;
-    logger.debug(`${txt} moderation result: ${result}`);
-    return JSON.parse(result).output?.final_score;
-  } catch (error) {
+    const rawScore = JSON.parse(result).output?.final_score;
+    // The prompt historically returns both JSON numbers and number strings.
+    // Normalize only JSON-style numeric text, never null/booleans/arrays or
+    // empty/hexadecimal strings through Number's broader coercion rules.
+    const score =
+      typeof rawScore === "number"
+        ? rawScore
+        : typeof rawScore === "string" &&
+          /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(rawScore.trim())
+        ? Number(rawScore.trim())
+        : NaN;
+    if (!Number.isFinite(score) || score < 0)
+      throw new Error("POLIS_MODERATION_SCORE_UNAVAILABLE");
+    logger.debug("polis_moderation_analysis_completed");
+    return score;
+  } catch {
+    // SDK/parser errors may contain the prompt, address or model response.
+    logger.error("polis_moderation_analysis_unavailable");
     return;
   }
 }

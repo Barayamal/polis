@@ -146,9 +146,8 @@ describe("minimal FNCP production dependency contract", () => {
       /from\s+["']request(?:-promise)?["']|require\(["']request/u
     );
     expect(fileFetcherSource).toContain('redirect: "follow"');
-    expect(moderationSource).toContain(
-      "AbortSignal.timeout(IP_LOOKUP_TIMEOUT_MS)"
-    );
+    expect(moderationSource).not.toContain("getRegionFromIP");
+    expect(moderationSource).not.toMatch(/\bfetch\s*\(/u);
   });
 
   test("supported Express middleware replaces the legacy Connect stack", () => {

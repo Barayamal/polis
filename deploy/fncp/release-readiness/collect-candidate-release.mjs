@@ -14,6 +14,14 @@ const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const LABEL = 'org.barayamal.fncp.collection';
 const RELEASE_VERSION = 3;
 const RELEASE_PROFILE = 'FNCP_PRODUCTION_COMPOSE_V3';
+// Candidate reporting only. An authentic backup preserves the captured history,
+// not later decisions. No independent current-denial authority is implemented;
+// builds, scans, restore integrity and fresh epochs cannot clear this blocker.
+export const CANDIDATE_READINESS_LIMITS = Object.freeze({
+  currentDenialHistoryVerified: false,
+  restoredAdmissionAuthorized: false,
+  blockingReasons: Object.freeze(['RECOVERY_CURRENT_DENIAL_HISTORY_UNVERIFIED']),
+});
 const ZLIB_ROLES = Object.freeze(['api','math','postgres','migration','participant','wordpress','proxy','edge','operator']);
 const ZLIB_COMMIT = 'df84af25dc1942490e1d1c899a07619152a46148';
 const ZLIB_PATCH_SHA256 = '2e1c40f9ba33c29a2e43c9121970513ef1f70e3a0238e73d724fac56d8af4294';
@@ -391,6 +399,7 @@ async function collectPhase(options, phase) {
       releaseProfile:RELEASE_PROFILE,sourceRevision: c.source.sourceRevision, sourceFingerprint: c.source.sourceFingerprint, imageRoles: imageRoles(RELEASE_VERSION).length, images: lock.images, results,
       scanned: phase !== 'build', findingsRequireReview: true, joinedRuntimeRehearsed: false, deploymentAuthorized: false };
   } catch { failure = true; outcome = { status: 'FAILED_PARTIAL_EVIDENCE_RETAINED', deploymentAuthorized: false }; }
+  outcome = { ...outcome, ...CANDIDATE_READINESS_LIMITS };
   if (c) {
     try { outcome.cleanup = await c.cleanup(); } catch { failure = true; outcome.status = 'FAILED_CLEANUP_UNCONFIRMED'; }
     await c.write('summary.json', outcome);
@@ -425,6 +434,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const [, root, socket, destination, sourceFile, imageFile] = args;
       result = await scanCandidateRelease({ root, socket, destination, sourceLock: await readLockFile(sourceFile), imageLock: await readLockFile(imageFile) });
     } else reject();
-    process.stdout.write(publicJson({ status: result.status, imageRoles: result.imageRoles, deploymentAuthorized: false }));
+    process.stdout.write(publicJson({ status: result.status, imageRoles: result.imageRoles, deploymentAuthorized: false, ...CANDIDATE_READINESS_LIMITS }));
   } catch { process.stderr.write('FNCP_CANDIDATE_COLLECTION_REJECTED: preserve partial evidence and review the failed stage.\n'); process.exitCode = 1; }
 }

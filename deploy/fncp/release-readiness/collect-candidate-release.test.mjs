@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { mkdtemp, writeFile, rm, realpath, stat, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createCandidateSourceLock } from './candidate-source-lock.mjs';
-import { BUILD_RECIPES, WORDPRESS_CVE_2025_3891_PROOF_COMMAND, candidateBuildArguments, copiedSourceBindings,
+import { BUILD_RECIPES, CANDIDATE_READINESS_LIMITS, WORDPRESS_CVE_2025_3891_PROOF_COMMAND, candidateBuildArguments, copiedSourceBindings,
   validateBuiltImage, validateCandidateSbom, validateWordpressCve20253891Proof, scanCandidateRelease } from './collect-candidate-release.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -14,6 +14,45 @@ const denied = /FNCP_CANDIDATE_COLLECTION_REJECTED/u;
 const source = { sourceRevision: 'a'.repeat(40), sourceFingerprint: 'b'.repeat(64),
   files: Object.values(BUILD_RECIPES).map(recipe => ({ path: recipe.dockerfile, sha256: 'c'.repeat(64) })) };
 const id = 'sha256:' + 'd'.repeat(64);
+
+test('new candidate limits are immutable reporting data, never a recovery or access authority', () => {
+  assert.deepEqual(CANDIDATE_READINESS_LIMITS, {
+    currentDenialHistoryVerified: false,
+    restoredAdmissionAuthorized: false,
+    blockingReasons: ['RECOVERY_CURRENT_DENIAL_HISTORY_UNVERIFIED'],
+  });
+  assert.equal(Object.isFrozen(CANDIDATE_READINESS_LIMITS), true);
+  assert.equal(Object.isFrozen(CANDIDATE_READINESS_LIMITS.blockingReasons), true);
+  assert.throws(() => { CANDIDATE_READINESS_LIMITS.currentDenialHistoryVerified = true; }, TypeError);
+});
+
+test('authentic older approval snapshot does not prove a later revocation was reconciled', () => {
+  // Acceptance model only: invented history and a local test MAC. No runtime
+  // checkpoint format, data store or authority capability is created.
+  const key = Buffer.from('Invented snapshot acceptance-model key.');
+  const snapshot = JSON.stringify({ sequence: 1, state: 'approved' });
+  const sign = bytes => createHmac('sha256', key).update(bytes).digest('hex');
+  const authenticator = sign(snapshot), laterDecision = { sequence: 2, state: 'revoked' };
+  assert.equal(sign(snapshot), authenticator);
+  const restored = JSON.parse(snapshot);
+  assert.ok(restored.sequence < laterDecision.sequence);
+  assert.notEqual(restored.state, laterDecision.state);
+  for (const integrityStatus of ['AUTHENTIC_SNAPSHOT', 'RESTORE_PASSED', 'FRESH_EPOCH', 'FRESH_ACTIVATION']) {
+    const report = { integrityStatus, ...CANDIDATE_READINESS_LIMITS };
+    assert.equal(report.currentDenialHistoryVerified, false);
+    assert.equal(report.restoredAdmissionAuthorized, false);
+    assert.deepEqual(report.blockingReasons, ['RECOVERY_CURRENT_DENIAL_HISTORY_UNVERIFIED']);
+  }
+  key.fill(0);
+});
+
+test('collector and local source receipts attach the limits without changing V3 restore contracts', async () => {
+  const collector = await readFile(new URL('./collect-candidate-release.mjs', import.meta.url), 'utf8');
+  const local = await readFile(new URL('./verify-local-candidate.mjs', import.meta.url), 'utf8');
+  assert.match(collector, /outcome = \{ \.\.\.outcome, \.\.\.CANDIDATE_READINESS_LIMITS \};/u);
+  assert.match(local, /\.\.\.CANDIDATE_READINESS_LIMITS \};/u);
+  assert.doesNotMatch(collector, /independentCheckpoint|checkpointSchema|acceptRestoredAdmission/u);
+});
 function image() { return { Id: id, Architecture: 'arm64', Os: 'linux', Size: 1024, RootFS: { Type: 'layers', Layers: ['sha256:' + 'e'.repeat(64)] },
   Config: { User: '1000:1000', Labels: { 'org.opencontainers.image.revision': source.sourceRevision,
     'org.barayamal.fncp.source-fingerprint': source.sourceFingerprint, 'org.barayamal.fncp.release-profile': 'FNCP_PRODUCTION_COMPOSE_V3',

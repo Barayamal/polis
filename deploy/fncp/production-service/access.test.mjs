@@ -121,6 +121,26 @@ test('private socket resolves the displayed registration reference through signe
 
 test('forwarded invitation denies without consuming rightful use, and simultaneous redemption succeeds once',async t=>{const h=await fixture(t),p=await h.principal(),other=await h.principal('invented-second');await h.register(p);await h.register(other);h.activate();await h.approve(p);await h.approve(other);const i=await h.invite(p);await assert.rejects(h.access.redeem(other,i.invitationToken));const r=await Promise.allSettled([h.access.redeem(p,i.invitationToken),h.access.redeem(p,i.invitationToken)]);assert.equal(r.filter(x=>x.status==='fulfilled').length,1);const g=r.find(x=>x.status==='fulfilled').value;await assert.rejects(h.access.participate(p,Object.freeze({...g}),'vote',{tid:0,vote:1}));assert.equal(h.votes.length,0);});
 
+for(const remaining of [1,0,-1])test(`invitation deadline is rechecked after held HTTPS approval readback (${remaining}ms remaining)`,async t=>{
+  const h=await fixture(t),authenticated=await h.issuer.authenticate({claims:{sub:'invented-deadline-boundary',exp:Math.floor(h.now()/1000)+1200}},h.identity);
+  assert.equal(authenticated.ok,true);const p=authenticated.principal;await h.access.authenticate(p);await h.register(p);h.activate(1800);await h.approve(p);
+  const invitation=await h.invite(p);assert.equal(invitation.expiresAt,h.now()+600_000);
+  assert.ok(h.identity.principalDeadline(p)>invitation.expiresAt);
+  h.advance(invitation.expiresAt-h.now()-50);const g=gate();t.after(g.release);
+  h.behavior.wpGate=action=>action==='status'?g.wait():undefined;
+  const redeem=h.access.redeem(p,invitation.invitationToken),observed=Promise.allSettled([redeem]);
+  await g.entered;h.advance(50-remaining);g.release();const [result]=await observed;h.behavior.wpGate=undefined;
+  assert.equal(h.identity.isVerifiedPrincipal(p),true);
+  if(remaining>0){
+    assert.equal(result.status,'fulfilled');await h.access.participate(p,result.value,'vote',{tid:0,vote:1});assert.equal(h.votes.length,1);
+    await assert.rejects(h.access.redeem(p,invitation.invitationToken));
+  }else{
+    assert.equal(result.status,'rejected');assert.equal(h.votes.length,0);await assert.rejects(h.access.redeem(p,invitation.invitationToken));
+    const replacement=await h.invite(p),grant=await h.access.redeem(p,replacement.invitationToken);
+    await h.access.participate(p,grant,'vote',{tid:0,vote:1});assert.equal(h.votes.length,1);
+  }
+});
+
 test('twenty lifetime registrations including revoked identities; concurrent last-slot admission remains bounded',async t=>{const h=await fixture(t);const people=[];for(let i=0;i<21;i++)people.push(await h.principal('invented-person-'+i));for(const p of people.slice(0,19))await h.register(p);const results=await Promise.allSettled(people.slice(19).map(p=>h.register(p)));assert.equal(results.filter(x=>x.status==='fulfilled').length,1);assert.equal(h.records.size,20);await h.revoke(people[0]);await assert.rejects(h.register(people[20]));assert.equal(h.access.operator.status().registrations,20);});
 
 test('revocation persists denial before queued removal and survives provider failure and restart',async t=>{const {h,p,grant,invitation}=await admitted(t);h.behavior.providerDown=true;const e=h.event(p,'revoked');await assert.rejects(h.access.ingestWordPressEvent(e));await assert.rejects(h.access.participate(p,grant,'vote',{tid:0,vote:1}));assert.equal(h.votes.length,0);h.behavior.providerDown=false;await h.restart();const reauth=await h.issuer.authenticate({claims:{sub:'invented-subject'}},h.identity);assert.equal(reauth.ok,true);assert.equal(reauth.principal.accountId,p.accountId);await assert.rejects(h.access.authenticate(reauth.principal));await assert.rejects(h.access.redeem(p,invitation.invitationToken));const ack=await h.access.ingestWordPressEvent(e);assert.equal(ack.eventId,e.eventId);assert.equal([...h.allowlist.values()][0],2);});

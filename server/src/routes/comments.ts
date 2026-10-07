@@ -273,29 +273,29 @@ export async function isProConvo(owner: number): Promise<boolean> {
   try {
     const { email } = await getUserInfoForUid2(owner);
     if (!email) {
-      logger.warn(`No email found for owner ID: ${owner}`);
+      logger.warn("polis_moderation_owner_email_unavailable");
       return false;
     }
     const client = getManagementClient();
     const users = await client.usersByEmail.getByEmail({ email });
 
     if (!users || users.data.length === 0) {
-      logger.warn(`No OIDC user found for email: ${email}`);
+      logger.warn("polis_moderation_owner_identity_unavailable");
       return false;
     }
     const user = users.data[0];
     const userId = user.user_id;
 
     if (!userId) {
-      logger.error(`OIDC user object for ${email} is missing a user_id.`);
+      logger.error("polis_moderation_owner_subject_unavailable");
       return false;
     }
     const roles = await client.users.getRoles({ id: userId });
     const hasRole = roles.data.some((role) => role.name === "delphi-enabled");
 
     return hasRole;
-  } catch (error) {
-    logger.error(error);
+  } catch {
+    logger.error("polis_moderation_owner_lookup_unavailable");
     return false;
   }
 }
@@ -331,8 +331,7 @@ function moderateCommentQuery(
 // Note: Seed and moderator comments bypass this function entirely
 async function moderateComment(
   txt: string,
-  conversation: any,
-  ip?: string | undefined
+  conversation: any
 ): Promise<CommentModerationResult> {
   let active = true;
   const classifications: string[] = [];
@@ -340,7 +339,7 @@ async function moderateComment(
 
   // Run moderation checks in parallel
   const [polisModResponse, bad] = await Promise.all([
-    analyzeComment(txt, conversation.topic, ip),
+    analyzeComment(txt, conversation.topic),
     Promise.resolve(hasBadWords(txt)),
   ]);
 
@@ -352,19 +351,27 @@ async function moderateComment(
 
   const commentToxicityThreshold = 100;
 
-  const toxicityScore = Number(polisModResponse);
+  const toxicityScore = polisModResponse;
 
-  if (typeof toxicityScore === "number" && !isNaN(toxicityScore)) {
-    logger.debug(
-      `Polismod toxicity Score for comment "${txt}": ${toxicityScore}`
-    );
+  if (
+    typeof toxicityScore !== "number" ||
+    !Number.isFinite(toxicityScore) ||
+    toxicityScore < 0
+  ) {
+    // An unavailable verdict is a manual hold, not an automatic rejection or
+    // a grant to the non-strict participant queue. Staff can explicitly set
+    // active=true/mod=ok through the existing moderator action afterwards.
+    logger.info("polis_moderation_unavailable_manual_hold");
+    return { active: false, mod: polisTypes.mod.unmoderated, classifications };
+  }
 
-    if (toxicityScore >= commentToxicityThreshold) {
-      active = false;
-      mod = -1;
-      classifications.push("bad");
-      logger.info("active=false because (Toxicity)");
-    }
+  logger.debug("Polismod toxicity score evaluated");
+
+  if (toxicityScore >= commentToxicityThreshold) {
+    active = false;
+    mod = -1;
+    classifications.push("bad");
+    logger.info("active=false because (Toxicity)");
   }
 
   return { active, mod, classifications };
@@ -395,8 +402,7 @@ async function handle_POST_comments(req: RequestWithP, res: any) {
     // Always verify/get the participant to avoid foreign key constraint violations
     if (pid === undefined || pid === -1) {
       logger.debug(
-        "Comment handler: pid not set by middleware, getting/creating participant",
-        { zid, uid, pid }
+        "Comment handler: pid not set by middleware, getting/creating participant"
       );
       // Try to get existing pid or create participant
       const existingPid = await getPidPromise(zid, uid, true);
@@ -404,54 +410,32 @@ async function handle_POST_comments(req: RequestWithP, res: any) {
         // Need to create participant
         const rows = await addParticipant(zid, uid);
         pid = rows[0].pid;
-        logger.info("Comment handler: created participant", {
-          zid,
-          uid,
-          pid,
-        });
+        logger.info("Comment handler: created participant");
       } else {
         pid = existingPid;
-        logger.debug("Comment handler: found existing participant", {
-          zid,
-          uid,
-          pid,
-        });
+        logger.debug("Comment handler: found existing participant");
       }
     } else {
       // Middleware set a pid, but verify it exists to prevent race conditions
-      logger.debug("Comment handler: verifying participant exists", {
-        zid,
-        uid,
-        pid,
-      });
+      logger.debug("Comment handler: verifying participant exists");
       const verifiedPid = await getPidPromise(zid, uid, true);
       if (verifiedPid === -1) {
         // Participant doesn't exist, create it
         logger.warn(
-          "Comment handler: middleware provided pid but participant doesn't exist, creating",
-          { zid, uid, middlewarePid: pid }
+          "Comment handler: middleware provided pid but participant doesn't exist, creating"
         );
         const rows = await addParticipant(zid, uid);
         pid = rows[0].pid;
-        logger.info("Comment handler: created participant after verification", {
-          zid,
-          uid,
-          pid,
-        });
+        logger.info("Comment handler: created participant after verification");
       } else if (verifiedPid !== pid) {
         // Middleware provided wrong pid, use the correct one
         logger.warn(
-          "Comment handler: middleware pid mismatch, using verified pid",
-          { zid, uid, middlewarePid: pid, verifiedPid }
+          "Comment handler: middleware pid mismatch, using verified pid"
         );
         pid = verifiedPid;
       } else {
         // All good, participant exists
-        logger.debug("Comment handler: participant verified", {
-          zid,
-          uid,
-          pid,
-        });
+        logger.debug("Comment handler: participant verified");
       }
     }
 
@@ -473,12 +457,6 @@ async function handle_POST_comments(req: RequestWithP, res: any) {
       return;
     }
 
-    const ip =
-      req.headers["x-forwarded-for"] ||
-      req.connection?.remoteAddress ||
-      req.socket?.remoteAddress ||
-      req.connection?.socket?.remoteAddress;
-
     // 4. Moderate the comment
     let active = true;
     let mod = 0;
@@ -492,7 +470,7 @@ async function handle_POST_comments(req: RequestWithP, res: any) {
       (await isProConvo(conversation.owner))
     ) {
       // Only apply pro moderation features to non-seed comments
-      const moderationResult = await moderateComment(txt, conversation, ip);
+      const moderationResult = await moderateComment(txt, conversation);
       active = moderationResult.active;
       mod = moderationResult.mod;
     }
@@ -560,8 +538,8 @@ async function handle_POST_comments(req: RequestWithP, res: any) {
             sendCommentModerationEmail(req, Number(uid), zid, n)
           );
         }
-      } catch (err) {
-        logger.error("polis_err_getting_modstatus_comment_count", err);
+      } catch {
+        logger.error("polis_err_getting_modstatus_comment_count");
       }
     } else {
       addNotificationTask(zid);
@@ -587,78 +565,35 @@ async function handle_POST_comments(req: RequestWithP, res: any) {
 
     res.json(response);
   } catch (err: any) {
-    // Log all errors for debugging
-    logger.error("Comment creation failed", {
-      zid,
-      uid,
-      pid,
-      error: err.message,
-      code: err.code,
-      constraint: err.constraint,
-      stack: err.stack,
-    });
+    // Preserve bounded failure classes, never raw identifiers, errors or SQL.
+    logger.error("Comment creation failed");
 
     if (err.code === "23505" || err.code === 23505) {
-      failJson(res, 409, "polis_err_post_comment_duplicate", err);
+      failJson(res, 409, "polis_err_post_comment_duplicate");
     } else if (
       err.code === "23503" &&
       err.constraint === "comments_zid_pid_fkey"
     ) {
       // Foreign key constraint violation - participant doesn't exist
       logger.error(
-        "Comment insertion failed due to participant race condition",
-        {
-          zid,
-          uid,
-          pid,
-          error: err.message,
-          constraint: err.constraint,
-        }
+        "Comment insertion failed due to participant race condition"
       );
-      failJson(
-        res,
-        500,
-        "polis_err_post_comment_participant_race_condition",
-        err
-      );
+      failJson(res, 500, "polis_err_post_comment_participant_race_condition");
     } else if (
       err.message &&
       err.message.includes("participant race condition")
     ) {
       // Custom error from our retry logic
-      logger.error("Comment insertion failed after retries", {
-        zid,
-        uid,
-        pid,
-        error: err.message,
-      });
-      failJson(
-        res,
-        500,
-        "polis_err_post_comment_participant_race_condition",
-        err
-      );
+      logger.error("Comment insertion failed after retries");
+      failJson(res, 500, "polis_err_post_comment_participant_race_condition");
     } else if (err.code === "23503") {
       // Other foreign key constraint violations
-      logger.error("Foreign key constraint violation in comment creation", {
-        zid,
-        uid,
-        pid,
-        error: err.message,
-        constraint: err.constraint,
-      });
-      failJson(res, 500, "polis_err_post_comment_constraint_violation", err);
+      logger.error("Foreign key constraint violation in comment creation");
+      failJson(res, 500, "polis_err_post_comment_constraint_violation");
     } else {
       // Generic error - ensure we don't crash the server
-      logger.error("Unexpected error in comment creation", {
-        zid,
-        uid,
-        pid,
-        error: err.message,
-        code: err.code,
-        stack: err.stack,
-      });
-      failJson(res, 500, "polis_err_post_comment", err);
+      logger.error("Unexpected error in comment creation");
+      failJson(res, 500, "polis_err_post_comment");
     }
   }
 }
