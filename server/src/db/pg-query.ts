@@ -1,11 +1,24 @@
 import { isFunction, isString, isUndefined } from "underscore";
-import { Pool, PoolConfig, QueryResult } from "pg";
+import { Pool, PoolClient, PoolConfig, QueryResult } from "pg";
 import { parse as parsePgConnectionString } from "pg-connection-string";
 import QueryStream from "pg-query-stream";
 
 import Config from "../config";
 import logger from "../utils/logger";
 import { MPromise } from "../utils/metered";
+import { loadFreshBootstrapTls } from "../auth/fncp-bootstrap-tls";
+import { loadDatabaseCaTls } from "../auth/database-ca-tls";
+
+const freshBootstrapTls = Config.freshBootstrapLocalOnly ? loadFreshBootstrapTls({
+  databaseUrl: Config.databaseURL,
+  jwksUri: Config.jwksUri,
+  databaseCertificateSha256: Config.freshBootstrapDatabaseCertificateSha256,
+  jwksCertificateSha256: Config.freshBootstrapJwksCertificateSha256,
+}) : undefined;
+const primaryCaTls = loadDatabaseCaTls({ certificateFile: Config.databaseSslCaFile,
+  enabled: Config.databaseSSL, databaseUrl: Config.databaseURL });
+const replicaCaTls = loadDatabaseCaTls({ certificateFile: Config.databaseSslCaFile,
+  enabled: Config.databaseSSL, databaseUrl: Config.readOnlyDatabaseURL });
 
 // # DB Connections
 //
@@ -25,11 +38,13 @@ const pgConnection = Object.assign(
   {
     max: poolSize,
     isReadOnly: false,
-    ssl: Config.databaseSSL
+    ...(Config.fncpDedicatedProduction ? { connectionTimeoutMillis: 5000, query_timeout: 5000, statement_timeout: 5000 } : {}),
+    ...(freshBootstrapTls ? { Client: freshBootstrapTls.FreshBootstrapPgClient, connectionTimeoutMillis: 2000 } : {}),
+    ssl: freshBootstrapTls ? freshBootstrapTls.databaseSsl : primaryCaTls ?? (Config.databaseSSL
       ? {
           rejectUnauthorized: false,
         }
-      : undefined,
+      : undefined),
     poolLog: function (str: string, level: string) {
       if (pgPoolLevelRanks.indexOf(level) <= pgPoolLoggingLevel) {
         logger.info("pool.primary." + level + " " + str);
@@ -42,11 +57,13 @@ const readsPgConnection = Object.assign(
   {
     max: poolSize,
     isReadOnly: true,
-    ssl: Config.databaseSSL
+    ...(Config.fncpDedicatedProduction ? { connectionTimeoutMillis: 5000, query_timeout: 5000, statement_timeout: 5000 } : {}),
+    ...(freshBootstrapTls ? { Client: freshBootstrapTls.FreshBootstrapPgClient, connectionTimeoutMillis: 2000 } : {}),
+    ssl: freshBootstrapTls ? freshBootstrapTls.databaseSsl : replicaCaTls ?? (Config.databaseSSL
       ? {
           rejectUnauthorized: false,
         }
-      : undefined,
+      : undefined),
     poolLog: function (str: string, level: string) {
       if (pgPoolLevelRanks.indexOf(level) <= pgPoolLoggingLevel) {
         logger.info("pool.readonly." + level + " " + str);
@@ -87,7 +104,7 @@ function queryImpl(pool: Pool, queryString: string, ...args: any[]) {
       if (err) {
         if (callback) callback(err);
         // force the pool to destroy and remove a client by passing an instance of Error (or anything truthy, actually) to the done() callback
-        release(err);
+        if (typeof release === "function") release(err);
         logger.error("pg_connect_pool_fail", err);
         return reject(err);
       }
@@ -139,7 +156,7 @@ function queryP_impl<T>(pool: Pool, queryString?: string, params?: any[]) {
         }
         resolve(result.rows);
       }
-    );
+    ).catch(reject);
   });
 }
 
@@ -230,7 +247,122 @@ function connect() {
   return readWritePool.connect();
 }
 
+type TransactionQuery = (sql: string, params?: any[]) => Promise<QueryResult>;
+const confirmedRollbacks = new WeakSet<Error>();
+
+/** Only failures from an acknowledged rollback and successful release are retryable. */
+function transactionRolledBack(error: unknown): boolean {
+  return error instanceof Error && confirmedRollbacks.has(error);
+}
+
+/** Lease one primary client for the entire transaction; never retry an uncertain COMMIT. */
+async function withTransaction<T>(work: (query: TransactionQuery) => Promise<T>): Promise<T> {
+  let client: PoolClient | undefined;
+  let result: T | undefined;
+  let failure: unknown;
+  let failed = false;
+  let begun = false;
+  let commitAttempted = false;
+  let committed = false;
+  let rolledBack = false;
+  let connectionFailed = false;
+  let queryFailed = false;
+  let queryFailure: unknown;
+  let active = false;
+  let pending: Promise<QueryResult> | undefined;
+  const onConnectionError = () => { connectionFailed = true; };
+
+  try {
+    client = await readWritePool.connect();
+    client.on("error", onConnectionError);
+    const beginResult = await client.query("BEGIN");
+    if (beginResult.command !== "BEGIN") throw new Error("Database transaction BEGIN was not acknowledged");
+    begun = true;
+    active = true;
+    const query: TransactionQuery = (sql, params = []) => {
+      if (!active || pending || connectionFailed || queryFailed) return Promise.reject(new Error("Database transaction lease is not active"));
+      let operation: Promise<QueryResult>;
+      try { operation = client!.query(sql, params); }
+      catch (error) { queryFailed = true; queryFailure = error; return Promise.reject(error); }
+      const leased = operation.catch((error) => {
+        queryFailed = true;
+        queryFailure = error;
+        throw error;
+      }).finally(() => { if (pending === leased) pending = undefined; });
+      pending = leased;
+      // Observe rejection even if the callback incorrectly abandons its promise.
+      leased.catch(() => undefined);
+      return leased;
+    };
+    let workFailed = false;
+    let workFailure: unknown;
+    try {
+      result = await work(query);
+    } catch (error) {
+      workFailed = true;
+      workFailure = error;
+    } finally {
+      active = false;
+    }
+    // An escaped/unawaited query cannot run concurrently with COMMIT or ROLLBACK.
+    // Drain it before propagating either the callback failure or lease rejection.
+    if (pending) {
+      await pending.catch(() => undefined);
+      throw new Error("Database transaction work was not fully awaited");
+    }
+    if (workFailed) throw workFailure;
+    if (connectionFailed) throw new Error("Database transaction connection failed");
+    if (queryFailed) throw queryFailure;
+    commitAttempted = true;
+    const commitResult = await client.query("COMMIT");
+    if (commitResult.command !== "COMMIT") throw new Error("Database transaction COMMIT was not acknowledged");
+    committed = true;
+  } catch (error) {
+    failed = true;
+    failure = error;
+    active = false;
+    if (client && begun && !commitAttempted && !connectionFailed) {
+      try {
+        const rollbackResult = await client.query("ROLLBACK");
+        rolledBack = rollbackResult.command === "ROLLBACK" && !connectionFailed;
+      } catch {
+        // A failed rollback is not evidence that the mutation did not commit.
+        rolledBack = false;
+      }
+    }
+  } finally {
+    if (client) {
+      try {
+        // Discard an uncertain/failed connection; release is attempted exactly once.
+        if ((committed || rolledBack) && !connectionFailed) client.release();
+        else client.release(new Error("Database transaction connection discarded"));
+      } catch (error) {
+        failed = true;
+        failure = error;
+        rolledBack = false;
+      } finally {
+        client.removeListener("error", onConnectionError);
+      }
+    }
+  }
+  if (connectionFailed) {
+    failed = true;
+    failure = new Error("Database transaction connection failed");
+    rolledBack = false;
+  }
+  if (failed) {
+    const error = Config.freshBootstrapLocalOnly
+      ? new Error("FNCP_FRESH_BOOTSTRAP_TRANSACTION_FAILED")
+      : failure instanceof Error ? failure : new Error("Database transaction failed");
+    confirmedRollbacks.delete(error);
+    if (rolledBack) confirmedRollbacks.add(error);
+    throw error;
+  }
+  return result as T;
+}
+
 export default {
+  close: () => Promise.all([readWritePool.end(), readPool.end()]).then(() => undefined),
   query,
   query_readOnly,
   queryP,
@@ -240,4 +372,6 @@ export default {
   queryP_readOnly_wRetryIfEmpty,
   stream_queryP_readOnly,
   connect,
+  withTransaction,
+  transactionRolledBack,
 };

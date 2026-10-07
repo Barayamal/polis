@@ -12,8 +12,6 @@
             [clojure.tools.cli :refer [parse-opts]]
             [com.stuartsierra.component :as component]
             [plumbing.core :as pc]
-            [korma.core :as ko]
-            [korma.db :as kdb]
             [polismath.components.postgres :as postgres]))
 ;
 ;
@@ -85,4 +83,3 @@
 ;      (when-not @done?
 ;        (recur)))))
 ;
-

@@ -173,7 +173,7 @@ def create_polis_math_tables(dynamodb, delete_existing=False):
     # Create tables
     created_tables = _create_tables(dynamodb, tables, existing_tables)
     
-    return created_tables
+    return created_tables, set(tables)
 
 def create_job_queue_table(dynamodb, delete_existing=False):
     """
@@ -249,7 +249,7 @@ def create_job_queue_table(dynamodb, delete_existing=False):
     # Create tables
     created_tables = _create_tables(dynamodb, tables, existing_tables)
     
-    return created_tables
+    return created_tables, set(tables)
 
 def create_evoc_tables(dynamodb, delete_existing=False):
     """
@@ -445,7 +445,7 @@ def create_evoc_tables(dynamodb, delete_existing=False):
     # Create tables
     created_tables = _create_tables(dynamodb, tables, existing_tables)
     
-    return created_tables
+    return created_tables, set(tables)
 
 def _delete_tables(dynamodb, table_names, existing_tables):
     """Helper function to delete tables."""
@@ -463,6 +463,7 @@ def _delete_tables(dynamodb, table_names, existing_tables):
 def _create_tables(dynamodb, tables, existing_tables):
     """Helper function to create tables."""
     created_tables = []
+    failures = []
     
     for table_name, table_schema in tables.items():
         if table_name in existing_tables:
@@ -495,14 +496,49 @@ def _create_tables(dynamodb, tables, existing_tables):
                 **table_schema
             )
             logger.info(f"Created table {table_name}")
-            created_tables.append(table_name)
             table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
             logger.info(f"Table {table_name} is active.")
+            created_tables.append(table_name)
 
         except Exception as e:
             logger.error(f"Error creating table {table_name}: {str(e)}")
+            failures.append((table_name, str(e)))
+
+    if failures:
+        details = "; ".join(
+            f"{table_name}: {message}" for table_name, message in failures
+        )
+        raise RuntimeError(f"Failed to create required DynamoDB tables: {details}")
     
     return created_tables
+
+
+def _verify_tables_active(dynamodb, table_names):
+    """Fail unless every requested DynamoDB table exists and is ACTIVE."""
+    failures = []
+
+    for table_name in sorted(table_names):
+        try:
+            response = dynamodb.meta.client.describe_table(TableName=table_name)
+            status = response["Table"]["TableStatus"]
+            if status != "ACTIVE":
+                failures.append((table_name, f"status is {status}"))
+        except Exception as e:
+            failures.append((table_name, str(e)))
+
+    if failures:
+        details = "; ".join(
+            f"{table_name}: {message}" for table_name, message in failures
+        )
+        raise RuntimeError(
+            f"Required DynamoDB table verification failed: {details}"
+        )
+
+    logger.info(
+        "Verified all %d required DynamoDB tables are ACTIVE: %s",
+        len(table_names),
+        sorted(table_names),
+    )
 
 def create_tables(endpoint_url=None, region_name='us-east-1', 
                  delete_existing=False, evoc_only=False, polismath_only=False,
@@ -548,22 +584,32 @@ def create_tables(endpoint_url=None, region_name='us-east-1',
     logger.info(f"Existing tables before operations: {existing_tables}")
     
     created_tables = []
+    expected_tables = set()
     
     # Always create the job queue table
     logger.info("Creating job queue table...")
-    job_queue_tables = create_job_queue_table(dynamodb, delete_existing)
+    job_queue_tables, job_queue_expected = create_job_queue_table(
+        dynamodb, delete_existing
+    )
     created_tables.extend(job_queue_tables)
+    expected_tables.update(job_queue_expected)
     
     # Create tables based on flags
     if not polismath_only:
         logger.info("Creating EVōC tables...")
-        evoc_tables = create_evoc_tables(dynamodb, delete_existing)
+        evoc_tables, evoc_expected = create_evoc_tables(dynamodb, delete_existing)
         created_tables.extend(evoc_tables)
+        expected_tables.update(evoc_expected)
     
     if not evoc_only:
         logger.info("Creating Polis math tables...")
-        polismath_tables = create_polis_math_tables(dynamodb, delete_existing)
+        polismath_tables, polismath_expected = create_polis_math_tables(
+            dynamodb, delete_existing
+        )
         created_tables.extend(polismath_tables)
+        expected_tables.update(polismath_expected)
+
+    _verify_tables_active(dynamodb, expected_tables)
     
     # Check that requested tables were created
     if created_tables:

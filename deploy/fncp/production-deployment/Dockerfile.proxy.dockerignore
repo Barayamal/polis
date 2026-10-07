@@ -1,0 +1,15 @@
+**
+!deploy/fncp/production-security
+!deploy/fncp/production-security/zlib-fixed
+!deploy/fncp/production-security/zlib-fixed/**
+!deploy
+!deploy/fncp
+!deploy/fncp/production-deployment
+!deploy/fncp/production-deployment/Dockerfile.proxy
+!deploy/fncp/production-deployment/Dockerfile.proxy.dockerignore
+!server
+!server/busybox-fixed
+!server/busybox-fixed/**
+!deploy/fncp/production-deployment/nginx.conf
+!deploy/fncp/production-deployment/fncp-upstream.conf
+**/*.test.mjs

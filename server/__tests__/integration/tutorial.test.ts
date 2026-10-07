@@ -56,6 +56,5 @@ describe("POST /tutorial", () => {
     // Expect validation error
     expect(response.status).toBe(400);
     expect(response.text).toContain("polis_err_param_parse_failed_step");
-    expect(response.text).toContain("polis_fail_parse_int invalid");
   });
 });

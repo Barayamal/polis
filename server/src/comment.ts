@@ -401,17 +401,22 @@ function _getCommentsList(o: {
         if (!_.isUndefined(o.offset)) {
           q = q.offset(o.offset);
         }
-        return pg.query(q.toString(), [], function (err: any, docs: Docs) {
-          if (err) {
-            reject(err);
-            return;
+        const query = q.toQuery();
+        return pg.query(
+          query.text,
+          query.values,
+          function (err: any, docs: Docs) {
+            if (err) {
+              reject(err);
+              return;
+            }
+            if (docs.rows && docs.rows.length) {
+              resolve(docs.rows);
+            } else {
+              resolve([]);
+            }
           }
-          if (docs.rows && docs.rows.length) {
-            resolve(docs.rows);
-          } else {
-            resolve([]);
-          }
-        });
+        );
       });
     }
   ) as Promise<CommentRow[]>;

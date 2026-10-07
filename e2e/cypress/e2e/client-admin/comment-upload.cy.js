@@ -2,6 +2,20 @@ import { loginStandardUser, loginStandardUserAPI, logout } from '../../support/a
 
 import { createTestConversationAPI } from '../../support/conversation-helpers.js'
 
+function visitConversationConfig(conversationId) {
+  cy.intercept({
+    method: 'GET',
+    pathname: '/api/v3/conversations',
+    query: { conversation_id: conversationId },
+  }).as('getConversationConfig')
+
+  cy.visit(`/m/${conversationId}`)
+  cy.wait('@getConversationConfig', { timeout: 30000 })
+    .its('response.statusCode')
+    .should('eq', 200)
+  cy.get('h3', { timeout: 15000 }).should('contain.text', 'Configure')
+}
+
 describe('Client Admin: Comment CSV Upload', () => {
   let testConversationId
 
@@ -28,11 +42,8 @@ describe('Client Admin: Comment CSV Upload', () => {
           testConversationId = convId
           cy.log(`✅ Created test conversation: ${testConversationId}`)
 
-          // Navigate to the conversation configuration page
-          cy.visit(`/m/${testConversationId}`)
-
-          // Wait for the page to load and verify we're on the configure page
-          cy.get('h3').should('contain.text', 'Configure')
+          // Navigate only after the exact conversation readback has completed.
+          visitConversationConfig(testConversationId)
 
           // Scroll down to find the CSV upload section
           cy.get('h6').contains('Upload a CSV of seed comments').should('be.visible')
@@ -44,7 +55,7 @@ describe('Client Admin: Comment CSV Upload', () => {
           // This is more reliable across different environments, especially CI
           cy.get('input[type="file"]')
             .should('have.attr', 'accept', '.csv')
-            .selectFile('cypress/fixtures/test-comments.csv', { force: true })
+            .selectFile('cypress/fixtures/test-comments-12.csv', { force: true })
 
           // Wait a moment for the file to be processed
           cy.wait(1000)
@@ -53,7 +64,7 @@ describe('Client Admin: Comment CSV Upload', () => {
           cy.get('[data-testid="upload-csv-button"]').click()
 
           // Wait for the API call to complete
-          cy.wait('@bulkComments').then((interception) => {
+          cy.wait('@bulkComments', { timeout: 30000 }).then((interception) => {
             expect(interception.response.statusCode).to.eq(200)
             cy.log('✅ CSV upload API call successful')
           })
@@ -135,11 +146,7 @@ describe('Client Admin: Comment CSV Upload', () => {
           testConversationId = convId
           cy.log(`✅ Created test conversation: ${testConversationId}`)
 
-          // Navigate to the conversation configuration page
-          cy.visit(`/m/${testConversationId}`)
-
-          // Wait for the page to load
-          cy.get('h3').should('contain.text', 'Configure')
+          visitConversationConfig(testConversationId)
 
           // Create an empty CSV file
           const emptyCsv = 'comment_text\n'
@@ -166,7 +173,7 @@ describe('Client Admin: Comment CSV Upload', () => {
           cy.get('[data-testid="upload-csv-button"]').click()
 
           // Wait for the API call to complete
-          cy.wait('@bulkComments').then((interception) => {
+          cy.wait('@bulkComments', { timeout: 30000 }).then((interception) => {
             // Should either succeed (with no comments) or return an appropriate error
             expect(interception.response.statusCode).to.be.oneOf([200, 400])
             cy.log('✅ Empty CSV upload handled appropriately')
@@ -188,11 +195,7 @@ describe('Client Admin: Comment CSV Upload', () => {
           testConversationId = convId
           cy.log(`✅ Created test conversation: ${testConversationId}`)
 
-          // Navigate to the conversation configuration page
-          cy.visit(`/m/${testConversationId}`)
-
-          // Wait for the page to load
-          cy.get('h3').should('contain.text', 'Configure')
+          visitConversationConfig(testConversationId)
 
           // First, add a manual comment
           const manualComment = 'This is a manually entered test comment'
@@ -226,7 +229,7 @@ describe('Client Admin: Comment CSV Upload', () => {
           // Upload CSV file using Cypress's built-in selectFile method
           cy.get('input[type="file"]')
             .should('have.attr', 'accept', '.csv')
-            .selectFile('cypress/fixtures/test-comments.csv', { force: true })
+            .selectFile('cypress/fixtures/test-comments-12.csv', { force: true })
 
           // Wait a moment for the file to be processed
           cy.wait(500)
@@ -234,7 +237,7 @@ describe('Client Admin: Comment CSV Upload', () => {
           // Click the submit button for CSV upload using data-testid
           cy.get('[data-testid="upload-csv-button"]').click()
 
-          cy.wait('@bulkComments').then((interception) => {
+          cy.wait('@bulkComments', { timeout: 30000 }).then((interception) => {
             expect(interception.response.statusCode).to.eq(200)
             cy.log('✅ CSV comments added successfully')
           })

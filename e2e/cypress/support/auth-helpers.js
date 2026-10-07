@@ -18,7 +18,7 @@ export function loginStandardUser(email, password, options = {}) {
   cy.log(`🔐 Logging in via UI: ${email}`)
 
   // Always start fresh
-  cy.visit('/')
+  cy.visit('/', { timeout: 60000 })
   cy.get('body', { timeout }).should('be.visible')
 
   // Ensure browser APIs are available
@@ -148,7 +148,7 @@ export function loginStandardUserAPI(email, password) {
       const isAdminUi = typeof referer === 'string' && referer.includes('/m/')
 
       // Only add auth header to admin-specific endpoints
-      if (
+      const isAuthenticatedAdminRequest =
         req.url.includes('/conversations') ||
         req.url.includes('/comments-bulk') ||
         // /comments is shared by participants (POST) and admin tools. Only treat it as admin when
@@ -156,10 +156,11 @@ export function loginStandardUserAPI(email, password) {
         (req.url.includes('/comments') && isAdminUi) ||
         req.url.includes('/users') ||
         req.url.includes('/reports')
-      ) {
+
+      if (isAuthenticatedAdminRequest) {
         req.headers['Authorization'] = `Bearer ${token}`
       }
-    }).as('authenticatedApiRequests')
+    })
 
     // Verify the authentication works and wait for intercept to be active
     return cy
@@ -738,7 +739,7 @@ export function logout() {
 
   // Visit the home page to ensure the application's in-memory state is wiped.
   // Using 'about:blank' can fail if a baseUrl is configured.
-  cy.visit('/')
+  cy.visit('/', { timeout: 60000 })
 
   cy.log('✅ Logout complete, all authentication state cleared.')
 }

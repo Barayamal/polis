@@ -1,6 +1,7 @@
 import _ from "underscore";
 
 import type { XidRecord } from "./d";
+import { getFncpManagedXidDecision } from "./fncp-provider-policy";
 import logger from "./utils/logger";
 import pg from "./db/pg-query";
 
@@ -153,6 +154,13 @@ async function isXidAllowed(
   zid?: number,
   owner?: number
 ): Promise<boolean> {
+  if (zid !== undefined) {
+    const managedDecision = await getFncpManagedXidDecision(zid, xid);
+    if (managedDecision !== undefined) {
+      return managedDecision;
+    }
+  }
+
   // Try zid+xid first (preferred method)
   if (zid !== undefined) {
     const rowsByZid = await pg.queryP(

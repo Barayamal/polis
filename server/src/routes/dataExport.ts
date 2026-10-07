@@ -2,11 +2,11 @@ import { getUserInfoForUid2 } from "../user";
 import { doAddDataExportTask } from "../utils/common";
 import Config from "../config";
 import { failJson } from "../utils/fail";
-import AWS from "aws-sdk";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { UserInfo } from "../d";
 
-AWS.config.update({ region: Config.awsRegion });
-const s3Client = new AWS.S3({ apiVersion: "2006-03-01" });
+const s3Client = new S3Client({ region: Config.awsRegion });
 
 function handle_GET_dataExport(
   req: { p: { uid?: number; zid: number; unixTimestamp: number; format: any } },
@@ -34,16 +34,23 @@ function handle_GET_dataExport(
     });
 }
 
-function handle_GET_dataExport_results(
+async function handle_GET_dataExport_results(
   req: { p: { filename: string } },
-  res: { redirect: (arg0: any) => void }
+  res: { redirect: (arg0: string) => void }
 ) {
-  const url = s3Client.getSignedUrl("getObject", {
-    Bucket: "polis-datadump",
-    Key: Config.mathEnv + "/" + req.p.filename,
-    Expires: 60 * 60 * 24 * 7,
-  });
-  res.redirect(url);
+  try {
+    const url = await getSignedUrl(
+      s3Client,
+      new GetObjectCommand({
+        Bucket: "polis-datadump",
+        Key: Config.mathEnv + "/" + req.p.filename,
+      }),
+      { expiresIn: 60 * 60 * 24 * 7 }
+    );
+    res.redirect(url);
+  } catch (err) {
+    failJson(res, 500, "polis_err_data_export_results", err);
+  }
 }
 
 export { handle_GET_dataExport, handle_GET_dataExport_results };

@@ -4,6 +4,15 @@ import os from "os";
 import Config from "../config";
 import logger from "../utils/logger";
 import { getOrCreateUserIDFromOidcSub } from "./create-user";
+import { loadFreshBootstrapTls } from "./fncp-bootstrap-tls";
+
+const freshBootstrapTls = Config.freshBootstrapLocalOnly ? loadFreshBootstrapTls({
+  databaseUrl: Config.databaseURL,
+  jwksUri: Config.jwksUri,
+  databaseCertificateSha256: Config.freshBootstrapDatabaseCertificateSha256,
+  jwksCertificateSha256: Config.freshBootstrapJwksCertificateSha256,
+}) : undefined;
+const freshJwksOptions = freshBootstrapTls ? { fetcher: freshBootstrapTls.jwksFetcher, timeout: 2000 } : {};
 
 // JWT validation middleware using OIDC
 const jwtValidation = expressjwt({
@@ -13,7 +22,18 @@ const jwtValidation = expressjwt({
     rateLimit: Config.isDevMode ? false : true,
     jwksRequestsPerMinute: 5,
     jwksUri: Config.jwksUri as string,
+    ...freshJwksOptions,
     handleSigningKeyError: (err, cb) => {
+      if (freshBootstrapTls) {
+        logger.error("fncp_fresh_bootstrap_jwks_verification_failed");
+        cb(new Error("Fresh bootstrap JWT verification failed"));
+        return;
+      }
+      if (Config.fncpDedicatedProduction) {
+        logger.error("fncp_production_jwks_verification_failed");
+        cb(new Error("FNCP_PRODUCTION_JWKS_VERIFICATION_FAILED"));
+        return;
+      }
       logger.error("JWKS Signing Key Error:", {
         message: err.message,
         code: (err as any).code,
@@ -39,7 +59,18 @@ const jwtValidationOptional = expressjwt({
     rateLimit: Config.isDevMode ? false : true,
     jwksRequestsPerMinute: 5,
     jwksUri: Config.jwksUri as string,
+    ...freshJwksOptions,
     handleSigningKeyError: (err, cb) => {
+      if (freshBootstrapTls) {
+        logger.error("fncp_fresh_bootstrap_jwks_verification_failed");
+        cb(new Error("Fresh bootstrap JWT verification failed"));
+        return;
+      }
+      if (Config.fncpDedicatedProduction) {
+        logger.error("fncp_production_jwks_verification_failed");
+        cb(new Error("FNCP_PRODUCTION_JWKS_VERIFICATION_FAILED"));
+        return;
+      }
       logger.error("JWKS Signing Key Error (Optional):", {
         message: err.message,
         code: (err as any).code,
@@ -92,6 +123,13 @@ const extractUserFromJWT = (
             assigner(req, "uid", localUid);
           }
         } catch (userCreationError: any) {
+          if (Config.fncpDedicatedProduction) {
+            logger.warn("fncp_production_oidc_mapping_rejected");
+            return res.status(403).json({
+              error: "access_denied",
+              message: "This account cannot be admitted.",
+            });
+          }
           logger.error("Error creating/mapping user from JWT:", {
             oidcSub: oidcSub,
             email: req.jwtPayload.email,
@@ -147,6 +185,13 @@ const extractUserFromJWT = (
       }
       next();
     } catch (error: any) {
+      if (Config.fncpDedicatedProduction) {
+        logger.error("fncp_production_authentication_failed");
+        return res.status(500).json({
+          error: "authentication_error",
+          message: "Authentication could not be completed.",
+        });
+      }
       logger.error("Unexpected error in JWT middleware:", {
         error: error.message,
         stack: error.stack,

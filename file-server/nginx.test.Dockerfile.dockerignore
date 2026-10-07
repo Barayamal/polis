@@ -1,0 +1,6 @@
+**
+!nginx
+!nginx/nginx-ssl.site.default.conf
+!nginx/docker-entrypoint.sh
+!nginx.test.Dockerfile
+!nginx.test.Dockerfile.dockerignore

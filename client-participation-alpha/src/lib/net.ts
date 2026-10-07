@@ -6,13 +6,13 @@ import {
   getXProfileImageUrlFromUrl,
   handleJwtFromResponse
 } from './auth'
-
-// Simplified service base resolution (both env vars are required)
-const SERVICE_BASE: string =
-  (typeof window !== 'undefined'
-    ? import.meta.env.PUBLIC_SERVICE_URL
-    : import.meta.env.INTERNAL_SERVICE_URL
-  )?.replace(/\/$/, '') || ''
+import {
+  buildBrowserPolisApiUrl,
+  buildServerPolisApiUrl,
+  createPolisServerRequest,
+  FNCP_GATEWAY_HEADER_NAMES,
+  type PolisServerRequest
+} from './polis-request'
 
 // Default request timeout (ms)
 const REQUEST_TIMEOUT_MS: number = Number(import.meta.env.PUBLIC_REQUEST_TIMEOUT_MS) || 10000
@@ -145,25 +145,35 @@ const handleAuthError = (error: PolisApiError, response: Response): PolisApiErro
 async function polisFetch<T = unknown>(
   api: string,
   data?: Record<string, unknown>,
-  type?: string
+  type?: string,
+  serverRequest?: PolisServerRequest
 ): Promise<T> {
-  if (typeof api !== 'string') {
-    throw new Error('api param should be a string')
-  }
-
-  // Build URL: allow absolute URLs; otherwise construct from origin/basePath and api path
+  const isBrowser = typeof window !== 'undefined'
   let url: string
-  const isAbsolute = /^(https?:)?\/\//i.test(api)
-  if (isAbsolute) {
-    url = api
+  if (isBrowser) {
+    if (serverRequest) {
+      throw new Error('Server request context cannot be used in the browser.')
+    }
+    url = buildBrowserPolisApiUrl(api)
   } else {
-    const apiPath = api.startsWith('/') ? api : `/${api}`
-    url = `${SERVICE_BASE}${apiPath}`
+    if (!serverRequest) {
+      throw new Error('Server request context is required during SSR.')
+    }
+    serverRequest = createPolisServerRequest(
+      serverRequest.apiBaseUrl,
+      serverRequest.gatewayHeaders
+    )
+    url = buildServerPolisApiUrl(api, serverRequest)
   }
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'max-age=0'
+  }
+  if (!isBrowser && serverRequest?.gatewayHeaders) {
+    for (const headerName of FNCP_GATEWAY_HEADER_NAMES) {
+      headers[headerName] = serverRequest.gatewayHeaders[headerName]
+    }
   }
 
   let body: string | null = null
@@ -231,13 +241,6 @@ async function polisFetch<T = unknown>(
     console.warn('⚠️ Error getting access token:', error)
   }
 
-  console.log('🔍 Requesting:', {
-    url,
-    method,
-    headers,
-    body
-  })
-
   // Add timeout to avoid indefinite hangs (especially during SSR)
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
@@ -252,9 +255,7 @@ async function polisFetch<T = unknown>(
   } catch (err: unknown) {
     const error = err as Error & { status?: number }
     if (error && error.name === 'AbortError') {
-      const timeoutError: PolisApiError = new Error(
-        `Request timed out after ${REQUEST_TIMEOUT_MS}ms: ${method} ${url}`
-      )
+      const timeoutError: PolisApiError = new Error('Polis API request timed out.')
       timeoutError.status = 408
       throw timeoutError
     }
@@ -264,18 +265,9 @@ async function polisFetch<T = unknown>(
   }
 
   if (!response.ok && response.status !== 304) {
-    // Read the response body to include in the error
     const errorBody = await response.text()
-    console.error('❌ API Error Response:', {
-      status: response.status,
-      statusText: response.statusText,
-      body: errorBody
-    })
 
-    // Create a new error object and attach the response body
-    const error: PolisApiError = new Error(
-      `Polis API Error: ${method} ${url} failed with status ${response.status} (${response.statusText})`
-    )
+    const error: PolisApiError = new Error(`Polis API request failed with status ${response.status}.`)
     error.responseText = errorBody
     error.status = response.status
 
@@ -292,17 +284,29 @@ async function polisFetch<T = unknown>(
   return jsonResponse
 }
 
-async function polisPost<T = unknown>(api: string, data?: Record<string, unknown>): Promise<T> {
-  return await polisFetch<T>(api, data, 'POST')
+async function polisPost<T = unknown>(
+  api: string,
+  data?: Record<string, unknown>,
+  serverRequest?: PolisServerRequest
+): Promise<T> {
+  return await polisFetch<T>(api, data, 'POST', serverRequest)
 }
 
-async function polisPut<T = unknown>(api: string, data?: Record<string, unknown>): Promise<T> {
-  return await polisFetch<T>(api, data, 'PUT')
+async function polisPut<T = unknown>(
+  api: string,
+  data?: Record<string, unknown>,
+  serverRequest?: PolisServerRequest
+): Promise<T> {
+  return await polisFetch<T>(api, data, 'PUT', serverRequest)
 }
 
-async function polisGet<T = unknown>(api: string, data?: Record<string, unknown>): Promise<T> {
+async function polisGet<T = unknown>(
+  api: string,
+  data?: Record<string, unknown>,
+  serverRequest?: PolisServerRequest
+): Promise<T> {
   try {
-    const response = await polisFetch<T>(api, data, 'GET')
+    const response = await polisFetch<T>(api, data, 'GET', serverRequest)
     return response
   } catch (error: unknown) {
     // If we have a 403, it might be the initial race condition. Retry once.
@@ -310,10 +314,8 @@ async function polisGet<T = unknown>(api: string, data?: Record<string, unknown>
     if (err.status === 403) {
       console.warn('⚠️ Received 403 on GET, retrying request once after a short delay...')
       await new Promise((resolve) => setTimeout(resolve, 500)) // wait 500ms
-      return await polisFetch<T>(api, data, 'GET') // This is the retry
+      return await polisFetch<T>(api, data, 'GET', serverRequest) // This is the retry
     }
-    // For other errors, or if retry fails, log and re-throw.
-    console.error('❌ polisGet error:', error)
     throw error
   }
 }
@@ -324,19 +326,11 @@ async function downloadCsv(
   data?: Record<string, unknown>,
   filename?: string
 ): Promise<void> {
-  if (typeof api !== 'string') {
-    throw new Error('api param should be a string')
+  if (typeof window === 'undefined') {
+    throw new Error('CSV downloads are only available in the browser.')
   }
 
-  // Build URL
-  let url: string
-  const isAbsolute = /^(https?:)?\/\//i.test(api)
-  if (isAbsolute) {
-    url = api
-  } else {
-    const apiPath = api.startsWith('/') ? api : `/${api}`
-    url = `${SERVICE_BASE}${apiPath}`
-  }
+  let url = buildBrowserPolisApiUrl(api)
 
   const method = 'GET'
 
@@ -403,9 +397,7 @@ async function downloadCsv(
   } catch (err: unknown) {
     const error = err as Error & { status?: number }
     if (error && error.name === 'AbortError') {
-      const timeoutError: PolisApiError = new Error(
-        `Request timed out after ${REQUEST_TIMEOUT_MS}ms: ${method} ${url}`
-      )
+      const timeoutError: PolisApiError = new Error('Polis API request timed out.')
       timeoutError.status = 408
       throw timeoutError
     }
@@ -416,9 +408,7 @@ async function downloadCsv(
 
   if (!response.ok) {
     const errorText = await response.text()
-    const error: PolisApiError = new Error(
-      `Polis API Error: ${method} ${url} failed with status ${response.status} (${response.statusText})`
-    )
+    const error: PolisApiError = new Error(`Polis API request failed with status ${response.status}.`)
     error.responseText = errorText
     error.status = response.status
     handleAuthError(error, response)

@@ -23,4 +23,12 @@ wiki
 .lein-git-deps/debug-repl
 data
 .cpcache
+.env
+.env.*
 .git
+certs/
+keys/
+logs/
+!busybox-fixed/
+!busybox-fixed/CVE-2025-60876.patch
+!busybox-fixed/build-fixed-busybox.sh

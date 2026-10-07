@@ -1,0 +1,24 @@
+# syntax=docker.io/docker/dockerfile:1.4@sha256:9ba7531bd80fb0a858632727cf7a112fbfd19b17e94c4e84ced81e24ef1a0dbc
+# Narrow remediation of the exact previously scanned nginx candidate base.
+FROM docker.io/library/node:24.18.1-alpine@sha256:f70403e87646dc51b45295f4b8b70cdad0b63d2297c4c9899119b03f7af7a6b3 AS busybox-fixed
+RUN apk add --no-cache build-base=0.5-r4 curl=8.22.0-r0 file=5.47-r2 linux-headers=7.0.0-r1 patch=2.8-r0 pkgconf=2.5.1-r0 utmps-dev=0.1.3.3-r0 utmps-static=0.1.3.3-r0
+COPY server/busybox-fixed /opt/fncp-busybox-fix
+RUN chmod 0555 /opt/fncp-busybox-fix/build-fixed-busybox.sh && /opt/fncp-busybox-fix/build-fixed-busybox.sh
+COPY deploy/fncp/production-security/zlib-fixed /opt/fncp-zlib-fix
+RUN chmod 0555 /opt/fncp-zlib-fix/build-fixed-zlib.sh && /opt/fncp-zlib-fix/build-fixed-zlib.sh
+FROM docker.io/library/nginx@sha256:aed159a7f218b47bbdc020b9c74dfcfb6825a67b00d3b2c14c34cd38025fe098
+RUN apk del --no-network nginx-module-image-filter nginx-module-xslt nginx-module-geoip nginx-module-njs nginx-module-acme curl gettext-envsubst \
+    && if apk info -e libuuid; then apk add --no-cache --upgrade libuuid=2.42.3-r1; fi \
+    && for package in tiff libgd nginx-module-image-filter nginx-module-xslt nginx-module-geoip nginx-module-njs nginx-module-acme; do ! apk info -e "$package"; done
+COPY --from=busybox-fixed /out/busybox /bin/busybox
+COPY --from=busybox-fixed /out/zlib/lib/libz.so.1.3.2 /lib/libz.so.1.3.2
+COPY --from=busybox-fixed /out/zlib/evidence/provenance.txt /usr/share/fncp-security/zlib-provenance.txt
+RUN test "$(sha256sum /lib/libz.so.1.3.2 | awk '{print $1}')" = "$(sed -n 's/^binary_sha256=//p' /usr/share/fncp-security/zlib-provenance.txt)"
+COPY deploy/fncp/production-deployment/nginx.conf /etc/nginx/nginx.conf
+COPY deploy/fncp/production-deployment/fncp-upstream.conf /etc/nginx/fncp-upstream.conf
+USER 101:101
+ENTRYPOINT ["nginx"]
+CMD ["-g","daemon off;"]
+ARG SOURCE_REVISION
+RUN case "$SOURCE_REVISION" in ""|*[!0-9a-f]*) exit 1 ;; esac && test "${#SOURCE_REVISION}" -eq 40
+LABEL org.opencontainers.image.revision="$SOURCE_REVISION" org.barayamal.fncp.busybox.remediation="CVE-2025-60876-upstream-patch" org.barayamal.fncp.zlib.remediation="CVE-2026-85091-df84af25dc1942490e1d1c899a07619152a46148" org.barayamal.fncp.profile="FNCP_PRIVATE_POLIS_PROXY_V1"

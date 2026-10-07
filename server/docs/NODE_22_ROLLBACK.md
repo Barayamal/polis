@@ -1,5 +1,12 @@
 # Node 22 Rollback (Prod 500s Incident)
 
+> July 2026 update: the Option C staging branch has now removed Express 3,
+> Connect 2 and multiparty through the reviewed
+> `D5-EXPRESS-4-MIGRATION-EVIDENCE-2026-07-28.md` change. That removes the
+> `os.tmpDir()` failure from the candidate dependency tree. Node 22 remains
+> pinned until the separate Google translation/undici behavior and the whole
+> service fleet are deliberately validated on a newer runtime.
+
 ## Problem
 
 After a recent prod deploy from the `stable` branch, the server began throwing
@@ -58,10 +65,9 @@ make rebuild-server && docker exec polis-dev-server-1 node -v   # expect v22.x
 
 The rollback is a stopgap, not the destination. To move to v24 deliberately:
 
-1. **`os.tmpDir` → `os.tmpdir`.** Really an Express 3 / `connect` legacy-stack
-   problem; the durable fix is getting off Express 3 (or replacing the
-   `multiparty` multipart middleware). A startup shim
-   (`os.tmpDir ??= os.tmpdir`) is a viable interim patch if needed.
+1. **`os.tmpDir` → `os.tmpdir`.** Resolved in the Option C staging candidate by
+   replacing Express 3 / Connect and rejecting unsupported multipart bodies
+   without a temp-file parser. No startup shim is used.
 2. **Make translation best-effort.** Wrap the `detectLanguage` /
    `translateAndStoreComment` awaits in `server/src/comment.ts` so a transient
    Google failure logs + stores the comment untranslated instead of 500ing the

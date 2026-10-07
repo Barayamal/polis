@@ -3,22 +3,46 @@
 // TODO modern import syntax for helpers
 
 // Copyright (C) 2012-present, The Authors. This program is free software: you can redistribute it and/or  modify it under the terms of the GNU Affero General Public License, version 3, as published by the Free Software Foundation. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more details. You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+// Modified by Barayamal on 26 July 2026 to add optional, conversation-scoped
+// private-origin gateway enforcement for First Nations Community Pulse.
 "use strict";
 
 import * as dotenv from "dotenv";
-dotenv.config();
+import { freshBootstrapStartup } from "./src/auth/fncp-bootstrap-startup";
+// A fresh helper must never silently load retained working-directory .env data.
+// Validate malformed opt-ins too: they cannot fall back to ordinary startup.
+/* eslint-disable no-restricted-properties -- Bootstrap admission must precede Config and its client initialization. */
+if (process.env.FNCP_FRESH_BOOTSTRAP_LOCAL_ONLY === undefined &&
+    process.env.FNCP_OPTION_C_RELEASE_MODE === undefined) {
+  dotenv.config();
+} else if (process.env.FNCP_FRESH_BOOTSTRAP_LOCAL_ONLY !== undefined) {
+  freshBootstrapStartup(process.env);
+}
+/* eslint-enable no-restricted-properties */
 
 import Promise from "bluebird";
 import express from "express";
-import morgan from "morgan";
-import timeout from "connect-timeout";
 
 import server from "./src/server";
 import Config from "./src/config";
+import { createFncpApplicationReadiness } from "./src/auth/fncp-bootstrap-readiness";
 import { makeFileFetcher } from "./src/utils/file-fetcher";
 import logger from "./src/utils/logger";
 import { fetchIndexForConversation } from "./src/conversation";
 import { getPidForParticipant } from "./src/user";
+import { fncpGatewayMiddleware } from "./src/auth/fncp-gateway";
+import { createFncpProductionRouteBoundary } from "./src/auth/fncp-production-route-boundary";
+import {
+  fncpLogBoundaryMiddleware,
+  isFncpSensitiveRequest,
+} from "./src/auth/fncp-log-boundary";
+import {
+  createCookieParser,
+  createJsonBodyParser,
+  createResponseCompression,
+  createUrlencodedBodyParser,
+  rejectUnsupportedMultipart,
+} from "./src/http-middleware";
 
 import {
   middleware_check_if_options,
@@ -26,6 +50,7 @@ import {
   middleware_log_request_body,
   middleware_responseTime_start,
   middleware_http_json_logger,
+  requestTimeout,
   globalErrorHandler,
   setupGlobalProcessHandlers,
 } from "./src/server-middleware";
@@ -71,10 +96,10 @@ import {
   handle_GET_topics_feed,
 } from "./src/routes/api/v3/feeds";
 import { handle_GET_reportExport } from "./src/routes/export";
-import { handle_GET_reportNarrative } from "./src/routes/reportNarrative";
 import {
   handle_POST_auth_deregister_jwt,
   handle_POST_joinWithInvite,
+  revalidateConversationXidAllowlist,
 } from "./src/auth";
 import {
   handle_GET_comments_translations,
@@ -124,6 +149,10 @@ import {
   handle_GET_xids_csv,
   handle_GET_xidAllowList_csv,
 } from "./src/routes/xids";
+import {
+  FNCP_PROVIDER_ALLOWLIST_PATHS,
+  fncpProviderAllowlistHandlers,
+} from "./src/routes/fncp-provider-allowlist";
 import {
   handle_GET_participants,
   handle_GET_participation,
@@ -234,16 +263,43 @@ const staticFilesAdminPort = Config.staticFilesAdminPort;
 const staticFilesParticipationPort = Config.staticFilesParticipationPort;
 const HMAC_SIGNATURE_PARAM_NAME = "signature";
 
+// Establish the FNCP logging boundary before request formatters and body
+// parsers can retain a private gateway credential, XID, invitation/session
+// token, or participant identifier.
+app.use(fncpLogBoundaryMiddleware);
+app.use(createFncpProductionRouteBoundary());
+
 // Dev-only http logger
 if (devMode) {
-  // 'dev' format is
-  // :method :url :status :response-time ms - :res[content-length]
-  app.use(morgan("dev"));
+  // Keep the development-only request formatter out of the minimal
+  // production dependency tree and runtime module graph.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const morgan = require("morgan");
+    // 'dev' format is
+    // :method :url :status :response-time ms - :res[content-length]
+    app.use(
+      morgan("dev", {
+        skip: (req: express.Request) => isFncpSensitiveRequest(req),
+      })
+    );
+  } catch (error) {
+    const moduleError = error as NodeJS.ErrnoException;
+    if (
+      moduleError.code !== "MODULE_NOT_FOUND" ||
+      !moduleError.message.includes("'morgan'")
+    ) {
+      throw error;
+    }
+    // The test Compose stack deliberately runs the pruned production image
+    // with development behaviour. Request formatting is optional there.
+    logger.warn("Development request logger is not installed");
+  }
 } else {
   app.use(middleware_http_json_logger);
 }
 
-// Trust the X-Forwarded-Proto and X-Forwarded-Host, but only on private subnets.
+// Trust one explicitly configured reverse-proxy hop for forwarded protocol/host.
 // See: https://github.com/pol-is/polis/issues/546
 // See: https://expressjs.com/en/guide/behind-proxies.html
 app.set("trust proxy", 1);
@@ -252,7 +308,10 @@ const helpersInitialized = new Promise(function (resolve) {
   resolve(server.initializePolisHelpers());
 });
 
-helpersInitialized.then(
+// A fresh owner must await all route/error-handler registration, not merely the
+// Express object or the helper bundle. This does not attest database health.
+export const appReady = createFncpApplicationReadiness(
+  helpersInitialized,
   function (o: any) {
     const {
       fetchIndexForAdminPage,
@@ -303,11 +362,17 @@ helpersInitialized.then(
     app.use(middleware_responseTime_start);
 
     app.use(redirectIfNotHttps);
-    app.use(express.bodyParser({ limit: "50mb" }));
-    app.use(express.cookieParser()); // Add cookie parser to access req.cookies
+    app.use(rejectUnsupportedMultipart);
+    app.use(createJsonBodyParser());
+    app.use(createUrlencodedBodyParser());
+    app.use(createCookieParser()); // Add cookie parser to access req.cookies
+    app.use(fncpGatewayMiddleware);
     app.use(writeDefaultHead);
 
-    app.use(express.compress());
+    // Compression writes headers before end(), even for uncompressed JSON.
+    // The owned fresh admission boundary must validate the complete bounded
+    // response before any headers leave; ordinary application behavior stays.
+    if (!Config.freshBootstrapLocalOnly) app.use(createResponseCompression());
     app.use(middleware_log_request_body);
     app.use(middleware_log_middleware_errors);
 
@@ -331,17 +396,36 @@ helpersInitialized.then(
     ////////////////////////////////////////////
     ////////////////////////////////////////////
 
+    // Network-private, bearer-authenticated Option C provider adapter.
+    // These fixed routes are intentionally outside the public /api/v3 tree and
+    // are not exposed by the FNCP participant proxy.
+    app.post(
+      FNCP_PROVIDER_ALLOWLIST_PATHS.upsert,
+      fncpProviderAllowlistHandlers.upsert
+    );
+    app.post(
+      FNCP_PROVIDER_ALLOWLIST_PATHS.readback,
+      fncpProviderAllowlistHandlers.readback
+    );
+    app.post(
+      FNCP_PROVIDER_ALLOWLIST_PATHS.remove,
+      fncpProviderAllowlistHandlers.remove
+    );
+
     app.get("/api/v3/math/pca", handle_GET_math_pca);
 
     app.get(
       "/api/v3/math/pca2",
       moveToBody,
+      hybridAuthOptional(assignToP),
       redirectIfHasZidButNoConversationId, // TODO remove once
       need(
         "conversation_id",
         getConversationIdFetchZid,
         assignToPCustom("zid")
       ),
+      want("xid", getStringLimitLength(1, 999), assignToP),
+      revalidateConversationXidAllowlist(),
       want("math_tick", getInt, assignToP),
       want("keys", getArrayOfString, assignToP),
       wantHeader(
@@ -572,6 +656,7 @@ helpersInitialized.then(
       ),
       want("suzinvite", getOptionalStringLimitLength(32), assignToP),
       want("answers", getArrayOfInt, assignToP, []), // {pmqid: [pmaid, pmaid], ...} where the pmaids are checked choices
+      want("xid", getStringLimitLength(1, 999), assignToP),
       want("referrer", getStringLimitLength(9999), assignToP),
       want("parent_url", getStringLimitLength(9999), assignToP),
       handle_POST_joinWithInvite
@@ -759,6 +844,8 @@ helpersInitialized.then(
         getConversationIdFetchZid,
         assignToPCustom("zid")
       ),
+      want("xid", getStringLimitLength(1, 999), assignToP),
+      revalidateConversationXidAllowlist(),
       // if you want to get report-specific info
       want("report_id", getReportIdFetchRid, assignToPCustom("rid")),
       want("tids", getArrayOfInt, assignToP),
@@ -784,6 +871,7 @@ helpersInitialized.then(
       ),
       // Process XID before ensureParticipant
       want("xid", getStringLimitLength(1, 999), assignToP),
+      revalidateConversationXidAllowlist(),
       ensureParticipant({ createIfMissing: true, issueJWT: true }),
       need("txt", getStringLimitLength(1, 997), assignToP),
       want("vote", getIntInRange(-1, 1), assignToP),
@@ -860,7 +948,7 @@ helpersInitialized.then(
 
     app.get(
       "/api/v3/nextComment",
-      timeout(15000),
+      requestTimeout(15_000),
       moveToBody,
       hybridAuthOptional(assignToP),
       need(
@@ -868,6 +956,11 @@ helpersInitialized.then(
         getConversationIdFetchZid,
         assignToPCustom("zid")
       ),
+      // The FNCP private gateway supplies a conversation-scoped XID. Parse it
+      // before PID resolution so the optional participant resolver can recover
+      // the established participant without a browser JWT or cookie.
+      want("xid", getStringLimitLength(1, 999), assignToP),
+      revalidateConversationXidAllowlist(),
       resolve_pidThing("not_voted_by_pid", assignToP, "get:nextComment"),
       want("without", getArrayOfInt, assignToP),
       // preferred language of nextComment
@@ -1186,6 +1279,7 @@ helpersInitialized.then(
       ),
       denyIfNotFromWhitelistedDomain, // this seems like the easiest place to enforce the domain whitelist. The index.html is cached on cloudflare, so that's not the right place.
       want("xid", getStringLimitLength(1, 999), assignToP),
+      revalidateConversationXidAllowlist(),
       ensureParticipantOptional({
         createIfMissing: false, // Don't create new participants
         issueJWT: true, // Issue JWT for existing participants
@@ -1217,6 +1311,7 @@ helpersInitialized.then(
       ),
       // Process XID before ensureParticipant
       want("xid", getStringLimitLength(1, 999), assignToP),
+      revalidateConversationXidAllowlist(),
       ensureParticipant({ createIfMissing: true, issueJWT: true }),
       need("tid", getInt, assignToP),
       need("vote", getIntInRange(-1, 1), assignToP),
@@ -1561,14 +1656,10 @@ helpersInitialized.then(
       handle_GET_reports
     );
 
-    app.get(
-      "/api/v3/reportNarrative",
-      hybridAuth(assignToP),
-      moveToBody,
-      need("report_id", getReportIdFetchRid, assignToPCustom("rid")),
-      handle_GET_reportNarrative
-    );
-
+    // FNCP's four long-running Pol.is runtime images intentionally exclude the
+    // separate short-lived migration artifact and the experimental
+    // reportNarrative route and its separate client-report/report_bundle
+    // consumers. See deploy/fncp/D11-SERVER-PRODUCTION-TREE-REMEDIATION-EVIDENCE-2026-07-28.md.
     app.post(
       "/api/v3/mathUpdate",
       moveToBody,
@@ -2206,18 +2297,22 @@ helpersInitialized.then(
       app.get(/^\/[^(api\/)]?.*/, proxy);
     }
 
+    // Error middleware must be registered after every route. The routes above
+    // are installed asynchronously once the legacy helper bundle is ready, so
+    // registering this outside the callback would place it before the routes
+    // and allow late route/timeout errors to fall through to finalhandler.
+    app.use(globalErrorHandler);
+
     // move app.listen to index.ts
   },
 
+  Config.freshBootstrapLocalOnly,
   function (err) {
     logger.error("failed to init server", err);
   }
 );
 
-// Setup global error handling
-app.use(globalErrorHandler);
-
 // Initialize global process-level error handlers
-setupGlobalProcessHandlers();
+if (!Config.freshBootstrapLocalOnly) setupGlobalProcessHandlers();
 
 export default app;

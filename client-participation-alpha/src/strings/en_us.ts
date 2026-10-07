@@ -24,7 +24,7 @@ const s: Translations = {
   couldNotLoadConversation:
     "Could not load this conversation. Error: {{error}}. Please check the ID and try again.",
   participantHelpWelcomeText:
-    "Welcome to a new kind of conversation — </b>vote</b> on other people’s statements — </b> the more the better.</b>",
+    "Welcome to a new kind of conversation — <b>vote</b> on other people’s statements — <b>the more the better.</b>",
   signInToParticipate: "You need to sign in to participate.",
 
   // ─────────────────────────────────────────────────────────────
@@ -36,6 +36,9 @@ const s: Translations = {
   signInToVote: "You need to sign in to vote.",
   voteFailedGeneric:
     "Apologies, your vote failed to send. Please check your connection and try again.",
+  completionTitle: "You’ve responded to every available statement.",
+  completionBody:
+    "Thank you. Your responses are included in the conversation. You can still add a stand-alone statement below if an important perspective is missing.",
 
   // ─────────────────────────────────────────────────────────────
   // Statements
@@ -63,10 +66,10 @@ const s: Translations = {
   helpWriteListStandalone: "A stand-alone idea",
   submitComment: "Submit",
   tipCommentsRandom:
-    "Statements are displayed randomly and you are not replying directly to other people’s statements: <b> you are adding a stand-alone statement.<b>",
+    "Statements are displayed randomly and you are not replying directly to other people’s statements: <b>you are adding a stand-alone statement.</b>",
   writePrompt: "Share your perspective (you are not replying — submit a stand-alone statement)",
   writeCommentHelpText:
-    "Are your perspectives or experiences missing from the conversation? If so, </b>add them </b> in the box below — </b>one at a time</b>.",
+    "Are your perspectives or experiences missing from the conversation? If so, <b>add them</b> in the box below — <b>one at a time</b>.",
 
   // ─────────────────────────────────────────────────────────────
   // Visualization

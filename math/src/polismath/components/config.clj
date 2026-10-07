@@ -68,6 +68,10 @@
    :database-url               {:path [:database :url]}
    :database-for-reads-name    {:path [:database :reads-name]}
    :database-pool-size         {:path [:database :pool-size] :parse ->long}
+   ;; Keep these strings exact: empty/false/malformed dedicated settings fail closed.
+   :fncp-option-c-release-mode {:path [:database :release-mode]}
+   :database-ssl               {:path [:database :ssl]}
+   :database-ssl-ca-file       {:path [:database :ssl-ca-file]}
    :database-ignore-ssl        {:path [:database :ignore-ssl] :parse ->boolean}
    :mailgun-api-key            {:path [:email :api-key]}
    :mailgun-url                {:path [:email :url]}

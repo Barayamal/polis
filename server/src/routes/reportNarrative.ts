@@ -11,7 +11,7 @@ import {
 import OpenAI from "openai";
 import { convertXML } from "simple-xml-to-json";
 import fs from "fs/promises";
-import { parse } from "csv-parse/sync";
+import { parseCsvRecords } from "../utils/csv-records";
 import { create } from "xmlbuilder2";
 import { sendCommentGroupsSummary } from "../report";
 import { getTopicsFromRID } from "../report_experimental/topics-example";
@@ -30,10 +30,7 @@ interface PolisRecord {
 export class PolisConverter {
   static convertToXml(csvContent: string): string {
     // Parse CSV content
-    const records = parse(csvContent, {
-      columns: true,
-      skip_empty_lines: true,
-    }) as PolisRecord[];
+    const records = parseCsvRecords(csvContent) as PolisRecord[];
 
     if (records.length === 0) return "";
 
@@ -866,7 +863,7 @@ export async function handle_GET_topics(
                   },
                 }) + `|||`
               );
-              // @ts-expect-error flush - calling due to use of compression
+              // compression middleware adds flush() for streamed responses.
               res.flush();
               resolve();
             }, (model === "gemini" ? 500 : 250) * i);
@@ -1023,7 +1020,7 @@ export async function handle_GET_reportNarrative(
     ];
     await Promise.all(promises);
   } catch (err) {
-    // @ts-expect-error flush - calling due to use of compression
+    // compression middleware adds flush() for streamed responses.
     res.flush();
     logger.error("Report narrative generation error:", err);
     const msg =

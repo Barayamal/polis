@@ -1,7 +1,7 @@
 import _ from "underscore";
 import { encode } from "html-entities";
+import { Readable } from "node:stream";
 import replaceStream from "replacestream";
-import request from "request-promise"; // includes Request, but adds promise methods
 
 import { ConversationType } from "../d";
 import { failJson } from "./fail";
@@ -16,7 +16,7 @@ function makeFileFetcher(
   preloadData?: { conversation?: ConversationType }
 ) {
   return function (
-    req: { headers?: { host: any }; path: any; pipe: (arg0: any) => void },
+    _req: { headers?: { host: any }; path: any; pipe: (arg0: any) => void },
     res: { set: (arg0: any) => void }
   ) {
     if (!hostname) {
@@ -25,40 +25,50 @@ function makeFileFetcher(
     }
     const url = "http://" + hostname + ":" + port + path;
     logger.info("fetch file from " + url);
-    let x = request(url);
-    req.pipe(x);
-    if (!_.isUndefined(preloadData)) {
-      x = x.pipe(
-        replaceStream(
-          '"REPLACE_THIS_WITH_PRELOAD_DATA"',
-          JSON.stringify(preloadData)
-        )
-      );
-    }
-
-    let fbMetaTagsString =
-      '<meta property="og:image" content="https://s3.amazonaws.com/pol.is/polis_logo.png" />\n';
-    if (preloadData && preloadData.conversation) {
-      fbMetaTagsString +=
-        '    <meta property="og:title" content="' +
-        encode(preloadData.conversation.topic) +
-        '" />\n';
-      fbMetaTagsString +=
-        '    <meta property="og:description" content="' +
-        encode(preloadData.conversation.description) +
-        '" />\n';
-    }
-    x = x.pipe(
-      replaceStream("<!-- REPLACE_THIS_WITH_FB_META_TAGS -->", fbMetaTagsString)
-    );
-
-    res.set(headers);
-
-    // @ts-ignore - Legacy Express v3 response type mismatch
-    x.pipe(res);
-    x.on("error", function (err: any) {
+    const fail = (err: unknown) => {
       failJson(res, 500, "polis_err_finding_file " + path, err);
-    });
+    };
+
+    void fetch(url, { redirect: "follow" })
+      .then((response) => {
+        if (!response.body) {
+          throw new Error("Static-file response body is unavailable.");
+        }
+        let x = Readable.fromWeb(response.body as any);
+        if (!_.isUndefined(preloadData)) {
+          x = x.pipe(
+            replaceStream(
+              '"REPLACE_THIS_WITH_PRELOAD_DATA"',
+              JSON.stringify(preloadData)
+            )
+          );
+        }
+
+        let fbMetaTagsString =
+          '<meta property="og:image" content="https://s3.amazonaws.com/pol.is/polis_logo.png" />\n';
+        if (preloadData && preloadData.conversation) {
+          fbMetaTagsString +=
+            '    <meta property="og:title" content="' +
+            encode(preloadData.conversation.topic) +
+            '" />\n';
+          fbMetaTagsString +=
+            '    <meta property="og:description" content="' +
+            encode(preloadData.conversation.description) +
+            '" />\n';
+        }
+        x = x.pipe(
+          replaceStream(
+            "<!-- REPLACE_THIS_WITH_FB_META_TAGS -->",
+            fbMetaTagsString
+          )
+        );
+
+        res.set(headers);
+        x.once("error", fail);
+        // @ts-ignore - Legacy Express v3 response type mismatch
+        x.pipe(res);
+      })
+      .catch(fail);
   };
 }
 

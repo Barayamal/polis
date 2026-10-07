@@ -675,14 +675,31 @@ export function participateInConversation(conversationId, options = {}) {
 export function openTranslated(conversationId, lang) {
   cy.log(`🌐 Opening conversation ${conversationId} in language: ${lang}`)
 
-  // Set up polling intercepts to prevent test hanging
+  // Stub only optional polling. The statement request must reach the real
+  // synthetic conversation so the participant UI renders its write form.
   cy.intercept('GET', '/api/v3/math/pca2*', { statusCode: 304, body: {} }).as('mathPolling')
-  cy.intercept('GET', '/api/v3/comments*', { statusCode: 200, body: [] }).as('commentsPolling')
+  cy.intercept('GET', '/api/v3/comments*').as('translatedComments')
   cy.intercept('GET', '/api/v3/votes/famous*', { statusCode: 200, body: [] }).as(
     'famousVotesPolling',
   )
+  cy.intercept({
+    method: 'GET',
+    pathname: '/api/v3/participationInit',
+    query: { conversation_id: conversationId },
+  }).as('translatedParticipationInit')
 
-  cy.visit(`/${conversationId}`, { qs: { ui_lang: lang } })
+  // This suite deliberately performs 30 sequential full-page navigations. Allow
+  // one slow synthetic-stack response without weakening the API readback checks.
+  cy.visit(`/${conversationId}`, {
+    qs: { ui_lang: lang },
+    timeout: 60000,
+  })
+  cy.wait('@translatedParticipationInit', { timeout: 30000 })
+    .its('response.statusCode')
+    .should('eq', 200)
+  cy.wait('@translatedComments', { timeout: 30000 })
+    .its('response.statusCode')
+    .should('be.oneOf', [200, 304])
 }
 
 /**

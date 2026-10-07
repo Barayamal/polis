@@ -34,7 +34,8 @@ async function addExtendedParticipantInfo(
     .where(sql_participants_extended.zid.equals(zid))
     .and(sql_participants_extended.uid.equals(uid));
 
-  await pg.queryP(qUpdate.toString(), []);
+  const query = qUpdate.toQuery();
+  await pg.queryP(query.text, query.values);
 }
 
 function saveParticipantMetadataChoices(
@@ -190,10 +191,11 @@ async function addParticipant(zid: number, uid?: number): Promise<any> {
         // Duplicate key — participant was created by a concurrent request.
         // Fetch and return the existing record. This runs after ROLLBACK,
         // on the same client connection, so isolation is correct.
-        logger.debug(
-          "Participant already exists, fetching existing record",
-          { zid, uid, constraint: partErr.constraint }
-        );
+        logger.debug("Participant already exists, fetching existing record", {
+          zid,
+          uid,
+          constraint: partErr.constraint,
+        });
         const selectResult = await client.query(
           "SELECT * FROM participants WHERE zid = $1 AND uid = $2;",
           [zid, uid]

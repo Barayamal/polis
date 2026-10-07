@@ -1,0 +1,7 @@
+**
+!deploy
+!deploy/fncp
+!deploy/fncp/production-deployment
+!deploy/fncp/production-deployment/Dockerfile.mariadb
+!deploy/fncp/production-deployment/Dockerfile.mariadb.dockerignore
+**/*.test.mjs

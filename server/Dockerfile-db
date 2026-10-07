@@ -4,7 +4,7 @@
 # docker run --rm --name polis-db --network polis-net -p 5432:5432 \
 # -e POSTGRES_DB=polis-dev -e POSTGRES_PASSWORD=postgres polis-db:local
 
-FROM postgres:17-alpine
+FROM docker.io/library/postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
 # Used when no existing database on postgres volume, including first initialization.
 # See: docs/deployment.md#database-migrations
 # See: https://github.com/docker-library/docs/blob/master/postgres/README.md#initialization-scripts

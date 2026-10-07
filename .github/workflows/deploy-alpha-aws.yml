@@ -2,21 +2,33 @@ name: Deploy to AWS on Push
 
 on: workflow_dispatch
 
+permissions: {}
+
+env:
+  # Reviewed against the official v5.3.1 Linux x86_64 release on 29 July 2026.
+  DOCKER_COMPOSE_VERSION: v5.3.1
+  DOCKER_COMPOSE_LINUX_X86_64_SHA256: f9ebc6ebdb19d769b793c245a736caaeb198c62587f13b25c660c13b4987f959
+
 jobs:
   # ==========================================================
   # ==      JOB 1: BUILD & PUSH DOCKER IMAGES (US ONLY)     ==
   # ==========================================================
   build-and-push-images:
     name: Build and Push Docker Images
-    runs-on: ubuntu-latest
+    if: github.repository == 'compdemocracy/polis'
+    runs-on: ubuntu-24.04
     environment: production
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Configure AWS credentials (for US ECR)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -24,12 +36,27 @@ jobs:
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
 
       - name: Install Docker Compose
         run: |
-          sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-          sudo chmod +x /usr/local/bin/docker-compose
+          compose_binary="$RUNNER_TEMP/docker-compose"
+          curl \
+            --fail \
+            --location \
+            --proto '=https' \
+            --proto-redir '=https' \
+            --retry 3 \
+            --show-error \
+            --silent \
+            --output "$compose_binary" \
+            "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64"
+          printf '%s  %s\n' \
+            "$DOCKER_COMPOSE_LINUX_X86_64_SHA256" \
+            "$compose_binary" \
+            | sha256sum --check -
+          sudo install -m 0755 "$compose_binary" /usr/local/bin/docker-compose
+          docker-compose version
 
       - name: Build and push Docker images
         env:
@@ -46,16 +73,21 @@ jobs:
   # =====================================================
   deploy-us:
     name: Deploy to Production (US)
-    runs-on: ubuntu-latest
+    if: github.repository == 'compdemocracy/polis'
+    runs-on: ubuntu-24.04
     needs: build-and-push-images
     environment: production
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Configure AWS credentials for US
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -80,16 +112,21 @@ jobs:
   # ================================================
   deploy-euro:
     name: Deploy to Europe
-    runs-on: ubuntu-latest
+    if: github.repository == 'compdemocracy/polis'
+    runs-on: ubuntu-24.04
     needs: build-and-push-images
     environment: europe
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Configure AWS credentials for Europe
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_EURO }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_EURO }}

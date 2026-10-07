@@ -1,6 +1,10 @@
 import type { ExpressResponse, RequestWithP, XidRecord } from "../d";
 import { failJson } from "../utils/fail";
 import { getConversationInfo } from "../conversation";
+import {
+  isFncpProviderPolicyUnavailable,
+  resolveFncpManagedConversation,
+} from "../fncp-provider-policy";
 import { getXids } from "../xids";
 import { parsePagination, createPaginationMeta } from "../utils/pagination";
 import logger from "../utils/logger";
@@ -339,6 +343,13 @@ async function handle_POST_xidAllowList(
     const conv = await getConversationInfo(zid);
     const owner = conv.owner;
 
+    const providerPolicy = await resolveFncpManagedConversation(zid);
+    if (providerPolicy.managed) {
+      res.set?.({ "Cache-Control": "no-store" });
+      failJson(res, 409, "polis_err_fncp_provider_managed_allowlist");
+      return;
+    }
+
     // Validate all XIDs first
     for (const xid of xid_allow_list) {
       if (typeof xid !== "string" || xid.length === 0) {
@@ -439,6 +450,11 @@ async function handle_POST_xidAllowList(
 
     res.status(200).json({});
   } catch (err) {
+    if (isFncpProviderPolicyUnavailable(err)) {
+      res.set?.({ "Cache-Control": "no-store" });
+      failJson(res, 503, "polis_err_fncp_provider_policy_unavailable");
+      return;
+    }
     failJson(res, 500, "polis_err_POST_xidAllowList", err);
   }
 }

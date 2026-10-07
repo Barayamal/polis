@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-08",
+  "timezone": "Australia/Sydney",
+  "classification": "SOURCE_CI_REPAIR_NOT_RELEASE_QUALIFICATION",
+  "githubRepository": "Barayamal/polis",
+  "pullRequest": "https://github.com/Barayamal/polis/pull/44",
+  "branch": "codex/community-pulse-build-c-20261007",
+  "snapshotCommitBeforeRepairs": "1142feb3e8a56344255405c145bbe5dc0fa37d4d",
+  "verification": {
+    "node": "24.19.0",
+    "fullFncpSourceTests": { "files": 140, "tests": 2953, "passed": 2953, "failed": 0, "skipped": 0, "cancelled": 0, "concurrency": 4 },
+    "serverLint": "PASS",
+    "serverTypeScriptBuild": "PASS",
+    "serverBootstrapFocusedTests": { "suites": 13, "tests": 416, "passed": 416 },
+    "serverProductionFocusedTests": { "suites": 7, "tests": 122, "passed": 122 },
+    "installationFocusedTests": { "tests": 125, "passed": 125, "overlapsFullSourceSuite": true },
+    "bothArchitectureExactApkPins": { "occurrences": 154, "distinctPackages": 43, "recipeSources": 12, "mismatches": 0 },
+    "immutableBaseAndScannerDigests": "UNCHANGED",
+    "disposableCiProxyComposeRender": "PASS_NO_ENGINE_STARTED",
+    "changedSourceCredentialPatternReview": "PASS",
+    "whitespace": "PASS"
+  },
+  "repairs": [
+    "Install frozen server and synthetic identity dependencies before deployment contract tests",
+    "Select platform OpenSSL paths and use private exclusive extension files for TLS fixtures",
+    "Refresh exact available Alpine package pins without changing immutable base or scanner digests",
+    "Mount disposable CI leaf and key read-only instead of embedding tracked credentials",
+    "Preserve pre-import startup admission, control-character rejection, TLS cleanup and transaction failure ordering while resolving server lint errors"
+  ],
+  "apkIndexSources": [
+    "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/APKINDEX.tar.gz",
+    "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/APKINDEX.tar.gz",
+    "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/APKINDEX.tar.gz",
+    "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/aarch64/APKINDEX.tar.gz"
+  ],
+  "limits": {
+    "hostedCiRerunRequired": true,
+    "allReleaseImagesRebuiltAndScanned": false,
+    "nativeAuthorityImplemented": false,
+    "installedJourneyQualified": false,
+    "realIdentityProviderVerified": false,
+    "joinedRecoveryRequalified": false,
+    "defaultBranchUpdated": false,
+    "liveServicesChanged": false,
+    "participantDataAccessed": false,
+    "launchAuthorized": false
+  },
+  "notes": [
+    "Test counts from separate or focused suites overlap and must not be added.",
+    "The historical source fingerprint and September image lock are preserved; neither qualifies these repairs.",
+    "The legacy compatibility CI proxy retains nginx 1.21.5 and inherited TLS configuration. It is not a production image or an FNCP staging specification.",
+    "The legacy development proxy requires locally supplied test certificates; no tracked private key was restored."
+  ]
+}

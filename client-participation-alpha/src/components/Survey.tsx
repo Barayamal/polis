@@ -3,7 +3,6 @@ import { fetchNextComment } from '../api/comments'
 import { submitVote } from '../api/votes'
 import { getConversationToken } from '../lib/auth'
 import type { Translations } from '../strings/types'
-import EmailSubscribeForm from './EmailSubscribeForm'
 import InviteCodeSubmissionForm from './InviteCodeSubmissionForm'
 import { Statement } from './Statement'
 import type { StatementData, VoteData } from './types'
@@ -191,7 +190,10 @@ export default function Survey({
           importanceEnabled={importanceEnabled}
         />
       ) : (
-        <EmailSubscribeForm s={s as Translations} conversation_id={conversation_id} />
+        <div className="survey-complete" role="status">
+          <h2>{s.completionTitle}</h2>
+          <p>{s.completionBody}</p>
+        </div>
       )}
     </>
   )

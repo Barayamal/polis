@@ -16,7 +16,6 @@
     ;; Think I'm going to use the second one here, since it's simpler (less mutable)
             ;[dk.ative.docjure.spreadsheet :as spreadsheet]
             ;[clj-excel.core :as excel]
-            [semantic-csv.core :as scsv]
             [clojure-csv.core :as csv]
             [clojure.pprint :refer [pprint]]
             [clojure.core.matrix :as mat]
@@ -418,6 +417,28 @@
       v
       k)))
 
+(defn vectorize
+  "Transform rows of maps into ordered vectors with a prepended header.
+
+  This is the only Semantic CSV behaviour used by the math worker. Keeping the
+  small transformation local avoids loading Semantic CSV's obsolete
+  ClojureScript compiler graph into the production worker."
+  ([rows]
+   (vectorize {} rows))
+  ([{:keys [header prepend-header format-header]
+     :or {prepend-header true
+          format-header #(if (keyword? %) (name %) %)}}
+    rows]
+   (let [resolved-header (or header (some-> rows first keys vec))
+         formatted-header (if format-header
+                            (mapv format-header resolved-header)
+                            resolved-header)
+         vectors (map #(mapv (fn [column] (get % column)) resolved-header)
+                      rows)]
+     (if prepend-header
+       (cons formatted-header vectors)
+       vectors))))
+
 (defn excel-format
   [export-data]
   (-> export-data
@@ -433,14 +454,14 @@
                   [:n-groups     "Groups"]
                   [:description  "Conversation Description"]])
       (update-in [:stats-history]
-                 (partial scsv/vectorize {:header [:n-votes :n-comments :n-visitors :n-voters :n-commenters]
+                 (partial vectorize {:header [:n-votes :n-comments :n-visitors :n-voters :n-commenters]
                                           :format-header {:n-votes      "Votes"
                                                           :n-visitors   "Visitors"
                                                           :n-voters     "Voters"
                                                           :n-comments   "Comments"
                                                           :n-commenters "Commenters"}}))
       (update-in [:comments]
-                 (partial scsv/vectorize {:header [:created :tid :pid :aggrees :disagrees :mod :is_meta :is_seed :group-informed-consensus :txt]
+                 (partial vectorize {:header [:created :tid :pid :aggrees :disagrees :mod :is_meta :is_seed :group-informed-consensus :txt]
                                           :format-header {:created   "Timestamp"
                                                           :tid       "Comment ID"
                                                           :pid       "Author"
@@ -452,7 +473,7 @@
                                                           :group-informed-consensus "Group informed consensus"
                                                           :txt       "Comment body"}}))
       (update-in [:votes]
-                 (partial scsv/vectorize {:header [:created :tid :pid :vote]
+                 (partial vectorize {:header [:created :tid :pid :vote]
                                           :format-header {:created   "Timestamp"
                                                           :tid       "Comment ID"
                                                           :pid       "Voter"
@@ -488,16 +509,16 @@
                   [:n-groups     "groups"]
                   [:description  "conversation-description"]])
       (update-in [:stats-history]
-                 (partial scsv/vectorize {:header [:n-votes :n-comments :n-visitors :n-voters :n-commenters]}))
+                 (partial vectorize {:header [:n-votes :n-comments :n-visitors :n-voters :n-commenters]}))
       (update-in [:votes]
-                 (partial scsv/vectorize {:header [:created :datetime :tid :pid :vote]
+                 (partial vectorize {:header [:created :datetime :tid :pid :vote]
                                           :format-header {:created   "timestamp"
                                                           :datetime  "datetime"
                                                           :tid       "comment-id"
                                                           :pid       "voter-id"
                                                           :vote      "vote"}}))
       (update-in [:comments]
-                 (partial scsv/vectorize {:header [:created :tid :pid :aggrees :disagrees :mod :is_meta :is_seed :group-informed-consensus :txt]
+                 (partial vectorize {:header [:created :tid :pid :aggrees :disagrees :mod :is_meta :is_seed :group-informed-consensus :txt]
                                           :format-header {:created   "timestamp"
                                                           :datetime  "datetime"
                                                           :tid       "comment-id"
@@ -709,4 +730,3 @@
 
 
 :ok
-

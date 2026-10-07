@@ -7,6 +7,10 @@ import { getUserInfoForUid2 } from "../user";
 import { getZinvite } from "../utils/zinvite";
 import { sql_conversations } from "../db/sql";
 import Config from "../config";
+import {
+  isFncpProviderPolicyUnavailable,
+  resolveFncpManagedConversation,
+} from "../fncp-provider-policy";
 import logger from "../utils/logger";
 import pg from "../db/pg-query";
 import { parsePagination, createPaginationMeta } from "../utils/pagination";
@@ -255,7 +259,11 @@ export async function getConversations(req: { p: ConversationType }, res: any) {
 
     // Build and execute main query
     const query = buildConversationsQuery(req, participantInOrSiteAdminOf);
-    let data = (await pg.queryP_readOnly(query.toString())) as any[];
+    const parameterizedQuery = query.toQuery();
+    let data = (await pg.queryP_readOnly(
+      parameterizedQuery.text,
+      parameterizedQuery.values
+    )) as any[];
 
     // Process the conversation data
     data = await processConversationData(data, req, isSiteAdmin);
@@ -847,16 +855,29 @@ function handle_PUT_conversations(
       conversation_id: string;
       context: any;
       use_xid_whitelist?: any;
+      xid_required?: any;
       topics_enabled?: any;
     };
   },
   res: any
 ) {
   const generateShortUrl = req.p.short_url;
-  isModerator(req.p.zid, req.p.uid)
-    .then(function (ok: any) {
+  return isModerator(req.p.zid, req.p.uid)
+    .then(async function (ok: any) {
       if (!ok) {
         failJson(res, 403, "polis_err_update_conversation_permission");
+        return;
+      }
+
+      const providerPolicy = await resolveFncpManagedConversation(req.p.zid);
+      if (
+        providerPolicy.managed &&
+        (generateShortUrl === true ||
+          req.p.use_xid_whitelist === false ||
+          req.p.xid_required === false)
+      ) {
+        res.set?.({ "Cache-Control": "no-store" });
+        failJson(res, 409, "polis_err_fncp_provider_managed_conversation");
         return;
       }
 
@@ -966,70 +987,75 @@ function handle_PUT_conversations(
         .returning("*");
       verifyMetaPromise.then(
         function () {
-          pg.query(q.toString(), function (err: any, result: { rows: any[] }) {
-            if (err) {
-              failJson(res, 500, "polis_err_update_conversation", err);
-              return;
-            }
-            const conv = result && result.rows && result.rows[0];
-            // The first check with isModerator implictly tells us
-            // this can be returned in HTTP response.
-            conv.is_mod = true;
+          const query = q.toQuery();
+          pg.query(
+            query.text,
+            query.values,
+            function (err: any, result: { rows: any[] }) {
+              if (err) {
+                failJson(res, 500, "polis_err_update_conversation", err);
+                return;
+              }
+              const conv = result && result.rows && result.rows[0];
+              // The first check with isModerator implictly tells us
+              // this can be returned in HTTP response.
+              conv.is_mod = true;
 
-            const promise = generateShortUrl
-              ? generateAndReplaceZinvite(req.p.zid, generateShortUrl)
-              : Promise.resolve();
-            const successCode = generateShortUrl ? 201 : 200;
+              const promise = generateShortUrl
+                ? generateAndReplaceZinvite(req.p.zid, generateShortUrl)
+                : Promise.resolve();
+              const successCode = generateShortUrl ? 201 : 200;
 
-            promise
-              .then(function () {
-                // send notification email
-                if (req.p.send_created_email) {
-                  Promise.all([
-                    getUserInfoForUid2(req.p.uid),
-                    getConversationUrl(req, req.p.zid, true),
-                  ])
-                    .then(function (results: any[]) {
-                      const hname = results[0].hname;
-                      const url = results[1];
-                      sendEmailByUid(
-                        req.p.uid,
-                        "Conversation created",
-                        "Hi " +
-                          hname +
-                          ",\n" +
-                          "\n" +
-                          "Here's a link to the conversation you just created. Use it to invite participants to the conversation. Share it by whatever network you prefer - Gmail, Facebook, Twitter, etc., or just post it to your website or blog. Try it now! Click this link to go to your conversation:" +
-                          "\n" +
-                          url +
-                          "\n" +
-                          "\n" +
-                          "With gratitude,\n" +
-                          "\n" +
-                          "The team at pol.is\n"
-                      ).catch(function (err: any) {
+              promise
+                .then(function () {
+                  // send notification email
+                  if (req.p.send_created_email) {
+                    Promise.all([
+                      getUserInfoForUid2(req.p.uid),
+                      getConversationUrl(req, req.p.zid, true),
+                    ])
+                      .then(function (results: any[]) {
+                        const hname = results[0].hname;
+                        const url = results[1];
+                        sendEmailByUid(
+                          req.p.uid,
+                          "Conversation created",
+                          "Hi " +
+                            hname +
+                            ",\n" +
+                            "\n" +
+                            "Here's a link to the conversation you just created. Use it to invite participants to the conversation. Share it by whatever network you prefer - Gmail, Facebook, Twitter, etc., or just post it to your website or blog. Try it now! Click this link to go to your conversation:" +
+                            "\n" +
+                            url +
+                            "\n" +
+                            "\n" +
+                            "With gratitude,\n" +
+                            "\n" +
+                            "The team at pol.is\n"
+                        ).catch(function (err: any) {
+                          logger.error(
+                            "polis_err_sending_conversation_created_email",
+                            err
+                          );
+                        });
+                      })
+                      .catch(function (err: any) {
                         logger.error(
                           "polis_err_sending_conversation_created_email",
                           err
                         );
                       });
-                    })
-                    .catch(function (err: any) {
-                      logger.error(
-                        "polis_err_sending_conversation_created_email",
-                        err
-                      );
-                    });
-                }
+                  }
 
-                finishOne(res, conv, true, successCode);
+                  finishOne(res, conv, true, successCode);
 
-                updateConversationModifiedTime(req.p.zid);
-              })
-              .catch(function (err: any) {
-                failJson(res, 500, "polis_err_update_conversation", err);
-              });
-          });
+                  updateConversationModifiedTime(req.p.zid);
+                })
+                .catch(function (err: any) {
+                  failJson(res, 500, "polis_err_update_conversation", err);
+                });
+            }
+          );
         },
         function (err: { message: any }) {
           failJson(res, 500, err.message, err);
@@ -1037,6 +1063,11 @@ function handle_PUT_conversations(
       );
     })
     .catch(function (err: any) {
+      if (isFncpProviderPolicyUnavailable(err)) {
+        res.set?.({ "Cache-Control": "no-store" });
+        failJson(res, 503, "polis_err_fncp_provider_policy_unavailable");
+        return;
+      }
       failJson(res, 500, "polis_err_update_conversation", err);
     });
 }
@@ -1168,11 +1199,11 @@ function handle_POST_conversations(
               topics_enabled: !!req.p.topics_enabled,
             })
             .returning("*")
-            .toString();
+            .toQuery();
 
           pg.query(
-            q,
-            [],
+            q.text,
+            q.values,
             function (err: any, result: { rows: { zid: number }[] }) {
               if (err) {
                 if (isDuplicateKey(err)) {

@@ -1,6 +1,6 @@
 import _ from "underscore";
 import { ManagementClient } from "auth0";
-import { parse } from "csv-parse/sync";
+import { parseCsvRecords } from "../utils/csv-records";
 import badwords from "badwords/object";
 
 import { addParticipant } from "../participant";
@@ -35,6 +35,7 @@ import {
   updateVoteCount,
 } from "../server-helpers";
 import { parsePagination, createPaginationMeta } from "../utils/pagination";
+import { fncpParticipantProcessingPolicy } from "../auth/fncp-participant-policy";
 
 /* this is a concept and can be generalized to other handlers */
 interface PolisRequestParams {
@@ -90,11 +91,25 @@ function hasBadWords(txt: string) {
   return false;
 }
 
-const managementClient = new ManagementClient({
-  domain: Config.authDomain!,
-  clientId: Config.authClientId!,
-  clientSecret: Config.authClientSecret!,
-});
+let managementClient: ManagementClient | undefined;
+
+function assertAuth0ManagementAllowed(): void {
+  if (Config.freshBootstrapLocalOnly) {
+    throw new Error("polis_err_fncp_fresh_bootstrap_auth0_management_disabled");
+  }
+}
+
+function getManagementClient(): ManagementClient {
+  assertAuth0ManagementAllowed();
+  if (!managementClient) {
+    managementClient = new ManagementClient({
+      domain: Config.authDomain!,
+      clientId: Config.authClientId!,
+      clientSecret: Config.authClientSecret!,
+    });
+  }
+  return managementClient;
+}
 
 async function commentExists(zid: number, txt: string): Promise<boolean> {
   const rows = (await pg.queryP(
@@ -252,13 +267,17 @@ interface CommentModerationResult {
 }
 
 export async function isProConvo(owner: number): Promise<boolean> {
+  // Deny before reading owner data and outside the ordinary lookup catch: this
+  // profile must not reinterpret a forbidden external lookup as a non-Pro user.
+  assertAuth0ManagementAllowed();
   try {
     const { email } = await getUserInfoForUid2(owner);
     if (!email) {
       logger.warn(`No email found for owner ID: ${owner}`);
       return false;
     }
-    const users = await managementClient.usersByEmail.getByEmail({ email });
+    const client = getManagementClient();
+    const users = await client.usersByEmail.getByEmail({ email });
 
     if (!users || users.data.length === 0) {
       logger.warn(`No OIDC user found for email: ${email}`);
@@ -271,7 +290,7 @@ export async function isProConvo(owner: number): Promise<boolean> {
       logger.error(`OIDC user object for ${email} is missing a user_id.`);
       return false;
     }
-    const roles = await managementClient.users.getRoles({ id: userId });
+    const roles = await client.users.getRoles({ id: userId });
     const hasRole = roles.data.some((role) => role.name === "delphi-enabled");
 
     return hasRole;
@@ -357,6 +376,7 @@ async function moderateComment(
 async function handle_POST_comments(req: RequestWithP, res: any) {
   const { zid, uid, txt, vote, is_seed } = req.p;
   let { pid } = req.p; // pid may be reassigned if it's -1
+  const processingPolicy = fncpParticipantProcessingPolicy(req);
 
   try {
     // 1. Validate input
@@ -467,7 +487,10 @@ async function handle_POST_comments(req: RequestWithP, res: any) {
     if (is_seed || is_moderator) {
       mod = polisTypes.mod.ok;
       active = true;
-    } else if (await isProConvo(conversation.owner)) {
+    } else if (
+      processingPolicy.allowExternalModeration &&
+      (await isProConvo(conversation.owner))
+    ) {
       // Only apply pro moderation features to non-seed comments
       const moderationResult = await moderateComment(txt, conversation, ip);
       active = moderationResult.active;
@@ -475,7 +498,9 @@ async function handle_POST_comments(req: RequestWithP, res: any) {
     }
 
     // 5. Detect language
-    const detections = await detectLanguage(txt);
+    const detections = processingPolicy.allowExternalLanguageDetection
+      ? await detectLanguage(txt)
+      : [{ confidence: null, language: null }];
     const detection = Array.isArray(detections) ? detections[0] : detections;
     const lang = detection.language;
     const lang_confidence = detection.confidence;
@@ -515,7 +540,11 @@ async function handle_POST_comments(req: RequestWithP, res: any) {
     // 8. Handle moderation notifications
     const needsModeration = !active || conversation.strict_moderation;
 
-    if (needsModeration || conversation.strict_moderation) {
+    if (!processingPolicy.allowOutboundNotifications) {
+      logger.info("FNCP participant notification processing is disabled", {
+        conversation: "configured-fncp-conversation",
+      });
+    } else if (needsModeration || conversation.strict_moderation) {
       try {
         const n = await getNumberOfCommentsWithModerationStatus(
           zid,
@@ -855,10 +884,7 @@ async function handle_POST_comments_bulk(
       return;
     }
 
-    const records = parse(String(csv), {
-      columns: true,
-      skip_empty_lines: true,
-    });
+    const records = parseCsvRecords(String(csv));
 
     const results = [];
     let lastInteractionTime = new Date(0);

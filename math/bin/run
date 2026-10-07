@@ -1,12 +1,51 @@
 #!/bin/sh
 # Copyright (C) 2012-present, The Authors. This program is free software: you can redistribute it and/or  modify it under the terms of the GNU Affero General Public License, version 3, as published by the Free Software Foundation. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more details. You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+# The dedicated container uses restart:no and a 1536 MiB memory limit. Keep one
+# observable JVM process, with native-memory headroom, and propagate failures.
+if [ "${FNCP_OPTION_C_RELEASE_MODE+x}" = x ]; then
+  if [ "$FNCP_OPTION_C_RELEASE_MODE" != production ]; then
+    printf '%s\n' 'FNCP_MATH_RELEASE_MODE_INVALID' >&2
+    exit 1
+  fi
+  classpath=$(cat /app/classpath) || exit 1
+  exec /opt/java/openjdk/bin/java \
+    -Xmx1024m \
+    -cp "$classpath" \
+    clojure.main \
+    -m polismath.runner \
+    full
+fi
 
-while [ 1 ]
-do
+worker_pid=
+
+stop_worker() {
+  trap - TERM INT
+  if [ -n "$worker_pid" ] && kill -0 "$worker_pid" 2>/dev/null; then
+    kill -TERM "$worker_pid" 2>/dev/null || true
+    wait "$worker_pid" 2>/dev/null || true
+  fi
+  exit 0
+}
+
+trap stop_worker TERM INT
+
+while true; do
   echo "                                                           "
   echo "XXXXXXXXXXXXXXXXXX REBOOTING MATH WORKER XXXXXXXXXXXXXXXXXX"
   echo "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
   echo "                                                           "
-  timeout -s KILL 14400 clojure -M:run full
+  classpath=$(cat /app/classpath)
+  timeout -s KILL 14400 \
+    /opt/java/openjdk/bin/java \
+    -Xmx4g \
+    -cp "$classpath" \
+    clojure.main \
+    -m polismath.runner \
+    full &
+  worker_pid=$!
+  wait "$worker_pid"
+  worker_status=$?
+  worker_pid=
+  echo "Math worker exited with status $worker_status; restarting."
 done

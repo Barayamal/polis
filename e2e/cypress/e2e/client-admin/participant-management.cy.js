@@ -173,18 +173,17 @@ describe('Client Admin: Participant Management', () => {
 
       logout()
 
-      cy.intercept('POST', '/api/v3/votes').as('voteWithoutXid')
+      cy.intercept('GET', '/api/v3/participationInit*').as('initWithoutXid')
       cy.visit(`/${conversationId}`)
-      cy.get('#agreeButton', { timeout: 15000 }).should('be.visible')
-      cy.window().then((win) => {
-        cy.stub(win, 'alert').as('missingXidAlert')
+      cy.wait('@initWithoutXid').then((interception) => {
+        expect(interception.response?.statusCode).to.eq(403)
+        expect(interception.response?.body?.error).to.eq('polis_err_xid_required')
       })
-      cy.get('#agreeButton').click()
-      cy.wait('@voteWithoutXid').its('response.statusCode').should('eq', 403)
-      cy.get('@missingXidAlert')
-        .should('have.been.called')
-        .its('firstCall.args.0')
-        .should('contain', 'This conversation requires an XID')
+      cy.get('#accessDeniedMessage').should('be.visible').and('contain', 'valid invitation link')
+      cy.get('#agreeButton').should('not.exist')
+      cy.window().then((win) => {
+        expect(win.localStorage.getItem(`participant_token_${conversationId}`)).to.be.null
+      })
 
       cy.clearAllLocalStorage()
       cy.clearAllCookies()

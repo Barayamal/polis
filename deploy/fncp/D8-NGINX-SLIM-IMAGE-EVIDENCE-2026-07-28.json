@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-28T07:49:07Z",
+  "source": {
+    "repository": "https://github.com/Barayamal/polis",
+    "branch": "fncp-option-c-staging",
+    "imageCommit": "53d976235b40061af6ceb80691ae7a4e5b935c66",
+    "treeState": "clean",
+    "platform": "linux/arm64"
+  },
+  "candidate": {
+    "component": "nginx-proxy",
+    "localImageId": "sha256:7ff6fab219ea62ec2c5536b76f27be3fde17deedeabb1f1ab3a94b5b91d083ec",
+    "baseTag": "docker.io/library/nginx:1.30.4-alpine3.24-slim",
+    "baseIndexDigest": "sha256:ddde39c6e51f02fde7410c2e9c234cf2d0a4c7bdbbe176aeb37d8ad7ab4eb58c",
+    "baseArm64Digest": "sha256:c41cf343e2b3980e69d9890f9a8ec7120a54aa84232796414e251a1b387e4fc9"
+  },
+  "tooling": {
+    "syft": {
+      "version": "1.49.0",
+      "indexDigest": "sha256:13b53ebabe3d215268c90cf8fb9b875f0183908245f376fd4b3a2cb69d21d484"
+    },
+    "grype": {
+      "version": "0.116.0",
+      "indexDigest": "sha256:fd4ab4d1042b522c896e73bdf09ab8bf384fa417df99d6dd0d6e1008c7e7c821",
+      "database": {
+        "schemaVersion": "v6.1.9",
+        "built": "2026-07-27T07:24:06Z",
+        "valid": true
+      }
+    }
+  },
+  "runtimeChecks": {
+    "configuration": "pass",
+    "unknownRouteStatus": 404,
+    "disallowedMethodStatus": 405,
+    "expectedUnknownRouteStatus": 404,
+    "expectedDisallowedMethodStatus": 405
+  },
+  "scan": {
+    "componentCount": 465,
+    "total": 3,
+    "severities": {
+      "Critical": 0,
+      "High": 0,
+      "Medium": 3,
+      "Low": 0,
+      "Negligible": 0,
+      "Unknown": 0
+    },
+    "fixesAvailable": 0,
+    "findings": [
+      {
+        "id": "CVE-2025-60876",
+        "severity": "Medium",
+        "package": "busybox",
+        "version": "1.37.0-r31",
+        "fixVersions": []
+      },
+      {
+        "id": "CVE-2025-60876",
+        "severity": "Medium",
+        "package": "busybox-binsh",
+        "version": "1.37.0-r31",
+        "fixVersions": []
+      },
+      {
+        "id": "CVE-2025-60876",
+        "severity": "Medium",
+        "package": "ssl_client",
+        "version": "1.37.0-r31",
+        "fixVersions": []
+      }
+    ],
+    "imageCandidateGate": "pass"
+  },
+  "comparison": {
+    "priorExactFiveImageRecordNginx": {
+      "total": 8,
+      "Critical": 0,
+      "High": 2,
+      "Medium": 6
+    },
+    "delta": {
+      "total": -5,
+      "Critical": 0,
+      "High": -2,
+      "Medium": -3
+    }
+  },
+  "integrity": {
+    "sbomSha256": "9e5667474f6d8348b88b44bb508f199c883bc9275be7c7ada09d3251525f6639",
+    "grypeReportSha256": "d8f62513e600fc26c7c2d49fe7c2b1347208cb02a6b5bbfc7665576d8efe9a41",
+    "scopeSha256": "1fcaeaf40d07df7478580af6df5f27dce0771a6c669b92346706d3dfd498977d",
+    "sourceManifestSha256": "7a4537c5192ba9e943619fbc5a96b269eee69a7f107dfa0a135fe6cf776c8812"
+  },
+  "boundaries": {
+    "localDisposableDockerOnly": true,
+    "qaOidcSimulatorIncluded": false,
+    "immutableRegistryImagePublished": false,
+    "multiArchitectureVerified": false,
+    "productionDeployed": false,
+    "cloudResourceCreated": false,
+    "participantDataUsed": false
+  },
+  "overallOptionCGate": "fail",
+  "notes": [
+    "The image-level gate passes because the exact linux/arm64 candidate has no Critical or High findings.",
+    "The overall Option C gate remains failed because the other production-relevant images and operational controls are not cleared.",
+    "The local image ID is not a deployable registry reference."
+  ]
+}

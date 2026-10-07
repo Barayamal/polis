@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+  <title>Community Pulse — native staff design preview</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#173a34;background:#f7f5ee;line-height:1.5}*{box-sizing:border-box}body{margin:0}main{max-width:1160px;margin:auto;padding:40px 26px}.eyebrow{font-size:.78rem;letter-spacing:.12em;font-weight:750;color:#58685f}h1{font-size:clamp(2rem,4vw,3.2rem);line-height:1.12;margin:12px 0 20px;letter-spacing:-.03em}h2{font-size:1.3rem;margin:0 0 16px}.notice{padding:18px 22px;background:#fff0d1;border:1px solid #d6b578;border-radius:12px;margin:24px 0}.status{display:inline-block;padding:5px 11px;border:1px solid #b7c6b6;border-radius:999px;font-size:.8rem;color:#425b50}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:26px 0}.stat,.panel{background:#fffdf8;border:1px solid #dadfd1;border-radius:14px;padding:22px}.stat strong{display:block;font-size:1.8rem}.stat span,.small{font-size:.88rem;color:#58685f}.layout{display:grid;grid-template-columns:1.5fr 1fr;gap:22px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;padding:13px 8px;border-bottom:1px solid #e4e8db}th{color:#52665a;font-size:.78rem}th:first-child,td:first-child{padding-left:0}.pending{color:#855c10}.approved{color:#235c46}.revoked{color:#913d3d}.checks{padding-left:20px}.checks li{margin:9px 0}.actions{display:flex;flex-wrap:wrap;gap:10px;margin:22px 0}button{font:inherit;font-size:.9rem;font-weight:650;border:1px solid #b7c6b6;border-radius:8px;padding:11px 15px;background:#edf1e7;color:#52665a;cursor:not-allowed}button.danger{background:#f8eceb;color:#913d3d;border-color:#d7b2af}.history{border-top:1px solid #e4e8db;padding-top:17px}footer{margin-top:28px;color:#607066;font-size:.83rem}a{color:#21483c}a:focus-visible{outline:3px solid #9a6804;outline-offset:4px}@media(max-width:820px){.layout{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}main{padding:28px 18px}}
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">BARAYAMAL · COMMUNITY PULSE · PROPOSED PRIVATE STAFF SCREEN</p>
+    <h1>Registration review</h1>
+    <span class="status">Design preview · not connected</span>
+    <div class="notice" role="note"><strong>All records below are invented.</strong> This page has no login, database, network requests or approval authority. Every action is disabled. Implementation requires a separately verified staff sign-in, MFA assurance and reviewer permission.</div>
+    <section class="stats" aria-label="Invented example counts">
+      <div class="stat"><strong>2</strong><span>Pending review</span></div>
+      <div class="stat"><strong>1</strong><span>Approved for the round</span></div>
+      <div class="stat"><strong>1</strong><span>Terminally revoked</span></div>
+      <div class="stat"><strong>4 / 20</strong><span>Lifetime slots used</span></div>
+    </section>
+    <div class="layout">
+      <section class="panel" aria-labelledby="queue-title">
+        <h2 id="queue-title">Review queue</h2>
+        <p class="small">Private references and declaration status. Account mappings and voting responses are excluded.</p>
+        <div class="scroll"><table>
+          <thead><tr><th scope="col">Invented reference</th><th scope="col">Consent notice</th><th scope="col">Current state</th></tr></thead>
+          <tbody>
+            <tr><td>DEMO-001</td><td>draft-native-v1</td><td class="pending">Pending</td></tr>
+            <tr><td>DEMO-002</td><td>draft-native-v1</td><td class="pending">Pending</td></tr>
+            <tr><td>DEMO-003</td><td>draft-native-v1</td><td class="approved">Approved; provider check pending</td></tr>
+            <tr><td>DEMO-004</td><td>draft-native-v1</td><td class="revoked">Revoked; access denied</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+      <section class="panel" aria-labelledby="detail-title">
+        <h2 id="detail-title">DEMO-001 · invented detail</h2>
+        <p class="small">These are self-attestations, not independent verification of age or Indigenous heritage. Audience-specific wording is still pending Dean's choice.</p>
+        <ul class="checks">
+          <li>Adult declaration: affirmative</li>
+          <li>Round eligibility declaration: affirmative</li>
+          <li>Registration consent: affirmative</li>
+          <li>Notice digest/version: recorded</li>
+        </ul>
+        <div class="actions" aria-label="Disabled example actions">
+          <button type="button" disabled>Approve</button>
+          <button type="button" disabled>Decline</button>
+          <button type="button" class="danger" disabled>Revoke access</button>
+        </div>
+        <p class="small">Approval requires the current authorised staff session. Decline and revoke are terminal for this registration and do not free a lifetime slot.</p>
+        <div class="history"><strong>Private decision history</strong><p class="small">The implementation records authenticated reviewer, decision kind, time and immutable decision reference. Approval will not permit voting until access checks succeed. Revocation denies access immediately, even while provider removal is pending.</p></div>
+      </section>
+    </div>
+    <footer>WordPress-free target · migration execution pending approval · <a href="NATIVE-MIGRATION-PLAN-2026-10-07.md">Review the migration plan</a></footer>
+  </main>
+</body>
+</html>
