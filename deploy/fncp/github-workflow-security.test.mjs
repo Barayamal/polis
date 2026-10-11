@@ -152,6 +152,7 @@ const expectedJobPermissions = {
     contracts: { contents: "read" },
     "identity-protocol": { contents: "read" },
     "production-source": { contents: "read" },
+    "native-registration-foundation": { contents: "read" },
     server: { contents: "read" },
     "participant-alpha": { contents: "read" },
     math: { contents: "read" },
@@ -182,6 +183,26 @@ const expectedJobPermissions = {
     "test-clj": { contents: "read" },
   },
 };
+
+test("the isolated native foundation is tested on both reviewed Node versions and required by the PR gate", () => {
+  const source = workflows["fncp-option-c-ci.yml"];
+  const start = source.indexOf("\n  native-registration-foundation:\n");
+  const end = source.indexOf("\n  server:\n", start);
+  assert.ok(start > 0 && end > start, "dedicated native source job exists");
+  const block = source.slice(start, end);
+  assert.ok(block.includes('node: ["22.23.2", "24.19.0"]'));
+  assert.ok(block.includes("fail-fast: false"));
+  assert.ok(block.includes("persist-credentials: false"));
+  assert.ok(block.includes("node-version: ${{ matrix.node }}"));
+  for (const file of ["ledger.test.mjs", "store-schema.test.mjs"]) {
+    assert.ok(block.includes(`deploy/fncp/native-registration/${file}`));
+    assert.ok(existsSync(join(repositoryRoot, "deploy/fncp/native-registration", file)));
+  }
+  assert.doesNotMatch(block, /\b(?:npm|docker|curl|wget|gh)\b/u);
+  assert.ok(source.includes("needs: [contracts, identity-protocol, production-source, native-registration-foundation, server, participant-alpha, math, runtime-images]"));
+  assert.ok(source.includes("NATIVE_REGISTRATION: ${{ needs.native-registration-foundation.result }}"));
+  assert.ok(source.includes('test "$NATIVE_REGISTRATION" = success'));
+});
 
 const reviewedDownloads = {
   codecovCli: {

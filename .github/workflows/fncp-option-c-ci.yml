@@ -121,6 +121,31 @@ jobs:
           php deploy/fncp/wordpress-local/tests.php
           php deploy/fncp/wordpress-local/plugin-boundary-tests.php
 
+  native-registration-foundation:
+    name: Synthetic native registration (Node ${{ matrix.node }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22.23.2", "24.19.0"]
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use reviewed Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Test isolated synthetic native ledger and schema
+        run: |
+          node --test \
+            deploy/fncp/native-registration/ledger.test.mjs \
+            deploy/fncp/native-registration/store-schema.test.mjs
+
   server:
     name: Server build and query safety
     runs-on: ubuntu-24.04
@@ -577,7 +602,7 @@ jobs:
   fncp-pr-gate:
     name: FNCP PR gate
     if: always()
-    needs: [contracts, identity-protocol, production-source, server, participant-alpha, math, runtime-images]
+    needs: [contracts, identity-protocol, production-source, native-registration-foundation, server, participant-alpha, math, runtime-images]
     runs-on: ubuntu-24.04
     permissions: {}
     steps:
@@ -586,6 +611,7 @@ jobs:
           CONTRACTS: ${{ needs.contracts.result }}
           IDENTITY_PROTOCOL: ${{ needs.identity-protocol.result }}
           PRODUCTION_SOURCE: ${{ needs.production-source.result }}
+          NATIVE_REGISTRATION: ${{ needs.native-registration-foundation.result }}
           SERVER: ${{ needs.server.result }}
           PARTICIPANT_ALPHA: ${{ needs.participant-alpha.result }}
           MATH: ${{ needs.math.result }}
@@ -594,6 +620,7 @@ jobs:
           test "$CONTRACTS" = success
           test "$IDENTITY_PROTOCOL" = success
           test "$PRODUCTION_SOURCE" = success
+          test "$NATIVE_REGISTRATION" = success
           test "$SERVER" = success
           test "$PARTICIPANT_ALPHA" = success
           test "$MATH" = success
