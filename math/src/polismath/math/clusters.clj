@@ -41,12 +41,20 @@
          :positions (conj (:positions clst) (last item))))
 
 
+(defn euclidean-distance
+  "Euclidean distance computed from coordinate differences, including native row views.
+  Vectorz's optimized distance can return NaN for nearly identical finite vectors
+  when its squared-norm/dot-product calculation cancels below zero."
+  [a b]
+  (matrix/length (- a b)))
+
+
 (defn add-to-closest
   "Find the closest cluster and append item (mem_id, vector) to it"
   [clusts item]
   (let [[clst-id clst] (apply min-key
                          (fn [[clst-id clst]]
-                           (matrix/distance (last item) (:center clst)))
+                           (euclidean-distance (last item) (:center clst)))
                          clusts)]
     (assoc clusts clst-id
       (clst-append clst item))))
@@ -72,7 +80,7 @@
   (letfn [(cntrs [clsts] (sort (map :center clsts)))]
     (every?
       (fn [[x y]]
-        (< (matrix/distance x y) threshold))
+        (< (euclidean-distance x y) threshold))
       (utils/zip (cntrs clsts1) (cntrs clsts2)))))
 
 
@@ -210,7 +218,7 @@
                 ; Find the minimum distance, cluster-id pair, and add the member name to the end
               (conj (apply min-key #(get % 0)
                       (map
-                        #(vector (matrix/distance (nm/get-row-by-name data mem) (:center %)) (:id %))
+                        #(vector (euclidean-distance (nm/get-row-by-name data mem) (:center %)) (:id %))
                         clusters))
                  mem))
             (nm/rownames data)))]
@@ -321,7 +329,7 @@
        (fn [r1]
          (map
            (fn [r2]
-             (matrix/distance r1 r2))
+             (euclidean-distance r1 r2))
            m2))
        m1))))
 

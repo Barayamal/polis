@@ -1,0 +1,60 @@
+{
+  "classification": "SYNTHETIC_ENGINE_FIXTURE_NOT_IDENTITY_OR_PARTICIPANT_AUTH_PROOF",
+  "participantCount": 18,
+  "statementCount": 15,
+  "identityCap": 20,
+  "cohortSize": 6,
+  "profiles": [
+    [
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    [
+      1,
+      1,
+      1,
+      1,
+      1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1
+    ]
+  ]
+}

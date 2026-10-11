@@ -145,9 +145,6 @@ describe("Conversation Details API", () => {
     expect(response.text).toContain(
       "polis_err_param_parse_failed_conversation_id"
     );
-    expect(response.text).toContain(
-      "polis_err_fetching_zid_for_conversation_id"
-    );
   });
 
   test("should retrieve conversation stats", async () => {

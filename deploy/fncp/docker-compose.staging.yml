@@ -1,0 +1,227 @@
+# Disposable, loopback-only Pol.is origin for First Nations Community Pulse QA.
+# This is deliberately not a production topology and must never contain genuine
+# registration, eligibility or participation data.
+x-fncp-boundary:
+  classification: synthetic-loopback-only
+  genuine-data: prohibited
+  internet-ready: "false"
+
+services:
+  postgres:
+    build:
+      context: ../../server
+      dockerfile: Dockerfile-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    networks: [fncp-internal]
+    restart: unless-stopped
+    volumes:
+      - fncp-postgres:/var/lib/postgresql/data
+
+  # Build-only definition for the production-shaped, short-lived migration
+  # artifact. The disposable QA database above still initializes itself and is
+  # excluded from the release artifact set. This profile has no network or
+  # credentials and therefore cannot accidentally migrate either database.
+  polis-migration:
+    profiles: [release-assurance-build-only]
+    build:
+      context: ../../server
+      dockerfile: Dockerfile-migrate
+      args:
+        SOURCE_REVISION: ${FNCP_SOURCE_REVISION}
+    labels:
+      org.barayamal.fncp.artifact: polis-migration
+      org.barayamal.fncp.lifecycle: short-lived
+      org.barayamal.fncp.release-scope: production
+    network_mode: none
+    read_only: true
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,mode=0700,uid=70,gid=70
+
+  oidc-simulator:
+    build:
+      context: ../../oidc-simulator
+      dockerfile: Dockerfile
+    environment:
+      AUTH_AUDIENCE: ${AUTH_AUDIENCE}
+      AUTH_CLIENT_ID: ${AUTH_CLIENT_ID}
+      AUTH_ISSUER: ${AUTH_ISSUER}
+      AUTH_SIMULATOR_PORT: ${AUTH_SIMULATOR_PORT}
+      CERT_DIR: /root/.simulacrum/certs
+      NODE_ENV: production
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl --cacert /root/.simulacrum/certs/rootCA.pem -f https://localhost:3000/.well-known/jwks.json",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks: [fncp-internal, fncp-loopback]
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+    volumes:
+      - ./certs:/root/.simulacrum/certs:ro
+
+  server:
+    build:
+      context: ../../server
+      dockerfile: Dockerfile
+      target: ${FNCP_SERVER_BUILD_TARGET:-prod}
+      args:
+        NODE_ENV: production
+        SOURCE_REVISION: ${FNCP_SOURCE_REVISION}
+    depends_on:
+      oidc-simulator:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file: .env.staging
+    environment:
+      DATABASE_SSL: "false"
+      DATABASE_URL: ${DATABASE_URL}
+      DEV_MODE: "false"
+      ENABLE_TELEMETRY: "false"
+      NODE_ENV: production
+      NODE_EXTRA_CA_CERTS: /run/fncp-ca/rootCA.pem
+      STATIC_FILES_ADMIN_PORT: "4321"
+      STATIC_FILES_HOST: client-participation-alpha
+      STATIC_FILES_PARTICIPATION_PORT: "4321"
+    networks: [fncp-internal, fncp-loopback]
+    ports:
+      - "127.0.0.1:5500:5000"
+    restart: unless-stopped
+    # Local QA bind mounts are owned by the invoking user. Match that same
+    # non-root numeric identity; production uses managed secret delivery.
+    user: "${SERVER_RUNTIME_UID}:${SERVER_RUNTIME_GID}"
+    volumes:
+      - ./certs:/run/fncp-ca:ro
+      - ../../server/keys:/app/keys:ro
+
+  # One-shot synthetic bootstrap API. This service deliberately uses the
+  # ordinary upstream production target with both FNCP policies disabled so
+  # the local OIDC fixture can create and configure exactly one disposable
+  # conversation while the dedicated server remains fail-closed on its absent
+  # bootstrap binding. It is profile-gated, loopback-only and removed by the
+  # helper; it is not a release artifact or deployment topology.
+  server-bootstrap:
+    profiles: [synthetic-bootstrap-only]
+    build:
+      context: ../../server
+      dockerfile: Dockerfile
+      target: prod
+      args:
+        NODE_ENV: production
+    depends_on:
+      oidc-simulator:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file: .env.staging
+    environment:
+      DATABASE_SSL: "false"
+      DATABASE_URL: ${DATABASE_URL}
+      DEV_MODE: "false"
+      ENABLE_TELEMETRY: "false"
+      FNCP_GATEWAY_CONVERSATION_ID: ""
+      FNCP_GATEWAY_ENFORCEMENT: "false"
+      FNCP_GATEWAY_SHARED_SECRET: ""
+      FNCP_PROVIDER_ALLOWLIST_BEARER_CREDENTIAL: ""
+      FNCP_PROVIDER_ALLOWLIST_CONVERSATION_ID: ""
+      FNCP_PROVIDER_ALLOWLIST_ENFORCEMENT: "false"
+      NODE_ENV: production
+      NODE_EXTRA_CA_CERTS: /run/fncp-ca/rootCA.pem
+      STATIC_FILES_ADMIN_PORT: "4321"
+      STATIC_FILES_HOST: client-participation-alpha
+      STATIC_FILES_PARTICIPATION_PORT: "4321"
+    networks: [fncp-internal, fncp-loopback]
+    ports:
+      - "127.0.0.1:5501:5000"
+    restart: "no"
+    user: "${SERVER_RUNTIME_UID}:${SERVER_RUNTIME_GID}"
+    volumes:
+      - ./certs:/run/fncp-ca:ro
+      - ../../server/keys:/app/keys:ro
+
+  math:
+    build:
+      context: ../../math
+      args:
+        SOURCE_REVISION: ${FNCP_SOURCE_REVISION}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      LOGGING_LEVEL: ${MATH_LOG_LEVEL:-warn}
+      MATH_ENV: ${MATH_ENV:-dev}
+      WEBSERVER_PASS: ${WEBSERVER_PASS}
+      WEBSERVER_USERNAME: ${WEBSERVER_USERNAME}
+    networks: [fncp-internal]
+    restart: unless-stopped
+
+  client-participation-alpha:
+    build:
+      context: ../../client-participation-alpha
+      dockerfile: Dockerfile
+      args:
+        OIDC_CACHE_KEY_ID_TOKEN_SUFFIX: ${OIDC_CACHE_KEY_ID_TOKEN_SUFFIX}
+        OIDC_CACHE_KEY_PREFIX: ${OIDC_CACHE_KEY_PREFIX}
+        PUBLIC_AUTH_NAMESPACE: ${AUTH_NAMESPACE}
+        PUBLIC_SERVICE_URL: ${PUBLIC_SERVICE_URL}
+        SOURCE_REVISION: ${FNCP_SOURCE_REVISION}
+    depends_on: [server]
+    environment:
+      FNCP_GATEWAY_CONVERSATION_ID: ${FNCP_GATEWAY_CONVERSATION_ID}
+      FNCP_GATEWAY_ENFORCEMENT: ${FNCP_GATEWAY_ENFORCEMENT}
+      FNCP_GATEWAY_SHARED_SECRET: ${FNCP_GATEWAY_SHARED_SECRET}
+      INTERNAL_SERVICE_URL: ${INTERNAL_SERVICE_URL}
+      NODE_ENV: production
+      PUBLIC_AUTH_NAMESPACE: ${AUTH_NAMESPACE}
+      PUBLIC_OIDC_CACHE_KEY_ID_TOKEN_SUFFIX: ${OIDC_CACHE_KEY_ID_TOKEN_SUFFIX}
+      PUBLIC_OIDC_CACHE_KEY_PREFIX: ${OIDC_CACHE_KEY_PREFIX}
+      PUBLIC_SERVICE_URL: ${PUBLIC_SERVICE_URL}
+    networks: [fncp-internal]
+    restart: unless-stopped
+
+  nginx-proxy:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+      args:
+        SOURCE_REVISION: ${FNCP_SOURCE_REVISION}
+    depends_on:
+      - client-participation-alpha
+      - server
+    labels:
+      org.barayamal.fncp.boundary: synthetic-loopback-only
+      org.barayamal.fncp.internet-ready: "false"
+    networks: [fncp-internal, fncp-loopback]
+    ports:
+      - "127.0.0.1:8088:8080"
+    restart: unless-stopped
+
+networks:
+  fncp-internal:
+    internal: true
+  # Only the three explicitly loopback-published services join this bridge.
+  # Docker/Colima cannot publish host ports from an internal-only network.
+  fncp-loopback:
+
+volumes:
+  fncp-postgres:

@@ -1,4 +1,3 @@
-import request from "request-promise";
 import { GoogleGenAI } from "@google/genai";
 import config from "../config";
 import { convertXML } from "simple-xml-to-json";
@@ -11,6 +10,8 @@ const internal_config = {
   fileContents: "",
   system_lore: "",
 };
+const DEFAULT_REGION = "US or Europe (EU)";
+let promptLoadFailed = false;
 
 async function loadFiles() {
   internal_config.fileContents = await fs.readFile(
@@ -23,45 +24,31 @@ async function loadFiles() {
   );
 }
 
-loadFiles();
+// The fresh fixed-seed bootstrap has no moderation or geolocation role. The
+// owned child starts from a fixed compiled directory, not an asset directory;
+// importing this module must not read prompts or dispatch external work there.
+export const moderationReady = config.freshBootstrapLocalOnly
+  ? Promise.resolve()
+  : loadFiles().catch(() => {
+      // Handle rejection immediately, including when no caller starts an
+      // analysis. Preserve Promise<void>; keep no raw filesystem exception.
+      promptLoadFailed = true;
+    });
 
-async function analyzeComment(
-  txt: string,
-  convo_topic: string,
-  geographical_context?: string // ip address if available
-) {
+// Backport the upstream 80193c65 privacy boundary: location stays at its
+// existing fallback, never inferred from or enriched with a participant IP.
+async function analyzeComment(txt: string, convo_topic: string) {
+  if (config.freshBootstrapLocalOnly)
+    throw new Error("FNCP_FRESH_BOOTSTRAP_MODERATION_DISABLED");
   try {
+    await moderationReady;
+    if (promptLoadFailed)
+      throw new Error("POLIS_MODERATION_PROMPTS_UNAVAILABLE");
     const json = await convertXML(internal_config.fileContents);
-    const getRegionFromIP = async (ip: string): Promise<string> => {
-      if (!ip) {
-        return "US or Europe (EU)";
-      }
-      try {
-        // Using a free IP geolocation service.
-        // Consider replacing with a more robust, authenticated service for production.
-        const response = await request.get(`http://ip-api.com/json/${ip}`);
-        const data = JSON.parse(response);
-        if (data.status === "success" && data.country) {
-          const locationParts = [
-            data.city,
-            data.regionName,
-            data.country,
-          ].filter(Boolean);
-          return locationParts.join(", ");
-        }
-        return "US or Europe (EU)"; // fallback
-      } catch (error) {
-        logger.error("Error fetching region from IP:", { ip, error });
-        return "US or Europe (EU)"; // fallback on any error
-      }
-    };
-    const finalGeographicalContext = geographical_context
-      ? await getRegionFromIP(geographical_context)
-      : "US or Europe (EU)";
     json.polis_moderation_rubric.children[11].task.children[1].input = {
       comment_text: txt,
       conversation_topic: convo_topic,
-      geographical_context: finalGeographicalContext,
+      geographical_context: DEFAULT_REGION,
     };
 
     const prompt_xml = js2xmlparser.parse("polis_moderation_rubric", json);
@@ -102,9 +89,24 @@ async function analyzeComment(
     });
 
     const result = respGem.text;
-    logger.debug(`${txt} moderation result: ${result}`);
-    return JSON.parse(result).output?.final_score;
-  } catch (error) {
+    const rawScore = JSON.parse(result).output?.final_score;
+    // The prompt historically returns both JSON numbers and number strings.
+    // Normalize only JSON-style numeric text, never null/booleans/arrays or
+    // empty/hexadecimal strings through Number's broader coercion rules.
+    const score =
+      typeof rawScore === "number"
+        ? rawScore
+        : typeof rawScore === "string" &&
+          /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(rawScore.trim())
+        ? Number(rawScore.trim())
+        : NaN;
+    if (!Number.isFinite(score) || score < 0)
+      throw new Error("POLIS_MODERATION_SCORE_UNAVAILABLE");
+    logger.debug("polis_moderation_analysis_completed");
+    return score;
+  } catch {
+    // SDK/parser errors may contain the prompt, address or model response.
+    logger.error("polis_moderation_analysis_unavailable");
     return;
   }
 }

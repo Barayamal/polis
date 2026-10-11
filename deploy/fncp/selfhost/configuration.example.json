@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "classification": "closed-local-core",
+  "deployment": "fncp-local-core-example",
+  "platform": "linux/arm64",
+  "engine": {
+    "host": "unix:///absolute/task-owned/docker.sock",
+    "configDirectory": "/absolute/task-owned/docker-config"
+  },
+  "stateDirectory": "/absolute/task-owned/runtime/new-core",
+  "sourceRevision": "59f5ca6cd403da5b825ff58f61749af40e470daa",
+  "database": {
+    "name": "fncp_polis",
+    "owner": "fncp_owner",
+    "migrationRole": "fncp_migration",
+    "runtimeRole": "fncp_runtime",
+    "mathRole": "fncp_math",
+    "host": "postgres",
+    "port": 5432
+  },
+  "binding": {
+    "conversationId": "9fncpSelfhostFixture",
+    "statementIds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14
+    ]
+  },
+  "identity": {
+    "issuer": "https://identity.local.invalid/",
+    "audience": "fncp-local-staff-fixture",
+    "jwksUri": "https://identity.local.invalid/.well-known/jwks.json"
+  }
+}

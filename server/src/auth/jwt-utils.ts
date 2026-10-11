@@ -1,6 +1,9 @@
 /**
  * Shared JWT utilities for all participant types
  *
+ * Modified by Barayamal on 26 July 2026 to preserve the authenticated XID claim
+ * separately for per-request allowlist revalidation.
+ *
  * This module consolidates common JWT functionality to avoid duplication
  * across anonymous, XID, and standard user JWT implementations.
  */
@@ -301,6 +304,10 @@ export function createExtractUserMiddleware(
       // Add type-specific data
       if (participantType === "xid" && payload.xid) {
         req.p.xid = payload.xid;
+        // Preserve the authenticated XID separately. Route parameter parsing
+        // happens after authentication and may populate req.p.xid again; the
+        // JWT claim is the participant identity that must be revalidated.
+        req.p.jwt_xid = payload.xid;
       } else if (participantType === "standard_user" && payload.oidc_sub) {
         req.p.oidc_sub = payload.oidc_sub;
       }

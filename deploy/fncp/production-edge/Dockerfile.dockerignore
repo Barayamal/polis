@@ -1,0 +1,16 @@
+**
+!deploy/fncp/production-security
+!deploy/fncp/production-security/zlib-fixed
+!deploy/fncp/production-security/zlib-fixed/**
+!deploy/
+!deploy/fncp/
+!deploy/fncp/production-edge/
+!deploy/fncp/production-edge/edge.mjs
+!deploy/fncp/production-edge/main.mjs
+!deploy/fncp/production-edge/material.mjs
+!deploy/fncp/production-service/
+!deploy/fncp/production-service/custody.mjs
+!deploy/fncp/production-service/contracts.mjs
+!server/
+!server/busybox-fixed/
+!server/busybox-fixed/**

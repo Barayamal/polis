@@ -101,6 +101,10 @@ The system's logging level defaults to `:warn` but can be configured in several 
 
 Available log levels (from lowest to highest): `:trace`, `:debug`, `:info`, `:warn`, `:error`, `:fatal`, `:report`
 
+## Dedicated self-host profile
+
+See [the dedicated runtime contract](doc/dedicated-selfhost.md) for the `fncp-production` target, explicit PostgreSQL CA/hostname verification, least-privilege math role and the deterministic 18-participant engine fixture.
+
 ## Production setup
 
 The [`docker-compose.yml`](../docker-compose.yml) file in the root of this directory is provided as a basis for production deployment.

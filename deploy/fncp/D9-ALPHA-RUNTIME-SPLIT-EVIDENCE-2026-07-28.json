@@ -1,0 +1,294 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-28T08:30:05Z",
+  "source": {
+    "repository": "https://github.com/Barayamal/polis",
+    "branch": "fncp-option-c-staging",
+    "imageCommit": "b8bf9df2fe1bd5906e56ff29129e0ca66519fa43",
+    "treeState": "clean",
+    "platform": "linux/arm64"
+  },
+  "candidate": {
+    "component": "client-participation-alpha",
+    "localImageId": "sha256:b41d57191c9236687002773335763785fe9944113efabc968c61d9aaf86998b9",
+    "localImageSizeBytes": 84458085,
+    "baseTag": "docker.io/library/node:24-alpine",
+    "baseIndexDigest": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+    "baseArm64Digest": "sha256:eef73a25205e27bd016ce672af71560ad6b681142ddf00ff63c7b3098eafcd4d"
+  },
+  "tooling": {
+    "syft": {
+      "version": "1.49.0",
+      "indexDigest": "sha256:13b53ebabe3d215268c90cf8fb9b875f0183908245f376fd4b3a2cb69d21d484"
+    },
+    "grype": {
+      "version": "0.116.0",
+      "indexDigest": "sha256:fd4ab4d1042b522c896e73bdf09ab8bf384fa417df99d6dd0d6e1008c7e7c821",
+      "database": {
+        "schemaVersion": "v6.1.9",
+        "built": "2026-07-27T07:24:06Z",
+        "valid": true,
+        "applicationUpdateCheck": false,
+        "databaseAutoUpdate": false
+      }
+    }
+  },
+  "buildAndTestChecks": {
+    "lockedOfflineBuild": "pass",
+    "lint": "pass",
+    "jest": {
+      "passed": 124,
+      "total": 124
+    },
+    "sourceBoundaryTests": {
+      "passed": 4,
+      "total": 4
+    },
+    "builtBoundaryTests": {
+      "passed": 3,
+      "total": 3
+    },
+    "deploymentAndImageContracts": {
+      "passed": 21,
+      "total": 21
+    }
+  },
+  "runtimeChecks": {
+    "packageBoundary": "pass",
+    "forbiddenPackagePaths": [],
+    "globalNpmRuntimePresent": false,
+    "requiredRuntimeFilesAndEmbedRoute": "pass",
+    "defaultCommandBoot": "pass",
+    "embedStatus": 200,
+    "faviconStatus": 200,
+    "proxyConfiguration": "pass",
+    "directAstroImageStatus": 404,
+    "alphaMountedAstroImageStatus": 404,
+    "allowedApiStatus": 204,
+    "disallowedMethodStatus": 405,
+    "unknownRouteStatus": 404
+  },
+  "scan": {
+    "componentCount": 921,
+    "total": 21,
+    "severities": {
+      "Critical": 0,
+      "High": 5,
+      "Medium": 12,
+      "Low": 4,
+      "Negligible": 0,
+      "Unknown": 0
+    },
+    "fixesAvailable": 18,
+    "findings": [
+      {
+        "id": "GHSA-r5fr-rjxr-66jc",
+        "severity": "High",
+        "package": "lodash",
+        "version": "4.17.23",
+        "fixVersions": [
+          "4.18.0"
+        ],
+        "occurrences": 3
+      },
+      {
+        "id": "GHSA-2pvr-wf23-7pc7",
+        "severity": "High",
+        "package": "astro",
+        "version": "5.18.2",
+        "fixVersions": [
+          "6.4.6"
+        ],
+        "occurrences": 1
+      },
+      {
+        "id": "GHSA-8hv8-536x-4wqp",
+        "severity": "High",
+        "package": "astro",
+        "version": "5.18.2",
+        "fixVersions": [
+          "6.3.3"
+        ],
+        "occurrences": 1
+      },
+      {
+        "id": "GHSA-3rmj-9m5h-8fpv",
+        "severity": "Medium",
+        "package": "@astrojs/node",
+        "version": "9.5.5",
+        "fixVersions": [
+          "10.0.0"
+        ],
+        "occurrences": 1
+      },
+      {
+        "id": "GHSA-f23m-r3pf-42rh",
+        "severity": "Medium",
+        "package": "lodash",
+        "version": "4.17.23",
+        "fixVersions": [
+          "4.18.0"
+        ],
+        "occurrences": 3
+      },
+      {
+        "id": "CVE-2025-60876",
+        "severity": "Medium",
+        "package": "busybox",
+        "version": "1.37.0-r31",
+        "fixVersions": [],
+        "occurrences": 1
+      },
+      {
+        "id": "CVE-2025-60876",
+        "severity": "Medium",
+        "package": "busybox-binsh",
+        "version": "1.37.0-r31",
+        "fixVersions": [],
+        "occurrences": 1
+      },
+      {
+        "id": "CVE-2025-60876",
+        "severity": "Medium",
+        "package": "ssl_client",
+        "version": "1.37.0-r31",
+        "fixVersions": [],
+        "occurrences": 1
+      },
+      {
+        "id": "GHSA-c57f-mm3j-27q9",
+        "severity": "Medium",
+        "package": "@astrojs/node",
+        "version": "9.5.5",
+        "fixVersions": [
+          "10.0.5"
+        ],
+        "occurrences": 1
+      },
+      {
+        "id": "GHSA-j687-52p2-xcff",
+        "severity": "Medium",
+        "package": "astro",
+        "version": "5.18.2",
+        "fixVersions": [
+          "6.1.6"
+        ],
+        "occurrences": 1
+      },
+      {
+        "id": "GHSA-jrpj-wcv7-9fh9",
+        "severity": "Medium",
+        "package": "astro",
+        "version": "5.18.2",
+        "fixVersions": [
+          "6.4.6"
+        ],
+        "occurrences": 1
+      },
+      {
+        "id": "GHSA-4g3v-8h47-v7g6",
+        "severity": "Medium",
+        "package": "astro",
+        "version": "5.18.2",
+        "fixVersions": [
+          "7.1.0"
+        ],
+        "occurrences": 1
+      },
+      {
+        "id": "GHSA-f48w-9m4c-m7f5",
+        "severity": "Medium",
+        "package": "astro",
+        "version": "5.18.2",
+        "fixVersions": [
+          "7.0.6"
+        ],
+        "occurrences": 1
+      },
+      {
+        "id": "GHSA-xr5h-phrj-8vxv",
+        "severity": "Low",
+        "package": "astro",
+        "version": "5.18.2",
+        "fixVersions": [
+          "6.1.10"
+        ],
+        "occurrences": 1
+      },
+      {
+        "id": "GHSA-4x5r-pxfx-6jf8",
+        "severity": "Low",
+        "package": "@babel/core",
+        "version": "7.28.4",
+        "fixVersions": [
+          "7.29.6"
+        ],
+        "occurrences": 1
+      },
+      {
+        "id": "GHSA-r557-wffq-wvrc",
+        "severity": "Low",
+        "package": "@astrojs/node",
+        "version": "9.5.5",
+        "fixVersions": [
+          "11.0.2"
+        ],
+        "occurrences": 1
+      },
+      {
+        "id": "GHSA-7pw4-f3q4-r2p2",
+        "severity": "Low",
+        "package": "astro",
+        "version": "5.18.2",
+        "fixVersions": [
+          "7.0.4"
+        ],
+        "occurrences": 1
+      }
+    ],
+    "imageCandidateGate": "fail"
+  },
+  "comparison": {
+    "priorExactFiveImageRecordAlpha": {
+      "total": 62,
+      "Critical": 1,
+      "High": 24,
+      "Medium": 30,
+      "Low": 7
+    },
+    "delta": {
+      "total": -41,
+      "Critical": -1,
+      "High": -19,
+      "Medium": -18,
+      "Low": -3
+    }
+  },
+  "integrity": {
+    "sbomSha256": "902111ae058c5889ea99ba6750305beaef0db9469c3e24b62143fdfb676abd02",
+    "grypeReportSha256": "0c3ed85bdc052d9d7516b10370aefc113bdf466832876c3cb2cf8aaea32ff246",
+    "sourceManifestSha256": "8e2e6a01b808176b0f8ad3c913064e869a80fefdbba37c8872fe138a8929c363",
+    "lockSha256": "e4e8fc377d6bac7ced126c58e9739c20e93d4a48948ad8039589d8d6034eb664",
+    "packageBoundarySha256": "272a1fdbdb99a438d064740d175e96e59ab31892e7f13ee44d7648408eed751b",
+    "runtimeFilesSha256": "c32f1b5a1810872b4646bb4696dab0e5f8872cab545c5d8b185f1ff273e7a70e",
+    "bootSmokeSha256": "89b0113f73a0774871df6452808e1417c1592d7ad6e35f1189c38ea882973c4c",
+    "proxyRouteMatrixSha256": "f2c4a4952f9ce16079920850459337bcb9638fb7654532412405de39a41af29b"
+  },
+  "boundaries": {
+    "localDisposableDockerOnly": true,
+    "qaOidcSimulatorIncluded": false,
+    "immutableRegistryImagePublished": false,
+    "multiArchitectureVerified": false,
+    "productionDeployed": false,
+    "cloudResourceCreated": false,
+    "participantDataUsed": false
+  },
+  "overallOptionCGate": "fail",
+  "notes": [
+    "The multi-stage runtime removes npm, npx, Sharp and esbuild package families while retaining the reviewed Astro production closure.",
+    "The exact linux/arm64 image still fails its image gate because five High findings remain in Astro and Lodash.",
+    "The proxy matrix used an exact same-source Nginx configuration, this exact alpha image and a disposable 204-only server stub on loopback.",
+    "The overall Option C gate remains failed; this component record is not a unified five-image release attestation.",
+    "The local image ID is not a deployable registry reference."
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "fncp-production-identity-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Separate HTTPS OIDC participant adapter; production service integration remains required",
+  "engines": { "node": ">=22" },
+  "scripts": { "test": "node --test *.test.mjs ../production-service/*.test.mjs" },
+  "dependencies": { "openid-client": "6.8.8" },
+  "devDependencies": { "jose": "6.2.12" }
+}

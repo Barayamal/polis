@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Barayamal | Participant round</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#workspace">Skip to participation</a>
+  <main>
+    <header><p class="eyebrow">BARAYAMAL · PARTICIPANT ROUND</p><h1>A shared conversation.<br>Your own response.</h1>
+      <p class="intro">Consider 15 fixed statements. Choose Agree, Disagree or Pass for each one.</p></header>
+    <div class="layout">
+      <aside aria-label="Participation steps"><ol>
+        <li id="step-signin"><span>01</span><div><strong>Sign in</strong><p>Use your own account.</p></div></li>
+        <li id="step-register"><span>02</span><div><strong>Register</strong><p>Read and confirm three declarations.</p></div></li>
+        <li id="step-invite"><span>03</span><div><strong>Wait for approval</strong><p>An invitation is bound to your account.</p></div></li>
+        <li id="step-participate"><span>04</span><div><strong>Take part</strong><p>Respond while the round is open.</p></div></li>
+      </ol><p class="small">The round accepts at most 20 registrations, including registrations later revoked. Sign-in and self-attestation do not verify age, eligibility or Indigenous heritage. Registration alone does not grant participation access.</p></aside>
+      <section id="workspace" aria-labelledby="panel-title" aria-busy="true" tabindex="-1">
+        <div class="panel-heading"><p id="stage" class="eyebrow">GETTING READY</p><button id="logout" type="button" class="quiet" hidden>Sign out</button></div>
+        <h2 id="panel-title">Sign in to begin</h2>
+        <p id="status" role="status" aria-live="polite" tabindex="-1">Checking the current session…</p>
+        <p id="registration-reference" class="small" hidden></p>
+        <form id="login-form" hidden><p>You will continue to the configured identity service and return here after sign-in.</p><button type="submit">Continue to sign in <span aria-hidden="true">→</span></button></form>
+        <form id="registration-form" hidden>
+          <fieldset><legend>Read and confirm each declaration separately</legend>
+            <label><input id="adult" type="checkbox" required><span id="adult-declaration"></span></label>
+            <label><input id="eligibility" type="checkbox" required><span id="eligibility-declaration"></span></label>
+            <label><input id="consent" type="checkbox" required><span id="consent-declaration"></span></label>
+          </fieldset><p class="small">These declarations are submitted to the registration service for a separate round decision. This page does not send an invitation or an email.</p><button type="submit">Submit registration</button>
+        </form>
+        <section id="waiting" hidden aria-label="Registration status"><p id="registration-state"></p><button id="check-status" type="button" class="secondary">Check current status</button></section>
+        <form id="invite-form" hidden><label for="invitation">Your account-bound invitation</label><p class="small">Paste the invitation provided privately by the round operator. Stay signed in with the approved account and use the code before its stated expiry. A new sign-in requires a fresh code.</p><input id="invitation" type="password" autocomplete="off" spellcheck="false" maxlength="512" required><button type="submit">Open participation</button></form>
+        <section id="vote-panel" hidden aria-label="Fixed statement">
+          <p class="eyebrow">ONE OF 15 FIXED STATEMENTS</p><h3 id="statement" tabindex="-1"></h3>
+          <div id="vote-actions"><button type="button" id="agree" data-vote="-1">Agree</button><button type="button" id="disagree" data-vote="1" class="secondary">Disagree</button><button type="button" id="pass" data-vote="0" class="quiet">Pass</button></div>
+          <p id="complete" tabindex="-1" hidden>No further statements are available for this account.</p>
+          <button type="button" id="next" class="secondary">Check next statement</button>
+        </section>
+      </section>
+    </div>
+    <footer>Participation is subject to current approval and an open round. Closing this page does not sign you out; use Sign out on a shared device.</footer>
+  </main>
+</body>
+</html>

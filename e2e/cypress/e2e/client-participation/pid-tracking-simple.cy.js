@@ -20,8 +20,10 @@ describe('PID Tracking Verification', function () {
   })
 
   it('tracks PID correctly (not using hardcoded -1)', function () {
-    // Clear storage
-    cy.clearLocalStorage()
+    // Start with a genuinely new anonymous browser identity.
+    cy.clearAllCookies()
+    cy.clearAllLocalStorage()
+    cy.clearAllSessionStorage()
 
     // Track what PIDs are used
     let pidHistory = []
@@ -47,13 +49,19 @@ describe('PID Tracking Verification', function () {
     // Wait for vote button to appear
     cy.get('#agreeButton', { timeout: 10000 }).should('be.visible')
 
-    // First vote
-    cy.get('#agreeButton').click()
-    cy.wait('@vote')
+    // First vote, then wait for a distinct statement before voting again.
+    cy.get('#comment_shower p[lang]')
+      .invoke('text')
+      .then((firstStatement) => {
+        cy.get('#agreeButton').click()
+        cy.wait('@vote').its('response.statusCode').should('eq', 200)
+        cy.get('#comment_shower p[lang]', { timeout: 15000 }).should(($nextStatement) => {
+          expect($nextStatement.text().trim()).not.to.equal(firstStatement.trim())
+        })
+      })
 
-    // Second vote
     cy.get('#agreeButton', { timeout: 10000 }).should('be.visible').click()
-    cy.wait('@vote')
+    cy.wait('@vote').its('response.statusCode').should('eq', 200)
 
     // Check results
     cy.then(() => {
@@ -81,18 +89,35 @@ describe('PID Tracking Verification', function () {
   })
 
   it('prevents duplicate voting after voting on all comments', function () {
-    // Clear storage for fresh test
-    cy.clearLocalStorage()
+    // Clear the permanent participant cookie as well as browser storage so
+    // this test cannot inherit the participant and votes from the prior case.
+    cy.clearAllCookies()
+    cy.clearAllLocalStorage()
+    cy.clearAllSessionStorage()
+
+    cy.intercept('POST', '/api/v3/votes').as('duplicateVote')
 
     // Visit conversation
     cy.visit(`/${conversationId}`)
 
-    // Vote on both comments
-    cy.get('#agreeButton', { timeout: 10000 }).click()
-    cy.get('#agreeButton', { timeout: 10000 }).click()
+    // Vote on two distinct statements. Waiting for the card to advance prevents
+    // two rapid clicks from updating the same statement twice.
+    cy.get('#comment_shower p[lang]', { timeout: 15000 })
+      .should('be.visible')
+      .invoke('text')
+      .then((firstStatement) => {
+        cy.get('#agreeButton').click()
+        cy.wait('@duplicateVote').its('response.statusCode').should('eq', 200)
+        cy.get('#comment_shower p[lang]', { timeout: 15000 }).should(($nextStatement) => {
+          expect($nextStatement.text().trim()).not.to.equal(firstStatement.trim())
+        })
+      })
+
+    cy.get('#agreeButton', { timeout: 15000 }).click()
+    cy.wait('@duplicateVote').its('response.statusCode').should('eq', 200)
 
     // Should see "voted on all" message
-    cy.contains("You've voted on all", { timeout: 10000 }).should('be.visible')
+    cy.contains("You've voted on all", { timeout: 15000 }).should('be.visible')
 
     // Vote buttons should be hidden
     cy.get('#agreeButton').should('not.exist')

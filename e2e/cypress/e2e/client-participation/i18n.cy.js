@@ -4,10 +4,12 @@
  */
 
 import {
-  setupTestConversation,
+  addCommentsToConversationNoAuth,
+  createTestConversationAPI,
   openTranslated,
   readTranslation,
 } from '../../support/conversation-helpers.js'
+import { loginStandardUserAPI, logout } from '../../support/auth-helpers.js'
 
 describe('Interface internationalization', function () {
   let conversationId
@@ -16,14 +18,26 @@ describe('Interface internationalization', function () {
     // Setup: Create a conversation for i18n testing
     cy.log('🚀 Setting up test conversation for i18n testing')
 
-    setupTestConversation({
-      topic: 'I18n Test Conversation',
-      description: 'Testing interface translations across multiple languages',
-      comments: ['Test comment for i18n'],
-    }).then((result) => {
-      conversationId = result.conversationId
-      cy.log(`✅ Test conversation created: ${conversationId}`)
-    })
+    // Translation assertions do not exercise the administrator UI. Use an
+    // API-created fixture so cross-origin login and admin-page rendering cannot
+    // make this participant suite order-dependent.
+    cy.visit(Cypress.config('baseUrl'))
+
+    loginStandardUserAPI('moderator@polis.test', 'Te$tP@ssw0rd*')
+      .then(() =>
+        createTestConversationAPI({
+          topic: `I18n Test Conversation ${Date.now()}`,
+          description: 'Testing interface translations across multiple languages',
+        }),
+      )
+      .then((createdConversationId) => {
+        conversationId = createdConversationId
+        return addCommentsToConversationNoAuth(conversationId, ['Test comment for i18n'])
+      })
+      .then(() => {
+        logout()
+        cy.log(`✅ Test conversation created: ${conversationId}`)
+      })
   })
 
   /**
@@ -38,7 +52,11 @@ describe('Interface internationalization', function () {
 
     readTranslation(lang).then((translation) => {
       // The translation should appear as the placeholder text in the comment form
-      cy.get('textarea#comment_form_textarea').should('have.attr', 'placeholder', translation)
+      cy.get('textarea#comment_form_textarea', { timeout: 15000 }).should(
+        'have.attr',
+        'placeholder',
+        translation,
+      )
       cy.log(`✅ Translation verified for ${lang}: "${translation}"`)
     })
   }

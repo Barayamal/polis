@@ -146,9 +146,11 @@ async function votesGet(p: {
     if (!_.isUndefined(p.tid)) {
       q = q.where(sql_votes_latest_unique.tid.equals(p.tid));
     }
+    const query = q.toQuery();
 
     pg.query_readOnly(
-      q.toString(),
+      query.text,
+      query.values,
       function (err: any, results: { rows: any[] }) {
         if (err) {
           reject(err);

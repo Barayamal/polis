@@ -14,14 +14,32 @@ import {
 import Config from "../config";
 import logger from "../utils/logger";
 
-const sesClient = new SESv2Client({
-  region: Config.awsRegion,
-  endpoint: Config.SESEndpoint,
-  credentials: {
-    accessKeyId: Config.awsAccessKeyId || "test",
-    secretAccessKey: Config.awsSecretAccessKey || "test",
-  },
-});
+let sesClient: SESv2Client | undefined;
+
+function assertEmailAllowed(): void {
+  if (Config.freshBootstrapLocalOnly) {
+    // Do not include caller data in this error, or log it at this boundary.
+    throw new Error("polis_err_fncp_fresh_bootstrap_email_disabled");
+  }
+  if (Config.emailTransportTypes === "disabled") {
+    throw new Error("polis_err_email_disabled");
+  }
+}
+
+function getSesClient(): SESv2Client {
+  assertEmailAllowed();
+  if (!sesClient) {
+    sesClient = new SESv2Client({
+      region: Config.awsRegion,
+      endpoint: Config.SESEndpoint,
+      credentials: {
+        accessKeyId: Config.awsAccessKeyId || "test",
+        secretAccessKey: Config.awsSecretAccessKey || "test",
+      },
+    });
+  }
+  return sesClient;
+}
 
 async function sendTextEmail(
   sender: string,
@@ -29,6 +47,7 @@ async function sendTextEmail(
   subject: string,
   text: string
 ): Promise<SendEmailCommandOutput> {
+  assertEmailAllowed();
   const params = {
     Destination: {
       ToAddresses: [recipient],
@@ -55,7 +74,7 @@ async function sendTextEmail(
   };
 
   const command = new SendEmailCommand(params);
-  return sesClient.send(command);
+  return getSesClient().send(command);
 }
 
 async function sendMultipleTextEmails(
@@ -64,6 +83,7 @@ async function sendMultipleTextEmails(
   subject: string,
   text: string
 ): Promise<PromiseSettledResult<SendEmailCommandOutput | void>[]> {
+  assertEmailAllowed();
   const emailPromises = recipientArray.map((email) =>
     sendTextEmail(sender, email, subject, text)
   );
@@ -91,6 +111,7 @@ async function sendMultipleTextEmails(
 }
 
 async function emailTeam(subject: string, body: string): Promise<void> {
+  assertEmailAllowed();
   let adminEmails: string[] = [];
   try {
     if (Config.adminEmails) {

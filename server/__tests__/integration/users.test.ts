@@ -202,7 +202,10 @@ describe("User Management Endpoints", () => {
         });
 
       expect(response.status).toBe(400);
-      expect(response.text.trim()).toBe("polis_err_param_missing_emails");
+      expect(response.body).toEqual({
+        error: "polis_err_param_missing_emails",
+        message: "polis_err_param_missing_emails",
+      });
     });
   });
 });

@@ -162,36 +162,62 @@ describe('Visualization', function () {
           cy.log(`👤 Creating participant ${index}/7 with XID: ${xid}`)
 
           // Clear everything for each participant
+          cy.visit('/404', { failOnStatusCode: false })
+          cy.clearAllCookies()
           cy.clearLocalStorage()
           cy.clearAllSessionStorage()
 
           // Intercept the vote request
           cy.intercept('POST', '/api/v3/votes').as('voteRequest')
+          cy.intercept({
+            method: 'GET',
+            pathname: '/api/v3/participationInit',
+            query: {
+              conversation_id: conversationId,
+              xid,
+            },
+          }).as(`participantInit${index}`)
 
           // Visit with XID
           cy.visit(`/${conversationId}?xid=${xid}`)
+          cy.wait(`@participantInit${index}`, { timeout: 30000 })
+            .its('response.statusCode')
+            .should('eq', 200)
 
-          // Wait for page to be ready and first vote button to be stable
-          cy.get('body').should('be.visible')
-          cy.get('#agreeButton', { timeout: 15000 }).should('be.visible').should('not.be.disabled')
-          cy.get('#agreeButton').click()
-          cy.wait('@voteRequest')
+          const voteAndWaitForNextStatement = (button) => {
+            return cy
+              .get('#comment_shower p[lang]', { timeout: 15000 })
+              .should('be.visible')
+              .invoke('text')
+              .then((currentStatement) => {
+                cy.get(button, { timeout: 15000 })
+                  .should('be.visible')
+                  .should('not.be.disabled')
+                  .click()
+                cy.wait('@voteRequest')
+                  .its('response.statusCode')
+                  .should('be.oneOf', [200, 201])
 
-          // Second comment - vary the votes
+                // A completed request is not enough: the client can still be rendering
+                // the same card. Wait for the next distinct statement before clicking
+                // again so three requests always represent three distinct votes.
+                cy.get('#comment_shower p[lang]', { timeout: 15000 }).should(($nextStatement) => {
+                  expect($nextStatement.text().trim()).not.to.equal(currentStatement.trim())
+                })
+              })
+          }
+
+          // Vote on three distinct comments, varying the response pattern.
           const voteButtons = ['#agreeButton', '#disagreeButton', '#passButton']
-          const secondButton = voteButtons[index % 3]
-          cy.get(secondButton, { timeout: 10000 }).should('be.visible').should('not.be.disabled')
-          cy.get(secondButton).click()
-          cy.wait('@voteRequest')
+          voteAndWaitForNextStatement('#agreeButton')
+          voteAndWaitForNextStatement(voteButtons[index % 3])
 
-          // Third comment
-          const thirdButton = voteButtons[(index + 1) % 3]
-          cy.get(thirdButton, { timeout: 10000 }).should('be.visible').should('not.be.disabled')
-          cy.get(thirdButton).click()
-          cy.wait('@voteRequest')
-
-          // Wait for completion message and ensure it's stable
-          cy.contains("You've voted on all", { timeout: 10000 }).should('be.visible')
+          cy.get(voteButtons[(index + 1) % 3], { timeout: 15000 })
+            .should('be.visible')
+            .should('not.be.disabled')
+            .click()
+          cy.wait('@voteRequest').its('response.statusCode').should('be.oneOf', [200, 201])
+          cy.contains("You've voted on all", { timeout: 15000 }).should('be.visible')
           cy.log(`✅ Participant ${index} completed voting successfully`)
 
           // Return a Cypress chainable

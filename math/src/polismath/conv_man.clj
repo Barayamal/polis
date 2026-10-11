@@ -157,16 +157,18 @@
 
 (defn write-conv-updates!
   [{:as conv-man :keys [postgres]} {:as updated-conv :keys [zid]} math-tick]
-  ;; TODO Really need to extract these writes so that mod updates do whta they're supposed to! And also run in async/thread for better parallelism
+  ;; TODO Extract these writes so that moderation updates also recompute results.
   ; Format and upload main results
-  (async/thread
-    (doseq [[prep-fn upload-fn] [[prep-main db/upload-math-main] ; main math results, for client
-                                 [prep-bidToPid db/upload-math-bidtopid] ; bidtopid mapping, for server
-                                 [prep-ptpt-stats db/upload-math-ptptstats]]]
-      (->> updated-conv
-           prep-fn
-           (upload-fn postgres zid math-tick)))
-    (log/info "Finished uploading math results for zid:" zid)))
+  ;; The actor already serializes updates. Finish their writes in that order:
+  ;; independent threads could overwrite a later moderation snapshot with an
+  ;; older vote snapshot. Propagate write failures to the actor's retry handler.
+  (doseq [[prep-fn upload-fn] [[prep-main db/upload-math-main] ; main math results, for client
+                               [prep-bidToPid db/upload-math-bidtopid] ; bidtopid mapping, for server
+                               [prep-ptpt-stats db/upload-math-ptptstats]]]
+    (->> updated-conv
+         prep-fn
+         (upload-fn postgres zid math-tick)))
+  (log/info "Finished uploading math results for zid:" zid))
 
 (defn restructure-json-conv
   [conv]
@@ -360,7 +362,7 @@
           ;; If there are any retry messages from a failed recompute, we put them at the front of the message stack.
           ;; But retry messages only get processed in this way if there are new messages that have come in triggering the
           ;; first-msg take above, ensuring we don't just loop forever on a broken message/update.
-          (let [retry-msgs (async/poll! retry-chan)
+          (let [retry-msgs (when-let [message (async/poll! retry-chan)] [message])
                 msgs (vec (concat retry-msgs [first-msg] (take-all! message-chan)))
                 ;; Regardless, now we split the messages by message type and process them as below
                 split-msgs (split-batches msgs)]
@@ -452,14 +454,17 @@
   "Queue message batches for a given conversation by zid"
   [{:as conv-man :keys [conversations config kill-chan]} message-type zid message-batch]
   (when-not (async/poll! kill-chan)
-    (if-let [{:keys [conv message-chan]} (get @conversations zid)]
-      ;; Then we already have a go loop running for this
-      (>!! message-chan {:message-type message-type :message-batch message-batch})
-      ;; Then we need to initialize the conversation and set up the conversation channel and go routine
-      (let [conv-actor (conv-actor conv-man zid)]
-        (swap! conversations assoc zid conv-actor)
-        ;; Just call again to make sure the message gets on the chan (using the if-let fork above) :-)
-        (queue-message-batch! conv-man message-type zid message-batch)))))
+    ;; Vote and moderation pollers can first discover the same zid concurrently.
+    ;; Construct exactly one actor before publishing it. Actor construction has
+    ;; side effects and must not occur in a retryable swap! callback.
+    (let [{:keys [message-chan]}
+          (locking conversations
+            (or (get @conversations zid)
+                (let [actor (conv-actor conv-man zid)]
+                  (swap! conversations assoc zid actor)
+                  actor)))]
+      ;; A full queue must not hold the manager's creation lock.
+      (>!! message-chan {:message-type message-type :message-batch message-batch}))))
 
 
 ;; Need to find a good way of making sure these tests don't ever get committed uncommented
@@ -470,4 +475,3 @@
 
 
 :ok
-

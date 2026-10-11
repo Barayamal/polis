@@ -238,6 +238,12 @@
    (plmb/fnk [conv]
      (:meta-tids conv))
 
+   ;; Vote updates must not discard the moderation watermark whose state they
+   ;; preserve above. Consumers use both watermarks to reject stale analyses.
+   :last-mod-timestamp
+   (plmb/fnk [conv]
+     (:last-mod-timestamp conv))
+
    ;; There should really be a nice way for us to specify that we want a full recompute on everything except in-conv,
    ;; since in meta-tids we don't want to loose people in that process.
    :in-conv     (plmb/fnk [conv user-vote-counts n-cmts]
@@ -942,4 +948,3 @@
 
 
 :ok
-

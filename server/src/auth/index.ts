@@ -104,4 +104,5 @@ export {
 export {
   ensureParticipant,
   ensureParticipantOptional,
+  revalidateConversationXidAllowlist,
 } from "./ensure-participant";

@@ -1,0 +1,6 @@
+**
+!deploy
+!deploy/fncp
+!deploy/fncp/production-security
+!deploy/fncp/production-security/Dockerfile.mariadb-candidate
+!deploy/fncp/production-security/Dockerfile.mariadb-candidate.dockerignore

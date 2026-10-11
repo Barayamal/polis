@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { convertXML } from "simple-xml-to-json";
 import fs from "fs/promises";
-import { parse } from "csv-parse/sync";
+import { parseCsvRecords } from "../../../utils/csv-records";
 import { create } from "xmlbuilder2";
 import logger from "../../../utils/logger";
 
@@ -16,10 +16,7 @@ interface PolisRecord {
 export class PolisConverter {
   static convertToXml(csvContent: string): string {
     // Parse CSV content
-    const records = parse(csvContent, {
-      columns: true,
-      skip_empty_lines: true,
-    }) as PolisRecord[];
+    const records = parseCsvRecords(csvContent) as PolisRecord[];
 
     if (records.length === 0) return "";
 

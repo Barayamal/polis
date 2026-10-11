@@ -103,14 +103,11 @@ function initializeImplicitConversation(
               owner_sees_participation_stats: false, // TODO think, and test join
             });
 
-            const q = sql_conversations
-              .insert(params)
-              .returning("*")
-              .toString();
+            const q = sql_conversations.insert(params).returning("*").toQuery();
 
             pg.query(
-              q,
-              [],
+              q.text,
+              q.values,
               function (err: any, result: { rows: { zid: number }[] }) {
                 if (err) {
                   if (isDuplicateKey(err)) {

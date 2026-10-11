@@ -2,7 +2,8 @@
  * Alpha client voting flow
  *
  * Creates a conversation with 3 comments, then votes Agree/Disagree/Pass.
- * When no more statements remain, the EmailSubscribeForm should be shown.
+ * When no more statements remain, the non-collecting completion state should
+ * be shown.
  */
 
 import { setupTestConversation } from '../../support/conversation-helpers.js'
@@ -21,7 +22,7 @@ describe('Alpha Client: Voting', function () {
     })
   })
 
-  it('can vote agree, disagree, pass; shows email subscribe when exhausted', function () {
+  it('can vote agree, disagree, pass; shows completion when exhausted', function () {
     cy.clearAllLocalStorage()
 
     // Hydration signal: Survey.tsx triggers GET /api/v3/nextComment in a useEffect().
@@ -45,11 +46,12 @@ describe('Alpha Client: Voting', function () {
     cy.get('[data-testid="vote-pass"]').should('be.visible').click()
     cy.wait('@vote').its('response.statusCode').should('eq', 200)
 
-    // End-state: when no statements remain, Survey renders EmailSubscribeForm.
+    // End-state: when no statements remain, Survey renders the non-collecting
+    // completion state.
     // IMPORTANT: We expect exhaustion after exactly 3 votes (since we seeded 3 comments).
     // If the app shows another statement (vote buttons still present), that's a bug and should fail.
-    cy.get('.email-subscribe-container').should('be.visible')
-    cy.get('.email-subscribe-container input[type="email"]').should('be.visible')
+    cy.get('.survey-complete').should('be.visible')
+    cy.get('.email-subscribe-container').should('not.exist')
 
     cy.get('[data-testid="vote-agree"]').should('not.exist')
     cy.get('[data-testid="vote-disagree"]').should('not.exist')

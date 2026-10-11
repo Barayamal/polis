@@ -10,7 +10,6 @@
     [polismath.components.postgres :as db]
     [clojure.core.async :as async :refer [chan >!! <!! >! <! go]]
     [taoensso.timbre :as log]
-    [bidi.ring]
     [com.stuartsierra.component :as component]
     [cognitect.aws.client.api :as aws]
     [cognitect.aws.credentials :as aws-creds]
@@ -239,4 +238,3 @@
 
 
 :ok
-

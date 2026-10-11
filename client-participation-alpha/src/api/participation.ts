@@ -1,5 +1,6 @@
 import { uiLanguage } from '../lib/lang'
 import PolisNet from '../lib/net'
+import type { PolisServerRequest } from '../lib/polis-request'
 import type { ParticipationInitData } from './types'
 
 export async function fetchParticipationInit(
@@ -10,7 +11,8 @@ export async function fetchParticipationInit(
     xid?: string
     x_name?: string
     x_profile_image_url?: string
-  } = {}
+  } = {},
+  serverRequest?: PolisServerRequest
 ): Promise<ParticipationInitData> {
   // Auto-detect language only if not provided (undefined)
   const lang = options.lang !== undefined ? options.lang : uiLanguage()
@@ -24,5 +26,9 @@ export async function fetchParticipationInit(
       x_profile_image_url: options.x_profile_image_url
     })
   }
-  return await PolisNet.polisGet<ParticipationInitData>('/participationInit', params)
+  return await PolisNet.polisGet<ParticipationInitData>(
+    '/participationInit',
+    params,
+    serverRequest
+  )
 }

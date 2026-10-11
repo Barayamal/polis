@@ -27,14 +27,14 @@
   },
   "dependencies": {
     "@faker-js/faker": "^10.1.0",
-    "cypress": "^15.8.1",
+    "cypress": "^15.19.0",
     "cypress-terminal-report": "^7.3.3",
     "dotenv": "^17.2.3",
     "yargs": "^18.0.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.2",
-    "eslint": "^9.39.2",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-cypress": "^5.2.0",
     "eslint-plugin-mocha": "^11.2.0",

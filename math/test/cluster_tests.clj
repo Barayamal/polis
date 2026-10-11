@@ -4,6 +4,7 @@
   (:use polismath.utils
         test-helpers)
   (:require [clojure.test :refer :all]
+            [clojure.core.matrix :as matrix]
             [plumbing.core :as pc]
             [polismath.math.named-matrix :refer :all]
             [polismath.math.clusters :refer :all]))
@@ -288,6 +289,30 @@
     (testing "unfolding should get you back"
       (is (= ((comp unfold-clusters fold-clusters) clusters)
              clusters)))))
+
+
+(deftest native-row-near-center-distance
+  ;; Exact projected points from the deterministic 18-person fixture, seed 1410.
+  ;; A weighted singleton mean rounds by ~9e-16. Vectorz's optimized native-row
+  ;; distance previously returned NaN here and min-key moved that point into
+  ;; the other cluster on the next Lloyd iteration.
+  (let [positions [[-3.2427871439992515 -1.6785901441526803]
+                   [-1.1869424737632652 2.2929967794664274]
+                   [4.429729617762515 -0.6144066353137467]]
+        native (matrix/matrix positions)
+        row (first (matrix/rows native))
+        center (matrix/matrix [-3.2427871439992524 -1.6785901441526805])
+        distance (euclidean-distance row center)
+        data (named-matrix [0 1 2] [:x :y] native)
+        groups (vec (kmeans data 2 :weights {0 6 1 6 2 6}))]
+    (is (Double/isFinite (double distance)))
+    (is (< 0 distance 1.0e-14))
+    (is (= #{#{0} #{1 2}} (setify-members groups)))
+    (is (= positions (matrix/to-nested-vectors native))
+        "distance and clustering leave input coordinates unchanged")
+    (is (every? #(Double/isFinite (double %))
+                (mapcat (comp matrix/eseq :center) groups)))
+    (is (Double/isFinite (double (silhouette (named-dist-matrix data) groups))))))
 
 
 (defn -main []

@@ -6,6 +6,7 @@ declare global {
     interface Request {
       p: any;
       timedout?: boolean;
+      clearTimeout?: () => void;
     }
   }
 }

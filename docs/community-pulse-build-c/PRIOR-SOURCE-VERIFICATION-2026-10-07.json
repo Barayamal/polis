@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-07",
+  "timezone": "Australia/Sydney",
+  "classification": "HISTORICAL_LOCAL_WORDPRESS_DEPENDENT_SOURCE_MILESTONE",
+  "documentationOnlyUpdate": true,
+  "checksRerunForDocumentationUpdate": false,
+  "source": {
+    "repository": "https://github.com/Barayamal/polis",
+    "historicalLocalBaseHead": "9fccfec82797573dd5c873f1dee761378dff3706",
+    "recordedWorkingCopyFingerprint": "4730e2988791cafdeab55003f3cc13e38a783a8bc1d09650cf1020af9e8023d3",
+    "sourceFiles": 1995,
+    "workingCopyIncludedUncommittedChanges": true,
+    "fingerprintIsBaseCommitTreeDigest": false,
+    "quiescentFinalFingerprintRecheckedInOriginalRun": true
+  },
+  "checks": [
+    {
+      "scope": "all deploy/fncp source test files",
+      "node": "26.10.0",
+      "files": 140,
+      "tests": 2949,
+      "passed": 2949,
+      "failed": 0
+    },
+    {
+      "scope": "production modules, nested WordPress TLS and release-readiness subset",
+      "node": "24.19.0",
+      "files": 42,
+      "tests": 808,
+      "passed": 808,
+      "failed": 0,
+      "subsetOfFullSuite": true
+    },
+    {
+      "scope": "WordPress contract model",
+      "php": "8.5.11",
+      "tests": 21,
+      "passed": 21,
+      "failed": 0,
+      "actualWordPressDatabase": false
+    },
+    {
+      "scope": "WordPress plugin API doubles",
+      "php": "8.5.11",
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "actualWordPressDatabase": false
+    },
+    {
+      "scope": "whitespace and draft workflow checks",
+      "result": "PASS",
+      "hostedCiRun": false
+    }
+  ],
+  "selectedTarget": {
+    "purpose": "First Nations community and policy listening",
+    "signup": "native registration, consent and staff approval; remove WordPress",
+    "votingAndAnalysis": "self-hosted Pol.is",
+    "audienceDecision": "PENDING",
+    "nativeMigrationExecutionApproved": false,
+    "nativeMigrationImplemented": false
+  },
+  "limitsOfOriginalSourceMilestone": {
+    "newImagesBuilt": false,
+    "newImagesScanned": false,
+    "installedFullJourneyProved": false,
+    "kernelEgressPolicyProved": false,
+    "realIdentityProviderVerified": false,
+    "realParticipantDataUsed": false,
+    "hostedCiRun": false,
+    "launchAuthorized": false
+  }
+}
