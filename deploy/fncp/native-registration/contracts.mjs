@@ -60,7 +60,10 @@ export function validateConfiguration(value) {
     || typeof value.consentVersion !== 'string' || !/^native-synthetic-[a-z0-9-]{1,48}$/u.test(value.consentVersion)
     || typeof value.noticeSha256 !== 'string' || !SHA256.test(value.noticeSha256)) reject();
   exactRecord(value.notice, ['adultDeclaration', 'eligibilityDeclaration', 'registrationDeclaration']);
-  if (Object.values(value.notice).some(v => typeof v !== 'string' || !v.trim() || v.length > 1000)
+  // exactRecord and canonical include non-enumerable data properties too.
+  // Validate those same required values, not only Object.values' visible subset.
+  const declarations = Object.values(Object.getOwnPropertyDescriptors(value.notice)).map(descriptor => descriptor.value);
+  if (declarations.some(v => typeof v !== 'string' || !v.trim() || v.length > 1000)
     || sha256(canonical(value.notice)) !== value.noticeSha256) reject();
   const copy = JSON.parse(canonical(value));
   Object.freeze(copy.notice);

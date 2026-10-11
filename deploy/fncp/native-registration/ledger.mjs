@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { constants, openSync, closeSync, lstatSync, fstatSync, realpathSync, unlinkSync } from 'node:fs';
+import { constants, openSync, closeSync, readSync, lstatSync, fstatSync, realpathSync, unlinkSync } from 'node:fs';
 import { dirname, basename, isAbsolute, resolve } from 'node:path';
 import { SCHEMA, assertNativeFoundationSchema } from './store-schema.mjs';
 import { FOUNDATION_PROFILE, FOUNDATION_MODE, LIFETIME_CAPACITY, NativeFoundationError,
@@ -19,6 +19,7 @@ const error = (code, verified = false) => new NativeFoundationError(code, verifi
 export function createNativeRegistrationFoundation(options) {
   let configuration, configSha, storePath, now, db, lockFd, lockIdentity, dbIdentity, parentIdentity;
   let disposed = false, faulted = false, faultPersistenceVerified = false;
+  let createdStore = false, qualifiedStore = false;
   let firstFaultCode, observedHighWater = -1, closeFailure;
   let verifiedCounts;
   const lockPath = () => storePath + '.writer.lock';
@@ -28,6 +29,29 @@ export function createNativeRegistrationFoundation(options) {
     && stat.uid === process.getuid();
   const regular = stat => ownedFile(stat)
     && stat.uid === process.getuid() && (stat.mode & 0o777) === 0o600;
+  const noRecoveryArtifacts = () => {
+    // Even a read-only WAL connection can create or change shared-memory
+    // sidecars. Reject foreign formats and recovery artifacts before SQLite
+    // opens them; this foundation never repairs or adopts such a namespace.
+    for (const suffix of ['-journal', '-wal', '-shm']) {
+      try { lstatSync(storePath + suffix); }
+      catch (failure) { if (failure.code === 'ENOENT') continue; throw failure; }
+      throw error('foundation_configuration_rejected');
+    }
+  };
+  const existingStoreHeader = () => {
+    noRecoveryArtifacts();
+    const descriptor = openSync(storePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const stat = fstatSync(descriptor), header = Buffer.alloc(100);
+      if (!regular(stat) || stat.ino !== dbIdentity.ino || stat.dev !== dbIdentity.dev
+        || stat.size < header.length || stat.size > MAX_STORE_BYTES
+        || readSync(descriptor, header, 0, header.length, 0) !== header.length
+        || !header.subarray(0, 16).equals(Buffer.from('SQLite format 3\0', 'ascii'))
+        || header[18] !== 1 || header[19] !== 1
+        || header.readUInt32BE(60) !== 0 || header.readUInt32BE(68) !== 0) throw error('foundation_configuration_rejected');
+    } finally { closeSync(descriptor); }
+  };
   const storage = (faultClosureOnly = false) => {
     if (storePath === ':memory:') return;
     const parent = dirname(storePath), p = lstatSync(parent), s = lstatSync(storePath), l = lstatSync(lockPath());
@@ -49,12 +73,19 @@ export function createNativeRegistrationFoundation(options) {
       if (m?.profile !== FOUNDATION_PROFILE) return;
       db.prepare('UPDATE meta SET fault_code=COALESCE(fault_code,?) WHERE singleton=1').run(firstFaultCode);
       // A write inside a transaction is not yet a durable outcome.
-      faultPersistenceVerified = !db.isTransaction && ['clock_fault', 'storage_fault', 'history_fault', 'configuration_fault'].includes(meta()?.fault_code);
+      faultPersistenceVerified = storePath !== ':memory:' && !db.isTransaction
+        && ['clock_fault', 'storage_fault', 'history_fault', 'configuration_fault'].includes(meta()?.fault_code);
     } catch { faultPersistenceVerified = false; }
   };
   const transaction = fn => {
     db.exec('BEGIN IMMEDIATE');
-    try { const result = fn(); db.exec('COMMIT'); return result; }
+    try {
+      const result = fn();
+      // A trusted clock/test seam or other work inside fn may have changed
+      // custody since its earlier check. Do not commit its result unchecked.
+      storage();
+      db.exec('COMMIT'); return result;
+    }
     catch (failure) {
       try {
         db.exec('ROLLBACK');
@@ -64,7 +95,9 @@ export function createNativeRegistrationFoundation(options) {
           db.prepare('UPDATE meta SET last_ms=MAX(last_ms,?) WHERE singleton=1').run(observedHighWater);
         }
       } catch { latch('storage_fault'); }
-      throw failure;
+      // Rollback may have made a previously tentative fault latch durable.
+      throw failure instanceof NativeFoundationError && faulted
+        ? error(failure.code, faultPersistenceVerified) : failure;
     }
   };
   const parse = text => {
@@ -154,8 +187,13 @@ export function createNativeRegistrationFoundation(options) {
     if (disposed || faulted) throw error('foundation_closed', faultPersistenceVerified);
     try {
       storage(); const m = validateHistory();
-      if (m.fault_code) { faulted = true; faultPersistenceVerified = true; throw error('foundation_closed', true); }
+      if (m.fault_code) {
+        faulted = true; faultPersistenceVerified = storePath !== ':memory:';
+        throw error('foundation_closed', faultPersistenceVerified);
+      }
       const at = now();
+      // Check again after the trusted clock seam and before any clock write.
+      storage();
       if (!validTime(at) || at < m.last_ms || at < observedHighWater) { latch('clock_fault'); throw error('clock_fault', faultPersistenceVerified); }
       observedHighWater = at;
       db.prepare('UPDATE meta SET last_ms=? WHERE singleton=1').run(at);
@@ -190,16 +228,33 @@ export function createNativeRegistrationFoundation(options) {
       parentIdentity = p;
       lockFd = openSync(lockPath(), constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
       lockIdentity = fstatSync(lockFd);
-      try { closeSync(openSync(storePath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600)); }
+      noRecoveryArtifacts();
+      try {
+        closeSync(openSync(storePath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600));
+        createdStore = true;
+      }
       catch (failure) { if (failure.code !== 'EEXIST') throw failure; }
       dbIdentity = lstatSync(storePath);
       if (!regular(dbIdentity) || !regular(lockIdentity) || dbIdentity.size > MAX_STORE_BYTES) throw error('foundation_configuration_rejected');
       storage();
+      if (!createdStore) {
+        existingStoreHeader();
+        const preflight = new DatabaseSync(storePath, { readOnly: true, timeout: 1000, allowExtension: false,
+          enableForeignKeyConstraints: true, enableDoubleQuotedStringLiterals: false });
+        try {
+          preflight.exec('PRAGMA trusted_schema=OFF;');
+          assertNativeFoundationSchema(preflight);
+          // No application row is inspected until the exact schema passed.
+          const candidate = preflight.prepare('SELECT profile FROM meta WHERE singleton=1').get();
+          if (candidate?.profile !== FOUNDATION_PROFILE) throw error('foundation_configuration_rejected');
+        } finally { preflight.close(); }
+        storage(); existingStoreHeader();
+      }
     }
     db = new DatabaseSync(storePath, { timeout: 1000, allowExtension: false, enableForeignKeyConstraints: true, enableDoubleQuotedStringLiterals: false });
-    db.exec('PRAGMA foreign_keys=ON;PRAGMA trusted_schema=OFF;PRAGMA journal_mode=DELETE;PRAGMA synchronous=FULL;');
-    const objects = db.prepare("SELECT name FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'").all();
-    if (!objects.length) {
+    db.exec('PRAGMA foreign_keys=ON;PRAGMA trusted_schema=OFF;');
+    if (storePath === ':memory:' || createdStore) {
+      db.exec('PRAGMA journal_mode=DELETE;PRAGMA synchronous=FULL;');
       const at = now(); if (!validTime(at)) throw error('clock_fault');
       transaction(() => {
         db.exec(SCHEMA);
@@ -209,10 +264,12 @@ export function createNativeRegistrationFoundation(options) {
     assertNativeFoundationSchema(db);
     const old = meta();
     if (old?.profile !== FOUNDATION_PROFILE) throw error('foundation_configuration_rejected');
+    qualifiedStore = true;
+    db.exec('PRAGMA synchronous=FULL;');
     if (old.config_sha !== configSha) { latch('configuration_fault'); throw error('foundation_configuration_rejected', faultPersistenceVerified); }
     clock();
   } catch (failure) {
-    if (db && !faulted) {
+    if (db && qualifiedStore && !faulted) {
       try { if (meta()?.profile === FOUNDATION_PROFILE) latch('history_fault'); } catch { /* Foreign schema is not adopted. */ }
     }
     try { db?.close(); } catch { /* No durable-close claim on storage failure. */ }
